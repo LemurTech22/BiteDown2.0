@@ -62,13 +62,17 @@ actor SpyAPIClient: APIClient {
     func acceptFriend(userId: String) async throws -> Friend { try await inner.acceptFriend(userId: userId) }
     func declineFriend(userId: String) async throws { try await inner.declineFriend(userId: userId) }
     func removeFriend(userId: String) async throws { try await inner.removeFriend(userId: userId) }
+    func friendCode() async throws -> FriendCodeInfo { try await inner.friendCode() }
+    func addFriend(code: String) async throws -> FriendAddResult { try await inner.addFriend(code: code) }
     func listGroups() async throws -> [SharingGroup] { try await inner.listGroups() }
     func createGroup(name: String) async throws -> SharingGroup { try await inner.createGroup(name: name) }
     func joinGroup(inviteCode: String) async throws -> SharingGroup { try await inner.joinGroup(inviteCode: inviteCode) }
     func leaveGroup(id: String) async throws { try await inner.leaveGroup(id: id) }
     func groupDetail(id: String) async throws -> GroupDetail { try await inner.groupDetail(id: id) }
     func groupPantry(id: String) async throws -> [PantryItem] { try await inner.groupPantry(id: id) }
-    func reachablePeople() async throws -> [Person] { reachableCalls += 1; return try await inner.reachablePeople() }
+    func share(itemId: String, audience: ShareAudience, pickup: Pickup?) async throws -> Listing { try await inner.share(itemId: itemId, audience: audience, pickup: pickup) }
+    func updatePickup(listingId: String, pickup: Pickup?) async throws -> Listing { try await inner.updatePickup(listingId: listingId, pickup: pickup) }
+    func reachablePeople(itemId: String?) async throws -> [Person] { reachableCalls += 1; return try await inner.reachablePeople(itemId: itemId) }
     func restoreItem(id: String) async throws -> Item {
         restores.append(id)
         log.append("start:restore:\(id)")

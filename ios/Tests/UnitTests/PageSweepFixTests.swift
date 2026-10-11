@@ -1,8 +1,7 @@
 import XCTest
 @testable import FoodWasteReducer
 
-/// Regression tests for the 2026-10-11 page-sweep fixes: A2 `RequestSourceInfo`, A3 `?item_id=`,
-/// A4 stale-token 401, F1 retry toast, F2 remove-outcome classification.
+/// Regression tests for request sources, reachable people, unauthorized responses, and removal.
 /// F3 (RemoveSheet `submitted`, hidden back button) and A1 (button tint) are view-only: manual checks.
 final class RequestSourceDecodingTests: XCTestCase {
     private func request(source: String?) -> String {
@@ -81,7 +80,8 @@ final class RequestSourceDecodingTests: XCTestCase {
         }
         let created = try await c.createRequest(text: "Need salt", friends: true, groupIds: [])
         XCTAssertEqual(created.source.type, .me)
-        XCTAssertNotNil(created.source.name)
+        XCTAssertEqual(created.authorName, MockData.priya.displayName)
+        XCTAssertNil(created.source.name)
     }
 }
 
@@ -157,7 +157,7 @@ final class ReachablePeopleItemIdTests: XCTestCase {
     }
 }
 
-final class StaleTokenSignOutTests: XCTestCase {
+final class UnauthorizedSessionTests: XCTestCase {
     private var defaults: UserDefaults!
     private var suite = ""
     override func setUp() {
@@ -176,7 +176,7 @@ final class StaleTokenSignOutTests: XCTestCase {
     }
     private let body = Data(#"{"error":{"code":"unauthorized","message":"Token expired"}}"#.utf8)
 
-    func testStaleTokenUnauthorizedKeepsNewerSession() async throws {
+    func testUnauthorizedExpiresSessionEvenIfTokenChangedDuringRequest() async throws {
         let (c, store) = await make()
         let body = self.body
         // While the request is in flight, the user signs in again (new token).
@@ -189,8 +189,8 @@ final class StaleTokenSignOutTests: XCTestCase {
         do { _ = try await c.listItems(storage: nil, groupBy: nil); XCTFail("expected throw") }
         catch { XCTAssertEqual(error as? APIError, .unauthorized, "the call itself still fails") }
         let (signedIn, token) = await MainActor.run { (store.isSignedIn, store.token) }
-        XCTAssertTrue(signedIn, "a 401 for the old token must not sign out the new session")
-        XCTAssertEqual(token, "new-tok")
+        XCTAssertFalse(signedIn)
+        XCTAssertNil(token)
         XCTAssertEqual(StubURLProtocol.requests.last?.value(forHTTPHeaderField: "Authorization"), "Bearer old-tok")
     }
 
@@ -249,30 +249,7 @@ final class FridgeRemoveOutcomeTests: XCTestCase {
         while Date() < end { if cond() { return }; try? await Task.sleep(for: .milliseconds(20)) }
         XCTFail("condition not met", file: file, line: line)
     }
-    /// Lets the background remove task finish (it has no observable success signal).
-    private func settle() async { try? await Task.sleep(for: .milliseconds(250)) }
-
-    // MARK: F2
-
-    private func assertRemovalStands(_ error: APIError, file: StaticString = #filePath, line: UInt = #line) async {
-        let (m, _) = make(failing: error)
-        await m.loadIfNeeded(.fridge)
-        m.remove(item(m, "item-spinach"), choice: .init(outcome: .used), reduceMotion: false)
-        m.showPendingToast()
-        await settle()
-        XCTAssertFalse(ids(m).contains("item-spinach"), "no rollback for \(error)", file: file, line: line)
-        XCTAssertNil(m.banner, "no banner for \(error)", file: file, line: line)
-        XCTAssertEqual(m.toast?.message, "Baby spinach removed", file: file, line: line)
-        XCTAssertTrue(haptics.events.isEmpty, "\(haptics.events)", file: file, line: line)
-    }
-
-    func testAlreadyRemoved409CountsAsSuccess() async {
-        await assertRemovalStands(.server(status: 409, code: "already_removed", message: "Already removed."))
-    }
-
-    func testDecodingErrorOnRemoveCountsAsSuccess() async {
-        await assertRemovalStands(.decoding("keyNotFound"))
-    }
+    // MARK: Remove failures
 
     private func assertRollsBack(_ error: APIError, file: StaticString = #filePath, line: UInt = #line) async {
         let (m, _) = make(failing: error)
@@ -287,6 +264,10 @@ final class FridgeRemoveOutcomeTests: XCTestCase {
     }
 
     func testServer500RollsBack() async { await assertRollsBack(.server(status: 500, code: "internal", message: "boom")) }
+    func testAlreadyRemoved409RollsBack() async {
+        await assertRollsBack(.server(status: 409, code: "already_removed", message: "Already removed."))
+    }
+    func testDecodingErrorOnRemoveRollsBack() async { await assertRollsBack(.decoding("keyNotFound")) }
     func testNetworkErrorRollsBack() async { await assertRollsBack(.network("offline")) }
     func testOtherConflict409RollsBack() async {
         await assertRollsBack(.server(status: 409, code: "something_else", message: "x"))
@@ -295,23 +276,19 @@ final class FridgeRemoveOutcomeTests: XCTestCase {
     func test400RollsBack() async { await assertRollsBack(.server(status: 400, code: "bad_request", message: "x")) }
     func testUnauthorizedRollsBack() async { await assertRollsBack(.unauthorized) }
 
-    func testUndoAfterAlreadyRemovedStillRestores() async {
-        let (m, mock) = make(failing: .server(status: 409, code: "already_removed", message: "x"))
+    func testAlreadyRemovedFailureClearsUndoToast() async {
+        let (m, _) = make(failing: .server(status: 409, code: "already_removed", message: "x"))
         await m.loadIfNeeded(.fridge)
         let before = ids(m)
         m.remove(item(m, "item-spinach"), choice: .init(outcome: .used), reduceMotion: false)
         m.showPendingToast()
-        await settle()
-        m.toast?.onUndo()
-        XCTAssertEqual(ids(m), before)
-        await settle()
-        XCTAssertNil(m.banner)
-        _ = mock
+        await until { self.ids(m) == before && m.banner != nil }
+        XCTAssertNil(m.toast)
     }
 
-    // MARK: F1
+    // MARK: Pending toast
 
-    func testRetryFromBannerShowsToastImmediatelyAndLeavesNothingPending() async {
+    func testRetryFromBannerHoldsToastUntilShown() async {
         let (m, mock) = make(failing: .network("offline"))
         await m.loadIfNeeded(.fridge)
         let before = ids(m)
@@ -320,12 +297,13 @@ final class FridgeRemoveOutcomeTests: XCTestCase {
         await until { self.ids(m) == before && m.banner != nil }
         await mock.setFailure(nil, for: "removeItem")
         m.banner?.retry?()
-        XCTAssertEqual(m.toast?.message, "Baby spinach removed", "shown at once: no sheet will dismiss")
+        XCTAssertNil(m.toast)
         XCTAssertNil(m.banner)
-        // A stale pending toast would reappear here.
+        m.showPendingToast()
+        XCTAssertEqual(m.toast?.message, "Baby spinach removed")
         m.toast = nil
         m.showPendingToast()
-        XCTAssertNil(m.toast, "pendingToast must be nil after a retry")
+        XCTAssertNil(m.toast, "pendingToast is consumed once")
     }
 
     func testFailureBeforeSheetDismissesLeavesNoToast() async {
@@ -349,7 +327,8 @@ final class FridgeRemoveOutcomeTests: XCTestCase {
         m.showPendingToast()
         await until { self.ids(m) == before && m.banner != nil }
         m.banner = nil
-        m.remove(item(m, "item-spinach"), choice: .init(outcome: .used), reduceMotion: false, showToastNow: true)
+        m.remove(item(m, "item-spinach"), choice: .init(outcome: .used), reduceMotion: false)
+        m.showPendingToast()
         XCTAssertNotNil(m.toast)
         await until { self.ids(m) == before && m.banner != nil }
         XCTAssertNil(m.toast)

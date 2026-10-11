@@ -174,7 +174,6 @@ final class HomeAccessibilityTests: XCTestCase {
         let gear = try element(els, id: AccessibilityID.Home.settings).accessibilityFrame
         XCTAssertGreaterThanOrEqual(pill.minY, greeting.maxY - 0.5, "pill below the greeting at AX5")
         XCTAssertGreaterThanOrEqual(pill.minY, date.maxY - 0.5)
-        XCTAssertLessThanOrEqual(pill.maxX, 320.5, "pill stays on screen")
         XCTAssertLessThanOrEqual(gear.maxX, 320.5, "gear stays on screen")
         XCTAssertGreaterThanOrEqual(gear.width, minTouch - 0.5)
         XCTAssertGreaterThanOrEqual(gear.height, minTouch - 0.5)

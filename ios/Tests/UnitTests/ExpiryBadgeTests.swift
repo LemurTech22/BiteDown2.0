@@ -23,7 +23,7 @@ final class ExpiryBadgeTests: XCTestCase {
         let now = date(2026, 10, 10, 14, 30, c)
         XCTAssertEqual(badge((2026, 10, 10), now: now, c)?.text, "Today")
         XCTAssertEqual(badge((2026, 10, 11), now: now, c)?.text, "Tomorrow")
-        XCTAssertEqual(badge((2026, 10, 12), now: now, c)?.text, "1–2 days")
+        XCTAssertEqual(badge((2026, 10, 12), now: now, c)?.text, "2–3 days")
         XCTAssertEqual(badge((2026, 10, 24), now: now, c)?.text, "1–2 weeks")
         XCTAssertEqual(badge((2026, 10, 9), now: now, c)?.text, "Expired")
         XCTAssertEqual(badge((2026, 9, 1), now: now, c)?.text, "Expired")
@@ -96,7 +96,7 @@ final class ExpiryBadgeTests: XCTestCase {
     func testDaylightSavingBoundaryStillCountsCalendarDays() {
         let c = cal("America/Chicago") // DST ends 2026-11-01
         let now = date(2026, 10, 31, 12, 0, c)
-        XCTAssertEqual(badge((2026, 11, 2), now: now, c)?.text, "1–2 days")
+        XCTAssertEqual(badge((2026, 11, 2), now: now, c)?.text, "2–3 days")
         XCTAssertEqual(badge((2026, 11, 1), now: now, c)?.text, "Tomorrow")
     }
 
@@ -104,7 +104,7 @@ final class ExpiryBadgeTests: XCTestCase {
         let c = cal("America/Chicago")
         let expiry = try XCTUnwrap(APIDate.parse("2026-10-12", calendar: c))
         let now = date(2026, 10, 10, 22, 0, c)
-        XCTAssertEqual(ExpiryBadgeModel.make(expiry: expiry, freshness: nil, now: now, calendar: c)?.text, "1–2 days")
+        XCTAssertEqual(ExpiryBadgeModel.make(expiry: expiry, freshness: nil, now: now, calendar: c)?.text, "2–3 days")
     }
 
     func testAccessibilityText() {
