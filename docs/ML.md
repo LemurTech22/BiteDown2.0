@@ -97,8 +97,18 @@ DIR/heldout_gt.jsonl           ground truth (below)
 DIR/heldout_manifest.csv       per-image metadata (below)
 DIR/dataset_report.json        counts, dropped source labels, classes with no data
 ```
-- Split: deterministic SHA1 of `seed:group`; default 10% heldout / 10% val / 80% train. `group` = source +
-  filename stem before `.rf.` so Roboflow augmentations of one photo never straddle splits (no leakage).
+- Split (`--split-by session`, the default since 2026-10-10; `ml/yolo/grouping.py`): images are merged into
+  leakage-safe groups per source, then each group gets one split by deterministic SHA1 of `seed:group`
+  (default 10% heldout / 10% val / 80% train; real shares vary because groups are whole sessions). Signals:
+  Roboflow `.rf.` stem; **capture sessions** from filename timestamps (`IMG_YYYYMMDD_HHMMSS`, `PXL_…`,
+  `WhatsApp Image … at H.MM.SS`), chained while the gap is <= 300 s; date-only names (`IMG-YYYYMMDD-WA0012`)
+  by day; numbered series without a timestamp (`Banana (12)`, `eggplant_9`; camera counters like `IMG_1234`
+  excluded) by series; pHash Hamming <= 6 for pairs involving an untimestamped image. Then **coverage repair**
+  (ML-23): every class x freshness cell with >= 10 images and >= 2 groups gets a held-out group, a
+  single-group cell goes entirely to train and is listed in `dataset_report.json` `not_measurable_cells`, and no
+  cell is held-out only. `--split-by rf` restores the old `.rf.`-only grouping; `--no-phash` skips the pHash pass.
+  On AgriFreshNET: 89 groups, train 9,125 / val 3,149 / heldout 1,829, all 24 cells measurable, and **0 of 1,681
+  timestamped held-out images have a train/val shot within 300 s** (was 127/132 within 10 s, ML-21).
 - **Lighting tag**: auto from mean luma (<70 => `low`) and mean R/B (>1.35 => `warm`), else `normal`
   (`lighting_method=auto`; hand-correct via `--lighting-overrides file.csv` with columns `image,lighting` ->
   `manual`). Because public sets are mostly normal light, every `normal` held-out image also gets a
@@ -144,6 +154,14 @@ cls crops train 6,299 / val 768), imgsz 640, batch 16:
 These are VegQual-only timings. Estimate for the full merged run (yolo26s, 80 epochs, ~4.7k train images with the two
 Roboflow sets): ~5.5 min/epoch -> **~7.5 h** (range 6.5-9 h) + ~15 min classifier. Scales linearly with images; assumes MPS
 throughput stays constant (no thermal throttling) and similar boxes per image.
+
+## 5c. Freshness classifier on CPU (classifier only)
+`python train.py --data DIR --skip-det --device cpu --cls-epochs 15 --workers 3` trains only `yolo26n-cls` on
+`DIR/cls/` (about 5 min per epoch on 4 CPU cores for AgriFreshNET's 9k crops) and writes
+`runs/export/freshness.pt` plus `freshness_oracle_predictions.jsonl`: `export_predictions.py --oracle-boxes`
+classifies every **ground-truth** box crop of the held-out set (name/bbox copied from GT, `"boxes": "oracle"`,
+3-way `probs` included). It measures the classifier alone; mAP from that file is meaningless. Serve it without
+a detector? No: `/detect` needs `YOLO_WEIGHTS`; until a detector is trained the backend uses Gemini vision.
 
 ## 6. Running the service on a GPU box
 ```

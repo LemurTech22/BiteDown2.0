@@ -37,14 +37,18 @@ seafood, bakery, eggs, leftovers, pantry_dry, frozen, other`; `storage` ∈ `fri
 - ✅ `GET /items?storage=fridge|pantry|freezer&include_removed=false` → `200 {items}` sorted by
   `predicted_expiry`, then `added_at`. Only the caller's **personal** items (`group_id` null; group-pantry items are listed by `GET /groups/:id/pantry`). Invalid `storage` → 400.
 - ✅ `POST /items` `{items: [{name, category?, storage?, quantity?, unit?, est_price?, est_weight_kg?,
-  predicted_expiry?, source?, group_id?}], group_id?}` → `201 {items}` (1-100 items). A top-level `group_id` applies to every item; a per-item `group_id` overrides it. A group `group_id` puts the item in that group's pantry; caller must be a member (`403` otherwise, `404` unknown group; nothing written). Defaults: category `other`, storage
+  predicted_expiry?, source?, freshness?, group_id?}], group_id?}` → `201 {items}` (1-100 items).
+  `freshness` (`fresh|semi_fresh|spoiled`, else `400`) is the value from a photo candidate: send it back
+  as-is and it is **stored** on the item (`items.freshness`, returned on every item) so the Fridge list
+  can show "Use soon" (`semi_fresh`) / "Check" (`spoiled`). It does not change `predicted_expiry`. A top-level `group_id` applies to every item; a per-item `group_id` overrides it. A group `group_id` puts the item in that group's pantry; caller must be a member (`403` otherwise, `404` unknown group; nothing written). Defaults: category `other`, storage
   `fridge`, quantity 1, unit `piece`, source `manual`. Invalid enum/negative number → 400 and nothing
   is written. One `add` event per item, same transaction. If `predicted_expiry` is omitted the
   backend predicts it: Gemini batch estimate when configured (`expiry_source=gemini`), else the
   default shelf-life table (`default`); a client-supplied expiry is stored as `user`.
   `est_weight_kg` is estimated from quantity/unit/category when absent.
 - ✅ `PATCH /items/:id` — body may contain `name, quantity, unit, storage, category,
-  predicted_expiry, est_price, est_weight_kg` (unknown fields → 400). Changing the expiry sets
+  predicted_expiry, est_price, est_weight_kg, freshness` (unknown fields → 400; `freshness: null` clears it,
+  e.g. after the user checked a flagged item). Changing the expiry sets
   `expiry_source=user`. Changing quantity/unit/category re-estimates `est_weight_kg` unless sent.
   → `200 {item}`; `403` other user's item; `404` unknown or already removed.
 - ✅ `POST /items/:id/remove` — **the core endpoint**
@@ -103,10 +107,19 @@ post it straight back.
   three values pass through; variants map `semi-fresh`/`semi fresh`/`use soon`/… → `semi_fresh`
   and `rotten`/`stale`/`moldy`/`overripe`/`decayed`/… → `spoiled` (case/hyphen/space-insensitive; the word
   lists mirror `SEMI_WORDS`/`SPOILED_WORDS` in `ml/yolo/taxonomy.py`, and `ripe` is fresh in both); anything unknown or
-  missing becomes `fresh` and logs a WARNING (`freshness_fallback raw=… source=yolo|gemini`). It is
-  informational only: not stored, and it does not change `predicted_expiry`.
-- ✅ `POST /items/from-receipt` multipart `image` → `200 {candidates: [{name, quantity, price}], total}`
-  via `ML_SERVICE_URL`/ocr; `502` when unset or failing. `quantity` defaults to 1.
+  missing becomes `fresh` and logs a WARNING (`freshness_fallback raw=… source=yolo|gemini`). It does
+  not change `predicted_expiry`; post it back in `POST /items` to store it on the item.
+  Gemini's vision and text prompts carry the same category definitions as `ml/yolo/taxonomy.py`
+  (`produce_leafy` = short-life produce incl. bananas, tomatoes, berries; `produce_hardy` = long-life),
+  so both paths give the same shelf life for the same food.
+- ✅ `POST /items/from-receipt` multipart `image` → `200 {candidates: [item…], total, categorized_by:
+  "gemini"|"heuristic"}` via `ML_SERVICE_URL`/ocr; `502` when unset or failing. Each candidate is a full
+  item like the other add paths (`name, category, food_group, storage, quantity, unit, est_price,
+  predicted_expiry, expiry_source`) plus `price` (= `est_price`, kept for older clients) and
+  `receipt_text` (the line as printed). When Gemini is configured, one call per receipt turns the
+  abbreviated lines into readable names (`GV WHL MILK GAL` → `whole milk`) with category, food group and
+  storage; otherwise (or if that call fails) `name` stays as printed and the category comes from the
+  food-group keyword heuristic below (`categorized_by: "heuristic"`). `quantity` defaults to 1.
 - ✅ `GET /items/barcode/:code` (6-14 digits, else 400) → `200 {candidate}` (Open Food Facts, adds
   `barcode`, `brand`, `quantity_text`); `404 not_found` unknown product; `502` OFF unreachable.
 

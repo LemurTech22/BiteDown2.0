@@ -75,7 +75,16 @@ def _generate(contents, schema_hint: str, response_schema=None, purpose: str = "
     return data
 
 
+# Same buckets as ml/yolo/taxonomy.CLASS_CATEGORY, so Gemini and the YOLO path agree on shelf life.
+CATEGORY_GUIDE = (
+    "Categories: produce_leafy = SHORT-life produce (leafy greens, herbs, berries, grapes, tomatoes, "
+    "cucumbers, peppers, zucchini, mushrooms, bananas, mangoes, peaches, avocados, papaya, pineapple); "
+    "produce_hardy = LONG-life produce (apples, citrus, pears, pomegranates, carrots, potatoes, onions, "
+    "garlic, ginger, beets, eggplant); dairy; meat; seafood; bakery; eggs; leftovers (cooked or prepared "
+    "food); pantry_dry (shelf-stable dry or canned); frozen; other (drinks, sauces, anything else). ")
+
 _ITEM_SCHEMA = (
+    CATEGORY_GUIDE +
     "Return JSON: a list of objects {name:str, category:one of %s, food_group:one of %s, "
     "storage:fridge|pantry|freezer, quantity:number, unit:str, est_price:number|null}. "
     "food_group is the user-facing grouping (fruit vs veggies, protein, dairy, grains, pantry...)."
@@ -91,13 +100,42 @@ def parse_text(text: str) -> list[dict]:
 def detect_from_image(image: bytes, mime: str, mode: str) -> list[dict]:
     from google.genai import types
 
-    hint = ("Identify the food items in the photo and whether each looks fresh, semi-fresh (use soon) or spoiled. "
+    hint = (CATEGORY_GUIDE +
+            "Identify the food items in the photo and whether each looks fresh, semi-fresh (use soon) or spoiled. "
             "Return JSON: a list of {name:str, category:one of %s, food_group:one of %s, "
             "confidence:number 0-1, freshness:fresh|semi_fresh|spoiled}." % (", ".join(CATEGORIES), ", ".join(FOOD_GROUPS)))
     part = types.Part.from_bytes(data=image, mime_type=mime)
     prompt = "Single item close-up." if mode == "single" else "Fridge/pantry shelf photo."
     data = _generate([part, prompt], hint, purpose="detect")
     return data if isinstance(data, list) else data.get("candidates", [])
+
+
+_RECEIPT_SCHEMA = {
+    "type": "array",
+    "items": {
+        "type": "object",
+        "properties": {
+            "display_name": {"type": "string"},
+            "category": {"type": "string", "enum": list(CATEGORIES)},
+            "food_group": {"type": "string", "enum": list(FOOD_GROUPS)},
+            "storage": {"type": "string", "enum": ["fridge", "pantry", "freezer"]},
+        },
+        "required": ["display_name", "category", "food_group", "storage"],
+    },
+}
+
+
+def categorize_receipt_lines(names: list[str]) -> list[dict]:
+    """One call per receipt: abbreviated receipt names -> [{display_name, category, food_group,
+    storage}], same order and length as `names` (padded with {} if Gemini returns fewer)."""
+    hint = (CATEGORY_GUIDE +
+            "You get grocery receipt line names, often abbreviated (GV 2% MLK GAL, CHKN BRST). For each, "
+            "return one object in the same order: display_name (plain readable product name without brand "
+            "codes, sizes or prices, e.g. '2% milk'), category, food_group, storage (where it is kept at home).")
+    data = _generate(json.dumps(names), hint, _RECEIPT_SCHEMA, purpose="receipt_categorize")
+    data = data if isinstance(data, list) else data.get("items", [])
+    data = [d if isinstance(d, dict) else {} for d in data][: len(names)]
+    return data + [{}] * (len(names) - len(data))
 
 
 _RECIPE_SCHEMA = {

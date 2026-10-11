@@ -106,7 +106,11 @@ def _validate_new(raw: dict) -> dict:
         raise validation_error("unit must be a non-empty string.")
     fg = raw.get("food_group")
     fg = _check_food_group(fg) if fg is not None else food_group.derive(category, name)
+    freshness = raw.get("freshness")
+    if freshness is not None and freshness not in candidates.FRESHNESS:
+        raise validation_error(f"freshness must be one of {', '.join(candidates.FRESHNESS)}.")
     return {
+        "freshness": freshness,  # from the vision candidate; drives the Fridge "Use soon" / "Check" badges
         "name": name.strip(), "category": category, "food_group": fg, "storage": storage, "source": source,
         "quantity": parse_number(raw.get("quantity", 1), "quantity", positive=True),
         "unit": unit.strip(),
@@ -178,7 +182,7 @@ def patch_item(item_id):
     if item.removed_at is not None:
         raise not_found("Item not found.")
     allowed = {"name", "quantity", "unit", "storage", "category", "food_group", "predicted_expiry",
-               "est_price", "est_weight_kg"}
+               "est_price", "est_weight_kg", "freshness"}
     unknown = set(body) - allowed
     if unknown:
         raise validation_error(f"Cannot edit: {', '.join(sorted(unknown))}.")
@@ -204,6 +208,10 @@ def patch_item(item_id):
             item.food_group = food_group.derive(item.category, item.name)
     if "food_group" in body:
         item.food_group = _check_food_group(body["food_group"])
+    if "freshness" in body:  # null clears it (e.g. the user checked and the item is fine)
+        if body["freshness"] is not None and body["freshness"] not in candidates.FRESHNESS:
+            raise validation_error(f"freshness must be null or one of {', '.join(candidates.FRESHNESS)}.")
+        item.freshness = body["freshness"]
     if "est_price" in body:
         item.est_price = parse_number(body["est_price"], "est_price", allow_none=True)
     if "est_weight_kg" in body:
@@ -320,16 +328,16 @@ def from_receipt():
         body = ml.ocr(data, filename, mime)
     except ml.MLUnavailable as e:
         raise upstream_unavailable(f"Receipt OCR unavailable: {e}")
-    out = []
-    for line in body["lines"]:
-        name = str((line or {}).get("name") or "").strip()
-        if not name:
-            continue
-        q, p = line.get("quantity"), line.get("price")
-        out.append({"name": name, "food_group": food_group.derive_from_name(name), "quantity": float(q) if q is not None else 1.0,
-                    "price": float(p) if p is not None else None})
-    total = body.get("total")
-    return jsonify(candidates=out, total=float(total) if total is not None else None)
+    lines = [l for l in body["lines"] if isinstance(l, dict) and str(l.get("name") or "").strip()]
+    enriched = None
+    if lines and gemini.is_configured():
+        try:
+            enriched = gemini.categorize_receipt_lines([str(l["name"]).strip() for l in lines])
+        except gemini.UpstreamError:
+            enriched = None  # name-only heuristic below
+    out = candidates.from_receipt_lines(lines, enriched)
+    total = candidates._num(body.get("total"))
+    return jsonify(candidates=out, total=total, categorized_by="gemini" if enriched else "heuristic")
 
 
 @bp.get("/barcode/<code>")

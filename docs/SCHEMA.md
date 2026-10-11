@@ -18,6 +18,7 @@ and the `items.group_id` / `share_listings.group_id` FKs to `groups`) are in mig
 | group_id | uuid → groups, null | set when the item lives in a group pantry |
 | name | text | |
 | category | text | spoilage group: `produce_leafy`, `produce_hardy`, `dairy`, `meat`, `seafood`, `bakery`, `eggs`, `leftovers`, `pantry_dry`, `frozen`, `other` (final list in `DECISIONS.md`) |
+| freshness | text, null | `fresh`, `semi_fresh`, `spoiled` from the vision model (YOLO freshness classifier or Gemini) when the item was added from a photo candidate; `NULL` = unknown (manual, text, receipt, barcode). Drives the Fridge "Use soon" / "Check" badges. Never changes `predicted_expiry` (migration `0004_item_freshness`) |
 | food_group | text, null | user-facing group: `protein`, `veggies`, `fruit`, `dairy`, `grains`, `pantry`, `leftovers`, `frozen`, `other` (migration `0003_food_group`; serialized as derived from category+name if null) |
 | storage | text | `fridge` \| `pantry` \| `freezer` |
 | quantity, unit | numeric, text | |
@@ -38,6 +39,7 @@ CHECK ((removed_at IS NULL) = (outcome IS NULL))
 CHECK ((outcome = 'thrown_out') = (waste_reason IS NOT NULL))   -- reason required iff thrown out
 ```
 `ck_items_food_group`: `food_group IS NULL OR food_group IN (...the 9 values...)`.
+`ck_items_freshness`: `freshness IS NULL OR freshness IN ('fresh','semi_fresh','spoiled')`.
 Migration 0003 backfill: meat/seafood/eggs -> protein; bakery -> grains; pantry_dry -> pantry; dairy,
 leftovers, frozen, other -> same; produce_leafy/produce_hardy -> `fruit` when the lowercased name
 contains a known fruit word (`\m(apple|banana|...)\M`, list in `app/services/food_group.py`), else

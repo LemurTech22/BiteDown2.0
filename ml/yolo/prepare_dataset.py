@@ -19,6 +19,7 @@ from pathlib import Path
 from PIL import Image
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+import grouping as G  # noqa: E402
 import lighting as L  # noqa: E402
 import taxonomy as T  # noqa: E402
 
@@ -180,6 +181,10 @@ def main(argv=None):
     ap.add_argument("--lighting-overrides", help="CSV image,lighting to override auto tags (hand-tagged)")
     ap.add_argument("--include-assumed-fresh-crops", action="store_true")
     ap.add_argument("--min-class-images", type=int, default=0, help="report classes below this count")
+    ap.add_argument("--split-by", choices=["session", "rf"], default="session",
+                    help="session (default): group by capture session (300 s), date, series and pHash "
+                         "near-duplicates, with per-cell coverage repair (ML-21/ML-23); rf: the old '.rf.' stem only")
+    ap.add_argument("--no-phash", action="store_true", help="session split without the pHash pass (faster)")
     a = ap.parse_args(argv)
 
     out = Path(a.out)
@@ -193,12 +198,23 @@ def main(argv=None):
     if a.lighting_overrides:
         overrides = {r["image"]: r["lighting"] for r in csv.DictReader(open(a.lighting_overrides))}
 
+    grouping_stats, coverage = {}, {}
+    if a.split_by == "session":
+        groups, grouping_stats = G.build_groups(recs, use_phash=not a.no_phash)
+        for r, g in zip(recs, groups):
+            r["group"] = g
+        cells = [f"{Counter(b['name'] for b in r['boxes']).most_common(1)[0][0]}/"
+                 f"{Counter(b['freshness'] for b in r['boxes']).most_common(1)[0][0]}" for r in recs]
+        split_of, coverage = G.assign_splits(groups, cells, a.heldout, a.val, a.seed)
+    else:
+        split_of = {r["group"]: assign_split(r["group"], a.heldout, a.val, a.seed) for r in recs}
+
     stats = {s: Counter() for s in ("train", "val", "heldout")}
     cls_count: Counter = Counter()
     manifest, gt = [], []
     fresh_count: Counter = Counter()
     for r in recs:
-        split = assign_split(r["group"], a.heldout, a.val, a.seed)
+        split = split_of[r["group"]]
         stem = re.sub(r"[^A-Za-z0-9_-]+", "_", f"{r['src']}_{r['path'].stem}")[:120]
         stem += "_" + hashlib.md5(str(r["path"]).encode()).hexdigest()[:6]
         img = Image.open(r["path"]); img.load()
@@ -240,7 +256,8 @@ def main(argv=None):
               "classes_below_min": [n for n in T.CLASS_NAMES if cls_count[n] < a.min_class_images and cls_count[n]],
               "classes_with_no_data": [n for n in T.CLASS_NAMES if not cls_count[n]],
               "heldout_by_lighting": dict(Counter(m["lighting"] for m in manifest)),
-              "boxes_by_freshness": {f: fresh_count[f] for f in T.FRESHNESS}}
+              "boxes_by_freshness": {f: fresh_count[f] for f in T.FRESHNESS},
+              "split_by": a.split_by, "grouping": grouping_stats, **coverage}
     (out / "dataset_report.json").write_text(json.dumps(report, indent=2))
     print(json.dumps({"heldout_by_lighting": report["heldout_by_lighting"],
                       "images": {k: v["images"] for k, v in stats.items()},

@@ -46,6 +46,7 @@ class Item(db.Model):
     name = db.Column(db.Text, nullable=False)
     category = db.Column(db.Text, nullable=False)
     food_group = db.Column(db.Text, nullable=True)
+    freshness = db.Column(db.Text, nullable=True)  # fresh|semi_fresh|spoiled from the vision model; NULL = unknown
     storage = db.Column(db.Text, nullable=False)
     quantity = db.Column(db.Numeric, nullable=False, default=1)
     unit = db.Column(db.Text, nullable=False, default="piece")
@@ -66,6 +67,8 @@ class Item(db.Model):
                         name="ck_items_reason_iff_thrown_out"),
         CheckConstraint("food_group IS NULL OR food_group IN ('protein','veggies','fruit','dairy',"
                         "'grains','pantry','leftovers','frozen','other')", name="ck_items_food_group"),
+        CheckConstraint("freshness IS NULL OR freshness IN ('fresh','semi_fresh','spoiled')",
+                        name="ck_items_freshness"),
         Index("ix_items_owner_removed_expiry", "owner_id", "removed_at", "predicted_expiry"),
     )
 

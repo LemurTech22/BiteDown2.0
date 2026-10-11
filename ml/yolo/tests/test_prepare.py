@@ -8,8 +8,13 @@ import prepare_dataset as P
 
 
 def img(path, color=(120, 130, 110), size=(160, 120)):
+    """Mean colour `color` plus coarse per-file structure: distinct photos, so the session split's
+    pHash near-duplicate pass doesn't merge them (identical flat images ARE duplicates)."""
     path.parent.mkdir(parents=True, exist_ok=True)
-    Image.fromarray(np.full((size[1], size[0], 3), color, np.uint8)).save(path)
+    rng = np.random.default_rng(abs(hash(str(path))) % 2**32)
+    blocks = rng.integers(-40, 40, (6, 8, 1))
+    a = np.clip(np.array(color) + np.kron(blocks, np.ones((size[1] // 6 + 1, size[0] // 8 + 1, 1)))[:size[1], :size[0]], 0, 255)
+    Image.fromarray(a.astype(np.uint8)).save(path)
 
 
 def make_sources(tmp):

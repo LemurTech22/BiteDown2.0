@@ -283,7 +283,9 @@ def gemini_structure(text: str, api_key: str | None = None, model: str | None = 
     if not key:
         return None
     import urllib.request
-    model = model or os.environ.get("GEMINI_MODEL", "gemini-2.5-flash")
+    # GEMINI_MODEL is shared with the backend (.env; decided in docs/DECISIONS.md). The fallback is
+    # Google's moving alias, so an unset variable never points at a retired id.
+    model = model or os.environ.get("GEMINI_MODEL") or "gemini-flash-latest"
     prompt = ("Extract grocery line items from this receipt text. Keep item names exactly as printed "
               "(abbreviations unchanged). Exclude coupons/discounts/tax/subtotal. Reply JSON only: "
               '{"lines":[{"name":str,"quantity":number|null,"price":number|null}],"total":number|null}\n\n' + text)
@@ -295,12 +297,37 @@ def gemini_structure(text: str, api_key: str | None = None, model: str | None = 
     try:
         with urllib.request.urlopen(req, timeout=30) as r:
             txt = json.load(r)["candidates"][0]["content"]["parts"][0]["text"]
-        d = json.loads(txt)
-        if not isinstance(d.get("lines"), list):
-            return None
-        return d
+        return clean_structured(json.loads(txt))
     except Exception:
         return None
+
+
+def _to_num(v):
+    """Gemini sometimes answers "3.48", "$3.48" or "1,29" instead of a number; None if unusable."""
+    if isinstance(v, bool):
+        return None
+    if isinstance(v, (int, float)):
+        return float(v)
+    if isinstance(v, str):
+        m = re.search(r"-?\d+(?:[.,]\d+)?", v.replace("$", ""))
+        if m:
+            return float(m.group(0).replace(",", "."))
+    return None
+
+
+def clean_structured(d) -> dict | None:
+    """Validate a Gemini receipt answer into {"lines":[{name,quantity,price}],"total"} with real
+    numbers, so the backend never has to guess types. None if the shape is unusable."""
+    if not isinstance(d, dict) or not isinstance(d.get("lines"), list):
+        return None
+    lines = []
+    for l in d["lines"]:
+        if not isinstance(l, dict) or not str(l.get("name") or "").strip():
+            continue
+        q = _to_num(l.get("quantity"))
+        lines.append({"name": str(l["name"]).strip(), "quantity": q if q and q > 0 else None,
+                      "price": _to_num(l.get("price"))})
+    return {"lines": lines, "total": _to_num(d.get("total"))}
 
 
 def receipt_from_image(image, engine=None, use_gemini: bool = True) -> dict:

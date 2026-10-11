@@ -54,6 +54,8 @@ def normalize(raw: dict, source: str | None = None) -> dict | None:
         storage = _DEFAULT_STORAGE.get(category, "fridge")
     fg = food_group.resolve(raw.get("food_group"), category, name)
     exp, src = expiry.predict(category, storage)
+    freshness = (normalize_freshness(raw.get("freshness"), source or "other")
+                 if source is not None or "freshness" in raw else None)
     out = {
         "name": name, "category": category, "food_group": fg, "storage": storage,
         "quantity": _num(raw.get("quantity"), 1.0), "unit": str(raw.get("unit") or "piece"),
@@ -63,8 +65,54 @@ def normalize(raw: dict, source: str | None = None) -> dict | None:
     for k in ("confidence", "bbox", "barcode", "brand"):
         if k in raw:
             out[k] = raw[k]
-    if source is not None or "freshness" in raw:
-        out["freshness"] = normalize_freshness(raw.get("freshness"), source or "other")
+    if freshness is not None:
+        out["freshness"] = freshness
+    return out
+
+
+# Receipt lines carry no category. Gemini fills it when configured (one call for the whole
+# receipt); otherwise the category comes from the backend's name-only food-group heuristic.
+_CATEGORY_FROM_GROUP = {"dairy": "dairy", "grains": "bakery", "pantry": "pantry_dry", "frozen": "frozen",
+                        "leftovers": "leftovers", "fruit": "produce_leafy", "veggies": "produce_leafy",
+                        "other": "other"}
+_SEAFOOD = {"fish", "salmon", "tuna", "shrimp", "cod", "tilapia", "crab", "prawn", "prawns", "lobster"}
+_EGGS = {"egg", "eggs"}
+
+
+def category_from_name(name: str) -> str:
+    """Best-effort spoilage category for a bare receipt name. Produce defaults to the short-life
+    bucket (a too-early expiry nudge is cheaper than a missed one)."""
+    group = food_group.derive_from_name(name)
+    if group == "protein":
+        toks = set(food_group._tokens(name))
+        return "seafood" if toks & _SEAFOOD else "eggs" if toks & _EGGS else "meat"
+    return _CATEGORY_FROM_GROUP.get(group, "other")
+
+
+def from_receipt_lines(lines: list[dict], enriched: list[dict] | None = None) -> list[dict]:
+    """OCR receipt lines {name, quantity, price} -> full candidates (category, food_group, storage,
+    predicted_expiry, ...). `enriched` (same length, from gemini.categorize_receipt_lines) supplies
+    category/food_group/storage/display_name per line; missing or invalid fields fall back."""
+    out = []
+    for i, line in enumerate(lines):
+        line = line if isinstance(line, dict) else {}
+        name = str(line.get("name") or "").strip()
+        if not name:
+            continue
+        extra = enriched[i] if enriched and i < len(enriched) and isinstance(enriched[i], dict) else {}
+        category = extra.get("category") if extra.get("category") in CATEGORIES else category_from_name(name)
+        raw = {"name": name, "category": category, "food_group": extra.get("food_group"),
+               "storage": extra.get("storage"), "quantity": _num(line.get("quantity"), 1.0),
+               "unit": extra.get("unit") or "piece", "price": _num(line.get("price"))}
+        c = normalize(raw)
+        if c is None:
+            continue
+        display = str(extra.get("display_name") or "").strip()
+        c["receipt_text"] = name
+        if display:
+            c["name"] = display[:120]
+        c["price"] = c["est_price"]
+        out.append(c)
     return out
 
 
