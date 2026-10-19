@@ -2,7 +2,7 @@
 
 _The app is **BiteDown** (owner, 2026-10-10; see `docs/DECISIONS.md`). Internal names such as `FoodWasteReducer` stay._
 
-_Last updated: 2026-10-11 (checkpoint 11). **`food-main` (VPS) orchestrates**: it plans, rules, reviews and merges,
+_Last updated: 2026-10-11 (checkpoint 12). **`food-main` (VPS) orchestrates**: it plans, rules, reviews and merges,
 and owns the canvas and the orchestrator docs. **`food-main-mac` (the Mac) does all the building**: builder + QA
 sub-agents (**Sonnet**, owner preference), Xcode and simulators, Docker and every test run, plus any
 `.github/workflows` push. The owner also lets the Mac merge a PR when it judges it ready, and edit the canvas when
@@ -11,6 +11,14 @@ teammate PRs, canvas rounds when handed the canvas (round 3 is done, and the can
 checkpoints. **Since checkpoint 10:** `food-modal-test` (iOS simulator test pass) and the "PR merge review" session own
 merges on the Mac; `food-main` reviews the Auth PR. All of them update this file and the affected `docs/` at
 every checkpoint (`CLAUDE.md` Rules). Rules: [`CLAUDE.md`](CLAUDE.md)._
+
+## Checkpoint 12 (food-orch, 2026-10-11 late): read this first
+- **Merged since checkpoint 11:** #109 (faster PR checks), #111 Home, #113 Add 2a, #115/#116 iOS ship batches, #118 friend QR + pickup, #95 receipt Gemini fallback, #104/#105 QA sweeps, #106 README, #122 launch-crash fix (`.handlesFriendLinks()` moved inside `.environment(env)`), #123 BE-52 receipt test fixtures; folds #114/#117/#119/#120/#121. No PRs open at writing.
+- **Owner rulings (deadline):** no heavy lock (parallel; each agent its own simulator + DerivedData); merge without waiting for CI; stop QA/CI work on PRs. Codex (GPT 6 SOL, `codex exec -m gpt-6-sol -c model_reasoning_effort=medium|high -s workspace-write`) may take tasks: own worktree, no secrets, no live Gemini, no force-push, never merge. Give `codex exec` `< /dev/null` or it hangs on stdin; use `-s danger-full-access` only when it must push/`gh pr create`.
+- **CI on main:** backend green (c44a8cc). **iOS red:** the test target doesn't compile (stale test doubles/tests from #105/#115/#116: missing `friendCode`/`addFriend`/`share(pickup)`/`updatePickup`, `showToastNow:`, `FridgeModel.sessionChanged`). Codex is fixing it on `fix/codex-ios-ci` (`wt/codex-ios-ci`) and opens its own PR. The app itself builds and runs.
+- **Unpushed (food-orch):** `fix/camera-black-preview` in `wt/fix-camera`: Add-photo camera presented modally via UIKit + permission requested first; Gemini-backed requests get 75 s client timeouts (receipt 120 s), since parse-text took 28–38 s and the 30 s default showed "Can't reach the server". It also holds DIAGNOSTIC code to remove before a PR: `[camera]`/`[net]` prints and a launch-time camera request in `FoodWasteReducerApp.swift`.
+- **Owner's iPhone:** runs a free-team Debug build (team `YVGGV9TBGS`, bundle `com.coderedorion.FoodWasteReducer`) via `xcodebuild … -allowProvisioningUpdates DEVELOPMENT_TEAM=… API_BASE_URL=<tunnel>` then `xcrun devicectl device install app`. **Open issue:** iOS never answers the camera permission request (status stays notDetermined, no prompt even at launch); next step is restarting the phone, then Reset Location & Privacy.
+- **Gemini:** the current key hit 429 earlier, then recovered; latency is 28–38 s per call. Billing or a lower thinking level is the owner's call.
 
 ## Current status
 **Building the whole UI into the iOS app** (owner, 2026-10-11): wire it to the live backend and stub only what

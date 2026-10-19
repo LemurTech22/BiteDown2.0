@@ -118,6 +118,12 @@ Before the first run and before a demo:
 - **Gemini:** check that `.env` has a real `GEMINI_MODEL` (see `docs/DECISIONS.md`), not the placeholder, before
   starting the tunnel.
 
+**Gotchas seen on 2026-10-11:**
+- Signing from Terminal fails with `errSecInternalComponent` until macOS's keychain prompt for `codesign` is answered once (login password, **Always Allow**); Xcode can show that prompt, a headless shell can't.
+- "Your team has no devices" means Developer Mode is off on the phone (Settings → Privacy & Security → Developer Mode, restart).
+- The Debug server setting is only reachable from Home (long-press the version label), so for a first run build the tunnel URL in: `xcodebuild … API_BASE_URL=https://<tunnel>.trycloudflare.com`.
+- The app's request timeout is 30 s; Gemini calls can take longer (see the 75 s overrides in `LiveAPIClient`).
+
 ### Demo on a phone (Cloudflare quick tunnel)
 The API stays bound to `127.0.0.1`; a quick tunnel gives the phone an HTTPS URL to it (no account, no ATS
 exceptions). The URL changes every run.
