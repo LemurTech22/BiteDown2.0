@@ -30,8 +30,15 @@ The full plan is in `~/.claude/plans/1-i-want-to-vivid-bachman.md` (owner-approv
   - Extras: Playwright e2e in Chrome, Swift↔RN screenshot parity, axe/Lighthouse.
   - QA-agent rule on: one independent QA agent per screen group, in Chrome, against the local web build.
   - Skills impeccable, Taste and Web Design Guidelines: the owner installs them before phase B.
+- **Done (2026-10-19):**
+  - **#124 merged** (40ce577).
+  - **Deleted 69 merged remote branches and 32 local branches.**
+  - **Removed 7 worktrees:** `api-migrate`, `fg-followups`, `fix-launch`, `fix-impact-r4`, `food-group`, `fmt-main`, `fmt-pr104`. Also removed the `dd-*` DerivedData folders and logs in `../wt`.
+  - **Restore record:** `../remote-branch-cleanup-2026-10-19.txt` has a SHA for every branch. Restore one with `git push origin <sha>:refs/heads/<branch>`.
+  - **Env backups:** the worktrees' ignored `.env` and `Local.xcconfig` files are in `../mldata/env-backups/<worktree>/` (mode 600).
+  - **Remaining remote branches:** `main`, `Jose_Branch`, `Truc_branch`, `feat/data-pipeline`, `fix/codex-ios-ci` (#125), `qa/page-sweep-2026-10-11` (the restore source for #125), and `docs/checkpoint-12` (merged, delete next).
 - **In flight:**
-  - Phase A on `chore/cleanup-ci` (`wt/cleanup-ci`, based on #124's f7f19b3).
+  - Phase A on `chore/cleanup-ci` (`wt/cleanup-ci`, on `main` at 40ce577).
   - The #125 fix on `fix/codex-ios-ci` (`wt/codex-ios-ci`).
 - **Resume:**
   - `git -C ../wt/cleanup-ci log --oneline -5`
