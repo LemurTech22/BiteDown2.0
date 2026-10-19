@@ -2,7 +2,7 @@
 
 _The app is **BiteDown** (owner, 2026-10-10; see `docs/DECISIONS.md`). Internal names such as `FoodWasteReducer` stay._
 
-_Last updated: 2026-10-11 (checkpoint 12). **`food-main` (VPS) orchestrates**: it plans, rules, reviews and merges,
+_Last updated: 2026-10-19 (checkpoint 13; see below). Older text from 2026-10-11: **`food-main` (VPS) orchestrates**: it plans, rules, reviews and merges,
 and owns the canvas and the orchestrator docs. **`food-main-mac` (the Mac) does all the building**: builder + QA
 sub-agents (**Sonnet**, owner preference), Xcode and simulators, Docker and every test run, plus any
 `.github/workflows` push. The owner also lets the Mac merge a PR when it judges it ready, and edit the canvas when
@@ -12,7 +12,33 @@ checkpoints. **Since checkpoint 10:** `food-modal-test` (iOS simulator test pass
 merges on the Mac; `food-main` reviews the Auth PR. All of them update this file and the affected `docs/` at
 every checkpoint (`CLAUDE.md` Rules). Rules: [`CLAUDE.md`](CLAUDE.md)._
 
-## Checkpoint 12 (food-orch, 2026-10-11 late): read this first
+## Checkpoint 13 (2026-10-19): revamp started. Read this first
+**Owner's goal (2026-10-19):** three phases, in order.
+- **A. Clean up and re-enable tests.** Branches, worktrees and PRs, then CI tests back on but short.
+- **B. Web design.** Add web layouts to the design canvas. **Stop for the owner's review** before C.
+- **C. Rewrite.** Rebuild the frontend as an Expo (React Native) universal app in `client/` for iOS and web. Swift stays until the RN app passes parity QA.
+
+The full plan is in `~/.claude/plans/1-i-want-to-vivid-bachman.md` (owner-approved, Codex-reviewed).
+
+- **Owner rulings (2026-10-19):**
+  - Delete merged branches and worktrees only. Keep the dirty worktrees (`fix-camera`, `codex-backend-ci`, `fmt-pr95`, `glm-ocr`), `Jose_Branch`, `Truc_branch` and LemurTech22's data branches.
+  - Merge #124 and fix #125.
+  - #125 restores `FridgeModel.sessionChanged` and its 18 tests. It also restores "a 409 `already_removed` or decode-after-2xx keeps a single removal". Batch removes reconcile per item.
+  - CI: PRs run the unit tests plus about 16 UI smoke tests (XCTest test plan); the full suite runs on `main` and nightly. The backend gets a `slow` marker.
+  - **This ends deadline mode:** PRs wait for green CI again once the shorter CI lands.
+  - The web is local-first (local Docker API, CORS for localhost). Vercel and a hosted API get decided after parity.
+  - Extras: Playwright e2e in Chrome, Swift↔RN screenshot parity, axe/Lighthouse.
+  - QA-agent rule on: one independent QA agent per screen group, in Chrome, against the local web build.
+  - Skills impeccable, Taste and Web Design Guidelines: the owner installs them before phase B.
+- **In flight:**
+  - Phase A on `chore/cleanup-ci` (`wt/cleanup-ci`, based on #124's f7f19b3).
+  - The #125 fix on `fix/codex-ios-ci` (`wt/codex-ios-ci`).
+- **Resume:**
+  - `git -C ../wt/cleanup-ci log --oneline -5`
+  - `gh pr list --state open`
+  - Then follow the plan's next unchecked step.
+
+## Checkpoint 12 (food-orch, 2026-10-11 late)
 - **Merged since checkpoint 11:** #109 (faster PR checks), #111 Home, #113 Add 2a, #115/#116 iOS ship batches, #118 friend QR + pickup, #95 receipt Gemini fallback, #104/#105 QA sweeps, #106 README, #122 launch-crash fix (`.handlesFriendLinks()` moved inside `.environment(env)`), #123 BE-52 receipt test fixtures; folds #114/#117/#119/#120/#121. No PRs open at writing.
 - **Owner rulings (deadline):** no heavy lock (parallel; each agent its own simulator + DerivedData); merge without waiting for CI; stop QA/CI work on PRs. Codex (GPT 6 SOL, `codex exec -m gpt-6-sol -c model_reasoning_effort=medium|high -s workspace-write`) may take tasks: own worktree, no secrets, no live Gemini, no force-push, never merge. Give `codex exec` `< /dev/null` or it hangs on stdin; use `-s danger-full-access` only when it must push/`gh pr create`.
 - **CI on main:** backend green (c44a8cc). **iOS red:** the test target doesn't compile (stale test doubles/tests from #105/#115/#116: missing `friendCode`/`addFriend`/`share(pickup)`/`updatePickup`, `showToastNow:`, `FridgeModel.sessionChanged`). Codex is fixing it on `fix/codex-ios-ci` (`wt/codex-ios-ci`) and opens its own PR. The app itself builds and runs.
