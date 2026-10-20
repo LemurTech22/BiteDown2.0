@@ -284,6 +284,11 @@ final class FridgeRemoveOutcomeTests: XCTestCase {
         while Date() < end { if cond() { return }; try? await Task.sleep(for: .milliseconds(20)) }
         XCTFail("condition not met", file: file, line: line)
     }
+    private func untilAsync(_ cond: () async -> Bool, file: StaticString = #filePath, line: UInt = #line) async {
+        let end = Date().addingTimeInterval(3)
+        while Date() < end { if await cond() { return }; try? await Task.sleep(for: .milliseconds(20)) }
+        XCTFail("condition not met", file: file, line: line)
+    }
     /// Lets the background remove task finish (it has no observable success signal).
     private func settle() async { try? await Task.sleep(for: .milliseconds(250)) }
 
@@ -490,16 +495,102 @@ final class FridgeRemoveOutcomeTests: XCTestCase {
         await assertNoUndoPossible(m, staleToast: stale)
     }
 
-    func testBatchDecodingErrorReconcilesPerItemToo() async {
-        let (m, mock) = make(failing: nil)
+    // MARK: Round 3: batch decode-after-2xx commits; Undo tapped before a batch 409 settles
+
+    private func makeSwitch() -> (FridgeModel, SwitchAPIClient, MockAPIClient) {
+        let mock = MockAPIClient(fixture: .fridge, behavior: .init(delay: .zero))
+        let api = SwitchAPIClient(mock)
+        return (FridgeModel(api: api), api, mock)
+    }
+
+    /// A 2xx whose body can't be read means the batch COMMITTED (remove-batch is atomic): the removal
+    /// stands, the Undo toast stays, and Undo restores through restore-batch.
+    func testBatchDecodingErrorAfter2xxKeepsTheRemovalAndUndoRestoresViaRestoreBatch() async {
+        let (m, api, mock) = makeSwitch()
+        await api.setBatchDecodeAfterCommit(true)
+        await m.loadIfNeeded(.fridge)
+        let before = ids(m)
+        m.removeBatch([item(m, "item-chicken"), item(m, "item-eggs")], outcome: .used, reduceMotion: false)
+        await untilAsync { await api.batchRemoveCalls.count == 1 }
+        await settle()
+        XCTAssertFalse(ids(m).contains("item-chicken")); XCTAssertFalse(ids(m).contains("item-eggs"))
+        XCTAssertNil(m.banner, "no rollback: the server removed them")
+        XCTAssertNotNil(m.toast, "the Undo toast is kept")
+        XCTAssertTrue(haptics.events.isEmpty, "\(haptics.events)")
+        m.toast?.onUndo()
+        await settle()
+        let batch = await api.batchRestoreCalls, singles = await api.restoreCalls
+        XCTAssertEqual(batch.map(Set.init), [["item-chicken", "item-eggs"]], "exactly one restore-batch")
+        XCTAssertEqual(singles, [])
+        XCTAssertEqual(ids(m), before)
+        let removed = await mock.currentItems().filter(\.isRemoved)
+        XCTAssertTrue(removed.isEmpty, "restored on the server")
+        XCTAssertNil(m.banner)
+    }
+
+    /// Undo tapped while the batch request is still in flight; then the server answers 409 already_removed.
+    /// The mock server has chicken removed elsewhere and eggs still active.
+    func testUndoBeforeBatch409SettlesLeavesRemovedElsewhereHiddenAndStillActiveShown() async {
+        let (m, api, mock) = makeSwitch()
         await m.loadIfNeeded(.fridge)
         _ = try? await mock.removeItem(id: "item-chicken", outcome: .used, wasteReason: nil)
-        await mock.setFailure(.decoding("keyNotFound"), for: "removeBatch")
+        await mock.setFailure(.server(status: 409, code: "already_removed", message: "x"), for: "removeBatch")
+        let gate = SessionGate()
+        await api.holdBatch(gate)
         m.removeBatch([item(m, "item-chicken"), item(m, "item-eggs")], outcome: .used, reduceMotion: false)
-        let stale = m.toast
-        await until { self.ids(m).contains("item-eggs") && m.banner != nil }
-        XCTAssertFalse(ids(m).contains("item-chicken"))
-        await assertNoUndoPossible(m, staleToast: stale)
+        await untilAsync { await gate.waiting }
+        m.toast?.onUndo()                                   // rows come back locally at once
+        XCTAssertTrue(ids(m).contains("item-chicken")); XCTAssertTrue(ids(m).contains("item-eggs"))
+        await gate.open()                                   // the batch request now answers 409
+        await until { !self.ids(m).contains("item-chicken") }
+        await settle()
+        XCTAssertTrue(ids(m).contains("item-eggs"), "still active on the server: stays, nothing to roll back")
+        XCTAssertFalse(ids(m).contains("item-chicken"), "removed elsewhere: ends hidden")
+        XCTAssertNil(m.banner, "the person already undid it; no banner")
+        XCTAssertNil(m.toast)
+        XCTAssertTrue(haptics.events.isEmpty, "\(haptics.events)")
+        let batch = await api.batchRestoreCalls, singles = await api.restoreCalls
+        XCTAssertFalse(batch.joined().contains("item-chicken"), "no restore for an item the server removed elsewhere: \(batch)")
+        XCTAssertFalse(singles.contains("item-chicken"))
+    }
+
+    func testUndoBeforeBatch409WhereServerStillHasEveryItemKeepsThemWithNoBanner() async {
+        let (m, api, mock) = makeSwitch()
+        await m.loadIfNeeded(.fridge)
+        let before = ids(m)
+        await mock.setFailure(.server(status: 409, code: "already_removed", message: "x"), for: "removeBatch")
+        let gate = SessionGate()
+        await api.holdBatch(gate)
+        m.removeBatch([item(m, "item-chicken"), item(m, "item-eggs")], outcome: .used, reduceMotion: false)
+        await untilAsync { await gate.waiting }
+        m.toast?.onUndo()
+        await gate.open()
+        await settle()
+        XCTAssertEqual(ids(m), before)
+        XCTAssertNil(m.banner); XCTAssertNil(m.toast)
+        XCTAssertTrue(haptics.events.isEmpty, "\(haptics.events)")
+        let batch = await api.batchRestoreCalls, singles = await api.restoreCalls
+        XCTAssertEqual(batch, [], "nothing was removed, so nothing to restore"); XCTAssertEqual(singles, [])
+    }
+
+    func testUndoBeforeBatch409WhereServerRemovedEveryItemEndsHiddenWithNoBannerAndNoRestore() async {
+        let (m, api, mock) = makeSwitch()
+        await m.loadIfNeeded(.fridge)
+        _ = try? await mock.removeItem(id: "item-chicken", outcome: .used, wasteReason: nil)
+        _ = try? await mock.removeItem(id: "item-eggs", outcome: .used, wasteReason: nil)
+        await mock.setFailure(.server(status: 409, code: "already_removed", message: "x"), for: "removeBatch")
+        let gate = SessionGate()
+        await api.holdBatch(gate)
+        m.removeBatch([item(m, "item-chicken"), item(m, "item-eggs")], outcome: .used, reduceMotion: false)
+        await untilAsync { await gate.waiting }
+        m.toast?.onUndo()
+        await gate.open()
+        await until { !self.ids(m).contains("item-chicken") && !self.ids(m).contains("item-eggs") }
+        await settle()
+        XCTAssertNil(m.banner); XCTAssertNil(m.toast)
+        XCTAssertTrue(haptics.events.isEmpty, "\(haptics.events)")
+        let batch = await api.batchRestoreCalls, singles = await api.restoreCalls
+        XCTAssertEqual(batch, []); XCTAssertEqual(singles, [])
     }
 
     /// If the server cannot be asked which items are active, nothing is assumed: every item comes back.

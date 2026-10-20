@@ -56,6 +56,12 @@ actor SwitchAPIClient: APIClient {
     var restoreError: APIError?
     /// When true the gates throw if the calling task is cancelled (like URLSession).
     var cancellable = false
+    /// remove-batch: calls that reached the server, an optional gate, and "committed, then the reply body is unreadable".
+    private(set) var batchRemoveCalls: [[String]] = []
+    var batchGate: SessionGate?
+    var batchDecodeAfterCommit = false
+    func holdBatch(_ g: SessionGate?) { batchGate = g }
+    func setBatchDecodeAfterCommit(_ on: Bool) { batchDecodeAfterCommit = on }
     init(_ start: MockAPIClient) { current = start }
     func switchTo(_ m: MockAPIClient) { current = m }
     func hold(list: SessionGate? = nil, remove: SessionGate? = nil, restore: SessionGate? = nil, cancellable: Bool = false) {
@@ -90,6 +96,14 @@ actor SwitchAPIClient: APIClient {
         return try await mock.restoreItem(id: id)
     }
     func restoreBatch(ids: [String]) async throws -> [Item] { batchRestoreCalls.append(ids); return try await current.restoreBatch(ids: ids) }
+    func removeBatch(ids: [String], outcome: RemoveOutcome, recipient: RecipientChoice) async throws -> [Item] {
+        let mock = current
+        if let g = batchGate { batchGate = nil; try await pass(g) }
+        batchRemoveCalls.append(ids)
+        let r = try await mock.removeBatch(ids: ids, outcome: outcome, recipient: recipient)
+        if batchDecodeAfterCommit { throw APIError.decoding("keyNotFound") }   // 2xx, body unreadable: the batch committed
+        return r
+    }
     func signup(email: String, password: String, displayName: String) async throws -> AuthSession { try await current.signup(email: email, password: password, displayName: displayName) }
     func login(email: String, password: String) async throws -> AuthSession { try await current.login(email: email, password: password) }
     func deleteAccount() async throws { try await current.deleteAccount() }
@@ -98,7 +112,6 @@ actor SwitchAPIClient: APIClient {
     func health() async throws -> Bool { try await current.health() }
     func me() async throws -> Me { try await current.me() }
     func googleSignIn(idToken: String) async throws -> GoogleAuthResult { try await current.googleSignIn(idToken: idToken) }
-    func removeBatch(ids: [String], outcome: RemoveOutcome, recipient: RecipientChoice) async throws -> [Item] { try await current.removeBatch(ids: ids, outcome: outcome, recipient: recipient) }
     func fromReceipt(imageData: Data) async throws -> ReceiptResponse { try await current.fromReceipt(imageData: imageData) }
     func barcode(_ code: String) async throws -> BarcodeResult { try await current.barcode(code) }
     func listShares() async throws -> [PantryListing] { try await current.listShares() }
