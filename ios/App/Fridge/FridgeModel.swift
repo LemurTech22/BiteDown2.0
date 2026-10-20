@@ -310,8 +310,8 @@ final class FridgeModel {
     }
 
     /// `failure` gets the number of items that came back. A batch whose request fails with 409
-    /// `already_removed` (or a body we can't read after a 2xx) is settled against the server's listing
-    /// (`settleBatch`): remove-batch is atomic, so a 409 means that request removed nothing.
+    /// `already_removed` is settled against the server's listing (`settleBatch`): remove-batch is atomic,
+    /// so a 409 means that request removed nothing. A body we can't read after a 2xx did commit.
     private func perform(_ items: [Item], message: String, holdToast: Bool, failure: @escaping (Int) -> String,
                          isBatch: Bool = false, reduceMotion: Bool,
                          retry: @escaping () -> Void, remote: @escaping @Sendable (APIClient) async throws -> Void) {
@@ -334,10 +334,10 @@ final class FridgeModel {
                 try await remote(api)
             } catch {
                 guard let self, self.generation == gen else { return }
-                if error.removeStands {
-                    // Single remove: the server already removed it (409 already_removed) or answered
-                    // 2xx with a body we couldn't read, so the removal stands and Undo still restores.
-                    if !isBatch { return }
+                // A 2xx whose body we couldn't read did commit (remove-batch is atomic), so the removal
+                // stands and Undo still restores. A single remove's 409 `already_removed` stands too.
+                if error.isDecodingFailure || (!isBatch && error.isAlreadyRemoved) { return }
+                if isBatch && error.isAlreadyRemoved {
                     await self.settleBatch(located, gen: gen, record: record, failure: failure, retry: retry,
                                            reduceMotion: reduceMotion)
                     return
@@ -353,11 +353,11 @@ final class FridgeModel {
         removeFailed(located, failure: failure(located.count), retry: retry, reduceMotion: reduceMotion)
     }
 
-    /// A batch got 409 `already_removed` (or an unreadable 2xx). remove-batch is atomic, so this request
-    /// removed nothing: its Undo toast goes and every id is marked failed, so Undo can never restore
-    /// them. Items the server still lists come back with the banner (retry covers those only); items it
-    /// no longer lists were removed elsewhere and stay hidden. If the server can't be asked, nothing is
-    /// assumed: every item comes back.
+    /// A batch got 409 `already_removed`. remove-batch is atomic, so this request removed nothing: its
+    /// Undo toast goes and every id is marked failed, so Undo can never restore them. Items the server
+    /// still lists come back with the banner (retry covers those only; no banner if Undo already put them
+    /// back). Items it no longer lists were removed elsewhere and end hidden, even if Undo had already
+    /// re-inserted them. If the server can't be asked, nothing is assumed: every item comes back.
     private func settleBatch(_ located: [(item: Item, location: Location)], gen: Int, record: RemovalRecord,
                              failure: (Int) -> String, retry: @escaping () -> Void, reduceMotion: Bool) async {
         var active: Set<String> = []
@@ -376,6 +376,18 @@ final class FridgeModel {
         record.failedIds.formUnion(all)
         if let held = pendingToast, held.itemIds.isSubset(of: all) { pendingToast = nil }
         if let shown = toast, shown.itemIds.isSubset(of: all) { toast = nil }
+        let gone = located.filter { !active.contains($0.item.id) }
+        if !gone.isEmpty {
+            withMotion(Theme.Motion.standard, reduceMotion: reduceMotion) {
+                for (item, _) in gone {
+                    // Undo already re-inserted it, but the server no longer has it active: hide it again.
+                    if case .restored = reconcile[item.id]?.kind {
+                        reconcile[item.id] = nil
+                        delete(item.id)
+                    }
+                }
+            }
+        }
         let stillActive = located.filter { active.contains($0.item.id) }
         guard !stillActive.isEmpty else { return }
         markFailed(stillActive, record: record, failure: failure, retry: retry, reduceMotion: reduceMotion)
@@ -590,11 +602,12 @@ enum ItemText {
 }
 
 private extension Error {
-    /// True when a failed remove call may still mean the item is removed on the server:
-    /// 409 `already_removed`, or a 2xx whose body couldn't be decoded.
-    var removeStands: Bool {
-        guard let e = self as? APIError else { return false }
-        if case .decoding = e { return true }
-        return e.code == "already_removed"
+    /// A 2xx whose body couldn't be decoded: the request succeeded on the server.
+    var isDecodingFailure: Bool {
+        if case .decoding = self as? APIError { return true }
+        return false
     }
+
+    /// 409 `already_removed`.
+    var isAlreadyRemoved: Bool { (self as? APIError)?.code == "already_removed" }
 }
