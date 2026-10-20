@@ -37,8 +37,23 @@ The full plan is in `~/.claude/plans/1-i-want-to-vivid-bachman.md` (owner-approv
   - **Restore record:** `../remote-branch-cleanup-2026-10-19.txt` has a SHA for every branch. Restore one with `git push origin <sha>:refs/heads/<branch>`.
   - **Env backups:** the worktrees' ignored `.env` and `Local.xcconfig` files are in `../mldata/env-backups/<worktree>/` (mode 600).
   - **Remaining remote branches:** `main`, `Jose_Branch`, `Truc_branch`, `feat/data-pipeline`, `fix/codex-ios-ci` (#125), `qa/page-sweep-2026-10-11` (the restore source for #125), and `docs/checkpoint-12` (merged, delete next).
+- **#125 merged (6598c6a, 2026-10-19).**
+  - It restores the Fridge session reload and the removal rules: a single-remove 409 keeps the removal; a batch 409 checks each item (remove-batch is atomic); a batch whose 2xx body can't be decoded counts as a success; a 401 from a stale token is a compare-and-expire.
+  - Tests are restored. iOS QA PASS: 540 unit tests, 0 failed, twice.
+  - Reviewed by 1 independent agent and 4 Codex rounds.
+  - **Left open:** IOS-74 (low).
+- **Branches:** `fix/codex-ios-ci`, `docs/checkpoint-12` and `qa/page-sweep-2026-10-11` are deleted. Their SHAs are in the restore record. The remote now has `main`, `Jose_Branch`, `Truc_branch` and `feat/data-pipeline`.
 - **In flight:**
-  - Phase A on `chore/cleanup-ci` (`wt/cleanup-ci`, on `main` at 40ce577).
+  - Phase A CI work on `chore/cleanup-ci` (`wt/cleanup-ci`, rebased on 6598c6a):
+    - Smoke/Full test plans and the demo-path UI test;
+    - backend runs in parallel (xdist, 445 s → about 130 s) with a `slow` marker;
+    - workflow fixes.
+  - Follow-up in progress: the mock's Impact reflects removals, so the demo-path test proves the remove changed Impact; the stale Home pill UI test is fixed and back in Smoke. Then the PR.
+  - Phase B on `design/web` (`wt/design-web`):
+    - `docs/design/WEB.md`;
+    - 14 fluid web artboards (light and dark) published to the canvas's new **Web** / **Web (dark)** pages.
+    - **Stop for the owner's review** before Phase C.
+  - The impeccable and Taste skills are NOT installed: the auto-mode classifier blocked vendoring them, and their quarantined copies were reviewed. Phase B used the installed `frontend-design`, `design` and `audit-suite` plugins.
   - The #125 fix on `fix/codex-ios-ci` (`wt/codex-ios-ci`).
 - **Resume:**
   - `git -C ../wt/cleanup-ci log --oneline -5`
