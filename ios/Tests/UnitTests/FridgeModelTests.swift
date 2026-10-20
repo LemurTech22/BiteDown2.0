@@ -11,6 +11,8 @@ actor SpyAPIClient: APIClient {
     // Fridge-polish additions: the exact RecipientChoice, batch calls, and an ordered event log.
     struct BatchCall: Equatable { let ids: [String]; let outcome: RemoveOutcome; let recipient: RecipientChoice }
     private(set) var choices: [RecipientChoice] = []
+    /// Removes run concurrently (one tail per item), so arrival order is not deterministic: assert by id.
+    private(set) var choiceByID: [String: RecipientChoice] = [:]
     private(set) var batchRemoves: [BatchCall] = []
     private(set) var batchRestores: [[String]] = []
     private(set) var reachableCalls = 0
@@ -27,6 +29,7 @@ actor SpyAPIClient: APIClient {
     func removeItem(id: String, outcome: RemoveOutcome, wasteReason: WasteReason?, recipient: RecipientChoice) async throws -> Item {
         removes.append(.init(id: id, outcome: outcome, reason: wasteReason, recipient: recipient.userId))
         choices.append(recipient)
+        choiceByID[id] = recipient
         log.append("start:remove:\(id)")
         defer { log.append("end:remove:\(id)") }
         return try await inner.removeItem(id: id, outcome: outcome, wasteReason: wasteReason, recipient: recipient)
@@ -210,9 +213,11 @@ final class FridgeModelTests: XCTestCase {
         m.remove(item(m, "item-spinach"), choice: .init(outcome: .donated, recipient: .user("user-marcus")), reduceMotion: true)
         m.showPendingToast()   // the second sheet's onDismiss
         await until { await spy.removes.count == 2 }
+        // The two removes run on separate per-item tails, so their arrival order is not deterministic
+        // (parallel CI): compare per item id, never by array position.
         let calls = await spy.removes
-        XCTAssertEqual(calls[0], .init(id: "item-strawberries", outcome: .thrownOut, reason: .forgot, recipient: nil))
-        XCTAssertEqual(calls[1], .init(id: "item-spinach", outcome: .donated, reason: nil, recipient: "user-marcus"))
+        XCTAssertEqual(calls.filter { $0.id == "item-strawberries" }, [.init(id: "item-strawberries", outcome: .thrownOut, reason: .forgot, recipient: nil)])
+        XCTAssertEqual(calls.filter { $0.id == "item-spinach" }, [.init(id: "item-spinach", outcome: .donated, reason: nil, recipient: "user-marcus")])
         await until { await self.serverItem(mock, "item-spinach").share?.status == .fulfilled }
         XCTAssertEqual(m.toast?.message, "Baby spinach removed", "a second removal replaces the toast")
     }

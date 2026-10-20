@@ -609,3 +609,50 @@ Everything else in the Fridge polish spec passes on both devices. After IOS-19 i
 8. Logs: the only logger near auth is `AuthStore.swift:54`, which logs an OSStatus only. No `print`/`os_log`/`NSLog` in `App/Auth` or the API clients.
 - Landing (not an artboard in this set) is built; Google appears only with a client id (or `-UITestGoogle409` in DEBUG). GoogleSignInError is shown as a card on LogIn with the email prefilled, as drawn. Pixel comparison against the artboards was NOT done (no screenshots).
 ### Verdict: FAIL (open: IOS-61 medium; IOS-62 unconfirmed). Everything else exercised passes.
+
+## 2026-10-19: Restored Fridge session/removal behaviours (fix/codex-ios-ci, PR #125), QA `a3-qa`
+Scope: a bad merge (241366f) dropped commits 9997699 and 44916f3. #125 made the tests compile by deleting `FridgeSessionTests` and renaming five tests to bless the regressions. Owner ruled: restore the behaviours and the tests. Builder note: `scratchpad/a3/builder-done.md`.
+
+### Tests restored, added, changed (`ios/Tests/UnitTests`)
+| File | Change |
+|---|---|
+| `FridgeSessionTests.swift` | restored from `origin/main` (all 18 scenarios), `SwitchAPIClient` gains `friendCode`, `addFriend`, `share`, `updatePickup`. Added 5: `testSessionOverloadTokenRefreshKeepsRowsNoRefetch`, `testSessionOverloadIdenticalSessionIsNoOp`, `testSessionOverloadSameUserNewTokenAfterSignInErrorRecovers`, `testDifferentUserAndSignOutBumpGenerationButTokenRefreshDoesNot`, `testRemoveInFlightSurvivesTokenRefresh` (23 total) |
+| `PageSweepFixTests.swift` | reverted #125's renames: `testStaleTokenUnauthorizedKeepsNewerSession` (class `StaleTokenSignOutTests`), `testAlreadyRemoved409CountsAsSuccess`, `testDecodingErrorOnRemoveCountsAsSuccess`, `testUndoAfterAlreadyRemovedStillRestores`, `testRetryFromBannerShowsToastImmediatelyAndLeavesNothingPending` (and the `showToastNow: true` call). Added 4 batch tests: `testBatchAlreadyRemoved409OnlyRestoresItemsTheServerStillHas`, `...WhereServerStillHasEveryItemRestoresAll`, `testBatchDecodingErrorReconcilesPerItemToo`, `testBatchAlreadyRemoved409WithUnreadableListingRestoresEverything` |
+| `FridgeModelTests.swift`, `FridgePolishTests.swift` | the 2 CI failures (below) |
+
+### CI failures: cause and fix
+`testThrownOutSendsReasonAndDonatedSendsRecipient` and `testRecipientChoiceIsPassedThroughUnchanged` indexed `spy.removes[0]` / `spy.choices[0...2]`. Removes run on separate per-item tails (`enqueue`), so their arrival order at the spy actor is not deterministic under parallel testing. Each test passes alone (run in isolation: 0 failures), so the cause is call order, not a per-item reordering bug (per-item order is covered by `testRemoveUndoRemoveUndoRunsInIssuedOrder`, `testRestoreNeverStartsBeforeItsRemoveEnds`, which pass). Fix: the spy records `choiceByID`; both tests assert per item id.
+
+### Guards and the test that goes red if one is removed (mutation notes for the orchestrator)
+| Guard (`FridgeModel.swift`) | Mutation | Red tests |
+|---|---|---|
+| `load`: `guard gen == generation` after the await | delete it | `testUserSwitchDuringSlowLoadDiscardsOldResult`, `testSignOutDuringSlowLoadDiscardsOldResult` |
+| `enqueue`: `guard self?.generation == gen` before `work()` | delete it | `testRemoveInFlightThatSucceedsAfterSwitchLeaksNothingIntoB` (also needs the guard in `perform`'s catch for the two Fails tests) |
+| `perform` catch: `guard self.generation == gen` | delete it | `testRemoveInFlightThatFailsAfterSwitchDoesNotInsertARowIntoB`, `testRemoveInFlightThatFailsAfterSignOutShowsNothing` |
+| `undo`: `guard self.generation == gen` (success and failure) | delete both | `testRestoreInFlightThatFailsAfterSwitchShowsNoBannerInB`, `testRestoreInFlightThatSucceedsAfterSwitchLeaksNothingIntoB` |
+| `generation += 1` on user change | delete it | all five race tests above; `testDifferentUserAndSignOutBumpGenerationButTokenRefreshDoesNot` |
+| `generation += 1` also on same user (over-invalidating) | add it | `testRemoveInFlightSurvivesTokenRefresh`, `testDifferentUserAndSignOutBumpGenerationButTokenRefreshDoesNot` |
+| single remove 409 `already_removed` / decoding keeps the removal (`removeStands`, `!isBatch` return) | make it roll back | `testAlreadyRemoved409CountsAsSuccess`, `testDecodingErrorOnRemoveCountsAsSuccess`, `testUndoAfterAlreadyRemovedStillRestores` |
+| batch reconcile (`settleBatch`) | assume batch 409 removed everything | `testBatchAlreadyRemoved409OnlyRestoresItemsTheServerStillHas`, `testBatchDecodingErrorReconcilesPerItemToo` |
+| batch reconcile | roll back everything, even items the server removed | same test (chicken must stay hidden) |
+| batch reconcile, listing unreadable | do not restore | `testBatchAlreadyRemoved409WithUnreadableListingRestoresEverything` |
+| 401 only signs out for the current token (`LiveAPIClient.perform`) | always `expireSession()` | `testStaleTokenUnauthorizedKeepsNewerSession` (current-token 401 still signs out: `testUnauthorizedExpiresSession...` neighbours in the class) |
+| `remove(... showToastNow:)` from banner retry | ignore the flag | `testRetryFromBannerShowsToastImmediatelyAndLeavesNothingPending`, `testRetryThatFailsAgainClearsItsToastAndShowsBannerAgain` |
+
+### Bug found
+| ID | Severity | Summary | Where |
+|---|---|---|---|
+| IOS-73 | low | Same-user token refresh refetches the visible storage even when it already shows content. The original (9997699) did `errors = [:]; await loadIfNeeded(storage)`, so a storage with items was not refetched; the port calls `load(storage, isRefresh: true)`. Breaks the restored `testTokenRefreshKeepsItemsNoRestaggerNoRefetch` ("2" != "1") and the AuthSession-overload twin. Impact: one extra list request per token refresh (and a possible "Couldn't refresh" banner if it fails); no data loss. Fix: `await loadIfNeeded(storage)` in the same-user branch of `sessionChanged(from:to:)`. If the owner prefers the refresh, change both tests to expect 2 lists | `FridgeModel.swift:132-135` (fixed by builder: `errors = [:]; await loadIfNeeded(storage)`; verified below) |
+
+### Runs (iPhone 17 Pro simulator id 18B791CA, own DerivedData, parallel testing on, `FoodWasteReducerTests`)
+| Run | Result |
+|---|---|
+| Targeted (FridgeSessionTests, FridgeRemoveOutcomeTests, StaleTokenSignOutTests, the 2 CI tests alone) | 44 run, 1 failed (IOS-73), exit 65 |
+| Full unit target | 519 run, 3 skipped (Keychain, IOS-7), 2 failed (both IOS-73), exit 65 |
+After the IOS-73 fix (build-for-testing exit 0):
+| Run | Result |
+|---|---|
+| Full unit target, run 1 | 519 run, 3 skipped (Keychain), 0 failed, exit 0 |
+| Full unit target, run 2 | 519 run, 3 skipped (Keychain), 0 failed, exit 0 |
+
+### Verdict: PASS (IOS-73 fixed and verified; the full unit target passed twice in a row, 519 run / 3 skipped / 0 failed, parallel testing on, including both previously CI-failing tests)

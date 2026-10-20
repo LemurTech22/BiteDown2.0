@@ -49,8 +49,12 @@ final class FridgePolishTests: XCTestCase {
         m.remove(item(m, "item-carrots"), choice: .init(outcome: .donated, recipient: .none), reduceMotion: true)
         m.remove(item(m, "item-eggs"), choice: .init(outcome: .donated, recipient: .user("user-ana")), reduceMotion: true)
         await until { await spy.choices.count == 3 }
-        let choices = await spy.choices
-        XCTAssertEqual(choices, [.default, .none, .user("user-ana")], "claimer → omit, Someone not on BiteDown → null, pick → id")
+        // Per-item tails run concurrently, so compare by item id, not by call position.
+        let byID = await spy.choiceByID
+        XCTAssertEqual(byID, ["item-spinach": .default, "item-carrots": .none, "item-eggs": .user("user-ana")],
+                       "claimer → omit, Someone not on BiteDown → null, pick → id")
+        let count = await spy.choices.count
+        XCTAssertEqual(count, 3, "exactly one remove per item")
     }
 
     func testRemoveChoiceDefaultsToOmittingRecipient() {
