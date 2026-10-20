@@ -678,4 +678,9 @@ Tests (`PageSweepFixTests`, `FridgeRemoveOutcomeTests`; `SwitchAPIClient` gains 
 - Mutation notes: treating a batch decode error as a failure/settle turns the first test red; not re-hiding removed-elsewhere rows (or calling restore for them) turns the first "Undo before 409" test red.
 Runs (build-for-testing exit 0): full unit target 535 run, 3 skipped, 0 failed, exit 0, twice in a row, parallel testing on.
 
-### Verdict: PASS (IOS-73 fixed; round-2 and round-3 gaps closed; full unit target green twice, 535 run / 3 skipped / 0 failed. Known coverage gaps: `undo` success guard, `settleBatch` listing-failure guard)
+### Round 4 (review of HEAD e5e0a35)
+Builder change: `AuthStore.expireSession(ifTokenIs:)` compares the session token and expires in one synchronous main-actor call; `LiveAPIClient` and `LiveAPIClient+FriendCode` use it for 401s (the old check-then-expire was two hops, so a sign-in between them could be cleared).
+Tests added (`AuthStoreTests`, in-memory storage): `testExpireIfTokenIsCurrentExpiresTheSession` (signed out, `sessionExpired` true, storage cleared), `testExpireIfTokenIsStaleLeavesTheNewerSessionAlone` (newer session and storage kept, `sessionExpired` false), `testExpireIfTokenIsNilWhileSignedInIsANoOp`, `testExpireIfTokenIsNilWithNoSessionIsANoOp` (no SessionExpired banner), `testExpireIfTokenIsAfterDeliberateSignOutIsANoOp`. The existing stale-token tests (`testStaleTokenUnauthorizedKeepsNewerSession`, `testFriendCodeStaleTokenUnauthorizedKeepsNewerSession`) stay green. Mutation note: making `expireSession(ifTokenIs:)` unconditional turns the stale and nil-while-signed-in tests red; the end-to-end stale 401 tests only cover the wiring, not the atomicity (a sign-in landing between two hops is not testable from a single-threaded stub).
+Runs (build-for-testing exit 0): full unit target 540 run, 3 skipped, 0 failed, exit 0, twice in a row, parallel testing on.
+
+### Verdict: PASS (IOS-73 fixed; rounds 2 to 4 closed; full unit target green twice, 540 run / 3 skipped / 0 failed. Known coverage gaps: `undo` success guard, `settleBatch` listing-failure guard)
