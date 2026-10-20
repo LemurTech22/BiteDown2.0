@@ -86,7 +86,7 @@ extension MockAPIClient {
         let sortedGroups = groups.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
         let r = HelpRequest(id: "req-new-\(nextID)", authorId: me.id, authorName: me.displayName, text: trimmed, status: .open,
                             fulfilledBy: nil, fulfilledByName: nil, createdAt: Date(),
-                            audiences: RequestAudiences(friends: friends, groups: sortedGroups), source: RequestSourceInfo(type: .me),
+                            audiences: RequestAudiences(friends: friends, groups: sortedGroups), source: RequestSourceInfo(type: .me, name: me.displayName),
                             groupId: sortedGroups.first?.id, groupName: sortedGroups.first?.name)
         social.requests.insert(r, at: 0)
         return r

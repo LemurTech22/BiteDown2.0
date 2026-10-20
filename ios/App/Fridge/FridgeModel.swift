@@ -141,7 +141,9 @@ final class FridgeModel {
         everLoaded = []
         isSelecting = false
         selection = []
-        for tail in tails.values { tail.task.cancel() }
+        // In-flight operations of the previous user are NOT cancelled (that would abort their request
+        // and lose the change); the generation guards drop their results. Forgetting the tails keeps new
+        // operations from queueing behind them.
         tails = [:]
         reconcile = [:]
         pendingToast = nil
@@ -308,8 +310,8 @@ final class FridgeModel {
     }
 
     /// `failure` gets the number of items that came back. A batch whose request fails with 409
-    /// `already_removed` (or a body we can't read after a 2xx) is not assumed removed: the server may
-    /// have left some items active, so each item is checked against the listing (`settleBatch`).
+    /// `already_removed` (or a body we can't read after a 2xx) is settled against the server's listing
+    /// (`settleBatch`): remove-batch is atomic, so a 409 means that request removed nothing.
     private func perform(_ items: [Item], message: String, holdToast: Bool, failure: @escaping (Int) -> String,
                          isBatch: Bool = false, reduceMotion: Bool,
                          retry: @escaping () -> Void, remote: @escaping @Sendable (APIClient) async throws -> Void) {
@@ -351,9 +353,11 @@ final class FridgeModel {
         removeFailed(located, failure: failure(located.count), retry: retry, reduceMotion: reduceMotion)
     }
 
-    /// A batch got 409 `already_removed` (or an unreadable 2xx): ask the server which of its items are
-    /// still active. Those come back with the banner; the rest stay removed. If the server can't be
-    /// asked, nothing is assumed: every item comes back.
+    /// A batch got 409 `already_removed` (or an unreadable 2xx). remove-batch is atomic, so this request
+    /// removed nothing: its Undo toast goes and every id is marked failed, so Undo can never restore
+    /// them. Items the server still lists come back with the banner (retry covers those only); items it
+    /// no longer lists were removed elsewhere and stay hidden. If the server can't be asked, nothing is
+    /// assumed: every item comes back.
     private func settleBatch(_ located: [(item: Item, location: Location)], gen: Int, record: RemovalRecord,
                              failure: (Int) -> String, retry: @escaping () -> Void, reduceMotion: Bool) async {
         var active: Set<String> = []
@@ -368,6 +372,10 @@ final class FridgeModel {
             return
         }
         guard generation == gen else { return }
+        let all = Set(located.map(\.item.id))
+        record.failedIds.formUnion(all)
+        if let held = pendingToast, held.itemIds.isSubset(of: all) { pendingToast = nil }
+        if let shown = toast, shown.itemIds.isSubset(of: all) { toast = nil }
         let stillActive = located.filter { active.contains($0.item.id) }
         guard !stillActive.isEmpty else { return }
         markFailed(stillActive, record: record, failure: failure, retry: retry, reduceMotion: reduceMotion)
