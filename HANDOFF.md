@@ -51,7 +51,7 @@ every checkpoint (`CLAUDE.md` Rules). Rules: [`CLAUDE.md`](CLAUDE.md)._
 - **Review:** a design critique, a web-guidelines review and a WCAG audit ran.
   - Round 1 fixes are done: the shell (spliced into all 12 shell artboards; the splice script is in `scratchpad/shell-splice/`), Home, Landing and Log in.
   - **Not done:** the family fixes for Fridge + Remove, Add + Photo review, Recipes + Impact + Settings, and Social + Connect. The agents stopped at a usage limit before writing anything, so the files are unchanged since b76a417.
-  - The fix lists are in `scratchpad/web-ref/FIX-COMMON.md` and in the round-1 messages (also in this plan's spirit). Rerun them per family, then publish all 28 files and stop for the owner.
+  - The fix lists are in `scratchpad/web-ref/FIX-COMMON.md`, plus one list per family (Fridge, Add, Insights, Social) recorded in the session transcript. Rerun them per family, then publish all 28 files and stop for the owner.
 - **Questions for the owner:**
   1. The dark-mode brand panel on Landing turns lime (`#B9D871`). Is that correct by the tokens, or should it be a dark-ground panel?
   2. The `fieldBorder` token.
