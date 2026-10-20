@@ -21,6 +21,15 @@ orchestrator folds results in here.
 - Flows: sign-in, add food, remove food via the 3-option sheet (incl. waste reason), Social tab,
   Impact Dashboard.
 - App builds cleanly (zero errors); screens match approved designs in `docs/design/`.
+- **CI gate (2026-10-19):**
+  - PRs must pass the `Smoke` test plan: all unit tests plus the UI smoke set, including `DemoPathUITests`.
+  - A red `Full` run on `main` or nightly blocks further iOS merges until it's fixed.
+  - A PR that changes a flow outside the smoke set still needs a local iOS QA PASS that includes that flow's UI tests.
+- **Fridge removal rules (owner ruling, 2026-10-19):**
+  - A single remove that gets `409 already_removed`, or a decode error after a 2xx, keeps the removal, and Undo still restores it.
+  - A batch remove that gets a 409 is checked item by item against the server. Items still active come back with the banner.
+  - A 401 signs out only if the token used is still the current one.
+  - Signing in as a different user, or signing out, resets the Fridge, and late results from the previous user are dropped.
 
 ### ML QA (`ml/eval/`)
 - YOLO on a held-out set: precision/recall per class (spoiled vs not-spoiled, with semi_fresh counted as not-spoiled; the 3×3 matrix is informational), and under normal / low /

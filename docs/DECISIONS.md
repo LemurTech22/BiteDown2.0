@@ -2,6 +2,24 @@
 
 Newest first. Each entry: date, decision, why, alternatives considered.
 
+## 2026-10-19 — Deadline mode ends: short CI with smoke UI tests (owner)
+- **iOS PRs** run the `Smoke` XCTest plan (`ios/TestPlans/Smoke.xctestplan`): every unit test plus a smoke set of UI tests. The smoke set covers launch, auth, the tab shell, Fridge, removal and Undo, and the Home Impact pill. It also includes `DemoPathUITests`, the merge-gate demo path (photo add → expiry → remove → Impact). The target is under 12 min.
+- **Full plan runs:** `main` pushes, a nightly schedule and manual dispatch run the `Full` plan, which is every unit and UI test.
+- **Faster iOS jobs:**
+  - XcodeGen is pinned (2.45.4, from the release zip and cached) instead of installed with `brew`.
+  - Swift packages are cached.
+  - Building and testing are split (`build-for-testing`, then `test-without-building`).
+  - The simulator boots while the build runs.
+- **Backend:**
+  - PRs run `pytest -m "not slow"`. `main`, nightly and manual runs execute everything.
+  - `slow` is registered in `backend/pytest.ini` with `--strict-markers`. It tags 9 tests, the real-gunicorn and query-count ones.
+  - Plain local `pytest` still runs everything.
+  - The marker alone barely helps: the suite is about 445 s because of a per-test `TRUNCATE` of every table. A cheaper reset is being measured (see `docs/qa/backend.md`).
+- **The merge gate is back to normal:** PRs wait for green CI, which replaces the 2026-10-11 checkpoint-12 "merge without waiting for CI" override.
+- **Alternatives considered:**
+  - Shard the full UI suite across runners on every PR: more runner minutes for the same coverage of the demo path.
+  - Delete redundant UI tests: loses coverage the nightly run still gives for free.
+
 ## 2026-10-11 — Deadline mode for iOS CI (owner; #109)
 - **iOS PR CI builds and runs unit tests only** (`-skip-testing:FoodWasteReducerUITests`). The full UI suite runs on every push to `main`. *Why:* a 25–32 min UI run per PR doesn't fit the deadline.
 - **The gate becomes:**

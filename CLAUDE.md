@@ -40,9 +40,9 @@ outcome is how waste is measured. Product: [`docs/IDEA.md`](docs/IDEA.md). Statu
 | Path | Owner |
 |---|---|
 | `backend/app/**`, `backend/migrations/**`, `docs/API.md`, `docs/SCHEMA.md` | Backend builder |
-| `backend/tests/**` | Backend QA |
+| `backend/tests/**`, `backend/pytest.ini` | Backend QA |
 | `ios/App/**`, `ios/project.yml` | iOS builder |
-| `ios/Tests/**`, `docs/qa/ios.md` | iOS QA |
+| `ios/Tests/**`, `ios/TestPlans/**`, `docs/qa/ios.md` | iOS QA |
 | `ml/yolo/**`, `ml/ocr/**`, `ml/serve/**`, `pipeline/**`, `docs/ML.md`, `docs/PIPELINE.md` | ML / pipeline builder (the data + model track is owned by teammate LemurTech22; other sessions don't build there unless the owner asks) |
 | `ml/eval/**`, `pipeline/tests/qa_*` | ML / pipeline QA |
 | `docs/qa/<area>.md` | That area's QA |
@@ -61,9 +61,9 @@ outcome is how waste is measured. Product: [`docs/IDEA.md`](docs/IDEA.md). Statu
   - Remove the lock only when `owner` is your own name.
   - Hold it for one invocation, then release it, so parallel agents interleave. Iterate on targeted tests and run the
     full suite once, at the end.
-- **Deadline override (owner, 2026-10-11):** the heavy lock is suspended (run in parallel, each agent on its own
-  simulator and DerivedData), and PRs merge without waiting for CI. Codex may take tasks under the same rules as
-  sub-agents (own worktree, no secrets, no live Gemini, no force-push, never merge); see `HANDOFF.md` checkpoint 12.
+- **Deadline mode ended (owner, 2026-10-19):** the heavy lock is back, and PRs wait for green CI again (short PR CI:
+  `docs/DECISIONS.md` 2026-10-19). Each agent still uses its own simulator and DerivedData. Codex may take tasks under
+  the same rules as sub-agents (own worktree, no secrets, no live Gemini, no force-push, never merge).
 - Backend tests use `TEST_DATABASE_URL` only. The suite rebuilds that schema under an advisory
   lock. Never touch it from outside the suite.
 - Agents report against the API contract in `docs/API.md`. When code and contract disagree, the
