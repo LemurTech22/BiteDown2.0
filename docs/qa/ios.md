@@ -609,3 +609,78 @@ Everything else in the Fridge polish spec passes on both devices. After IOS-19 i
 8. Logs: the only logger near auth is `AuthStore.swift:54`, which logs an OSStatus only. No `print`/`os_log`/`NSLog` in `App/Auth` or the API clients.
 - Landing (not an artboard in this set) is built; Google appears only with a client id (or `-UITestGoogle409` in DEBUG). GoogleSignInError is shown as a card on LogIn with the email prefilled, as drawn. Pixel comparison against the artboards was NOT done (no screenshots).
 ### Verdict: FAIL (open: IOS-61 medium; IOS-62 unconfirmed). Everything else exercised passes.
+
+## 2026-10-19: Restored Fridge session/removal behaviours (fix/codex-ios-ci, PR #125), QA `a3-qa`
+Scope: a bad merge (241366f) dropped commits 9997699 and 44916f3. #125 made the tests compile by deleting `FridgeSessionTests` and renaming five tests to bless the regressions. Owner ruled: restore the behaviours and the tests. Builder note: `scratchpad/a3/builder-done.md`.
+
+### Tests restored, added, changed (`ios/Tests/UnitTests`)
+| File | Change |
+|---|---|
+| `FridgeSessionTests.swift` | restored from `origin/main` (all 18 scenarios), `SwitchAPIClient` gains `friendCode`, `addFriend`, `share`, `updatePickup`. Added 5: `testSessionOverloadTokenRefreshKeepsRowsNoRefetch`, `testSessionOverloadIdenticalSessionIsNoOp`, `testSessionOverloadSameUserNewTokenAfterSignInErrorRecovers`, `testDifferentUserAndSignOutBumpGenerationButTokenRefreshDoesNot`, `testRemoveInFlightSurvivesTokenRefresh` (23 total) |
+| `PageSweepFixTests.swift` | reverted #125's renames: `testStaleTokenUnauthorizedKeepsNewerSession` (class `StaleTokenSignOutTests`), `testAlreadyRemoved409CountsAsSuccess`, `testDecodingErrorOnRemoveCountsAsSuccess`, `testUndoAfterAlreadyRemovedStillRestores`, `testRetryFromBannerShowsToastImmediatelyAndLeavesNothingPending` (and the `showToastNow: true` call). Added 4 batch tests: `testBatchAlreadyRemoved409OnlyRestoresItemsTheServerStillHas`, `...WhereServerStillHasEveryItemRestoresAll`, `testBatchDecodingErrorReconcilesPerItemToo`, `testBatchAlreadyRemoved409WithUnreadableListingRestoresEverything` |
+| `FridgeModelTests.swift`, `FridgePolishTests.swift` | the 2 CI failures (below) |
+
+### CI failures: cause and fix
+`testThrownOutSendsReasonAndDonatedSendsRecipient` and `testRecipientChoiceIsPassedThroughUnchanged` indexed `spy.removes[0]` / `spy.choices[0...2]`. Removes run on separate per-item tails (`enqueue`), so their arrival order at the spy actor is not deterministic under parallel testing. Each test passes alone (run in isolation: 0 failures), so the cause is call order, not a per-item reordering bug (per-item order is covered by `testRemoveUndoRemoveUndoRunsInIssuedOrder`, `testRestoreNeverStartsBeforeItsRemoveEnds`, which pass). Fix: the spy records `choiceByID`; both tests assert per item id.
+
+### Guards and the test that goes red if one is removed (round 2, corrected)
+By reasoning, not by mutation (the orchestrator runs the mutations). Round 1 over-claimed: with disjoint item ids (the `long` fixture) a late failure from user A is already harmless because the switch clears `reconcile`, so those old tests do not detect a missing guard. The round-2 tests give B the SAME ids (`makeSameIds`) and keep B's own operation in flight (held gate), which makes a leak visible.
+| Guard / rule (`FridgeModel.swift`) | Mutation | Red tests |
+|---|---|---|
+| `load`: `gen == generation` after the await | delete | `testUserSwitchDuringSlowLoadDiscardsOldResult`, `testSignOutDuringSlowLoadDiscardsOldResult` |
+| `enqueue`: skip queued work if the generation moved | delete | `testUndoQueuedBehindHeldRemoveMakesNoRestoreCallAfterSwitch` (restore reaches the new user's API; `SwitchAPIClient.restoreCalls` non-empty) |
+| `perform` catch: `generation == gen` | delete | `testFailingRemoveAfterSwitchDoesNotTouchBsInFlightRemoveOfTheSameId` (banner, haptic, B's row re-inserted) |
+| `undo` catch: `generation == gen` | delete | `testFailingRestoreAfterSwitchDoesNotRemoveBsRestoredRow` |
+| `undo` success: `generation == gen` | delete | NOT covered: `applyRestored` only acts on a `.restored` reconcile entry and the result is the same item, so nothing observable differs. Gap, low value |
+| `settleBatch`: guard after the listing await | delete | `testBatchSettleAfterSwitchDoesNotTouchB` |
+| `settleBatch`: guard in the listing-failure branch | delete | NOT covered (would need a held listing that then fails). Gap |
+| `generation += 1` on user change / sign-out | delete | the five race tests of round 1, plus all of the above |
+| `generation += 1` on a token refresh | add | `testRemoveInFlightSurvivesTokenRefresh`, `testDifferentUserAndSignOutBumpGenerationButTokenRefreshDoesNot` |
+| `sessionChanged` cancels in-flight tails | add `cancel()` | `testRemoveInFlightIsNotCancelledBySwitchAndStillReachesTheServer`, `testUndoInFlightIsNotCancelledBySwitchAndStillReachesTheServer` (cancellation-aware gate throws, so the call never reaches the server and `sawCancellation` is true) |
+| user switch / sign-out clears select mode and selection | delete | `testUserSwitchAndSignOutClearSelectModeAndSelection`; token refresh keeps it: `testTokenRefreshKeepsSelectMode` |
+| single remove 409 `already_removed` / decoding keeps the removal | make it roll back | `testAlreadyRemoved409CountsAsSuccess`, `testDecodingErrorOnRemoveCountsAsSuccess`, `testUndoAfterAlreadyRemovedStillRestores` (now asserts the spy recorded `restores == [id]`), `testUndoAfterDecodingErrorOnRemoveStillRestores` |
+| batch 409 drops the toast and pendingToast | keep the toast | the `testBatch...409...` tests (`assertNoUndoPossible`: `toast` nil, nothing pending, a stale Undo makes no `restoreItem` / `restoreBatch` call) |
+| batch reconcile per item | assume all removed / roll back all | `testBatchAlreadyRemoved409OnlyRestoresItemsTheServerStillHas`, `...WhereServerStillHasEveryItemRestoresAll`, `...WhereServerRemovedEveryItemKeepsThemHidden...`, `...UnreadableListingRestoresEverything` |
+| batch Undo kept when nothing failed | drop it | `testBatchUndoWhenNothingFailedRestoresViaRestoreBatch` |
+| 401 only expires the session for the current token | always expire | `testStaleTokenUnauthorizedKeepsNewerSession`, `testFriendCodeStaleTokenUnauthorizedKeepsNewerSession`; current-token cases: `testCurrentTokenUnauthorizedSignsOut`, `testFriendCodeUnauthorizedWithCurrentTokenExpiresTheSession` (`sessionExpired` true) |
+| banner retry shows the toast now | ignore `showToastNow` | `testRetryFromBannerShowsToastImmediatelyAndLeavesNothingPending`, `testRetryThatFailsAgainClearsItsToastAndShowsBannerAgain` |
+Observation (not a bug): calling a batch's stale Undo closure directly (after the 409 dropped its toast) re-inserts the rows locally, though it makes no server call. It is unreachable from the UI once `toast` is nil, so the tests assert only that no restore request is made.
+
+### Bug found
+| ID | Severity | Summary | Where |
+|---|---|---|---|
+| IOS-73 | low | Same-user token refresh refetches the visible storage even when it already shows content. The original (9997699) did `errors = [:]; await loadIfNeeded(storage)`, so a storage with items was not refetched; the port calls `load(storage, isRefresh: true)`. Breaks the restored `testTokenRefreshKeepsItemsNoRestaggerNoRefetch` ("2" != "1") and the AuthSession-overload twin. Impact: one extra list request per token refresh (and a possible "Couldn't refresh" banner if it fails); no data loss. Fix: `await loadIfNeeded(storage)` in the same-user branch of `sessionChanged(from:to:)`. If the owner prefers the refresh, change both tests to expect 2 lists | `FridgeModel.swift:132-135` (fixed by builder: `errors = [:]; await loadIfNeeded(storage)`; verified below) |
+
+### Runs (iPhone 17 Pro simulator id 18B791CA, own DerivedData, parallel testing on, `FoodWasteReducerTests`)
+| Run | Result |
+|---|---|
+| Targeted (FridgeSessionTests, FridgeRemoveOutcomeTests, StaleTokenSignOutTests, the 2 CI tests alone) | 44 run, 1 failed (IOS-73), exit 65 |
+| Full unit target | 519 run, 3 skipped (Keychain, IOS-7), 2 failed (both IOS-73), exit 65 |
+After the IOS-73 fix (build-for-testing exit 0):
+| Run | Result |
+|---|---|
+| Full unit target, run 1 | 519 run, 3 skipped (Keychain), 0 failed, exit 0 |
+| Full unit target, run 2 | 519 run, 3 skipped (Keychain), 0 failed, exit 0 |
+
+### Round 2 (review of HEAD 6d681ab)
+Builder changes: sessionChanged no longer cancels tails; a batch 409 / unreadable 2xx drops the batch's toast, marks all ids failed, restores only still-active items; mock `createRequest` sets `source.name`; friend-code 401 calls `expireSession`; Home pill wraps at AX sizes.
+Tests changed or added (`ios/Tests/UnitTests`):
+- `FridgeSessionTests`: `SwitchAPIClient` records calls that reach a server, one-shot errors captured at call start, optional cancellation-aware gate. New: the two not-cancelled tests, `testUndoQueuedBehindHeldRemoveMakesNoRestoreCallAfterSwitch`, `testFailingRemoveAfterSwitchDoesNotTouchBsInFlightRemoveOfTheSameId`, `testFailingRestoreAfterSwitchDoesNotRemoveBsRestoredRow`, `testBatchSettleAfterSwitchDoesNotTouchB`, `testUserSwitchAndSignOutClearSelectModeAndSelection`, `testTokenRefreshKeepsSelectMode`.
+- `PageSweepFixTests`: batch-409 tests now assert no toast and nothing pending, no restore call, still-active items back with the banner, already-removed ones hidden (a new case: server removed every item); `testUndoAfterAlreadyRemovedStillRestores` asserts `spy.restores == [id]`; added `testUndoAfterDecodingErrorOnRemoveStillRestores`, `testBatchUndoWhenNothingFailedRestoresViaRestoreBatch`; mock createRequest asserts `source.name == author name`; two friend-code 401 tests.
+- `HomeAccessibilityTests.testPillSitsBelowTheGreetingAtAX5`: restored `pill.maxX <= 320.5`. It passes with the builder's HomeHeader change, so no IOS-74.
+Runs (build-for-testing exit 0): full unit target 532 run, 3 skipped, 0 failed, exit 0, twice in a row. (One earlier attempt hit a simulator launch error, "Application failed preflight checks", before any test ran; re-run clean. The first run of the new tests had 2 failures in my own stale-Undo assertions, removed as the observation above.)
+
+### Round 3 (review of HEAD 627bc08)
+Builder changes: a batch `.decoding` after a 2xx means the batch committed, so the removal stands, the Undo toast stays and Undo calls restore-batch (only a batch 409 `already_removed` goes through the per-item settle that drops the toast); if Undo was tapped before that 409 settles, items the server no longer lists are hidden again (no restore, no banner) and still-active items stay (no banner).
+Tests (`PageSweepFixTests`, `FridgeRemoveOutcomeTests`; `SwitchAPIClient` gains `removeBatch` with a gate, a call log and "commit, then unreadable body"):
+- `testBatchDecodingErrorReconcilesPerItemToo` replaced by `testBatchDecodingErrorAfter2xxKeepsTheRemovalAndUndoRestoresViaRestoreBatch`: rows stay removed, no banner or haptic, toast kept, Undo makes exactly one `restoreBatch` for both ids and the server ends restored.
+- New, with removeBatch held while Undo is tapped, then a 409: `testUndoBeforeBatch409SettlesLeavesRemovedElsewhereHiddenAndStillActiveShown` (chicken removed elsewhere ends hidden with no restore call, eggs stays, no banner), `testUndoBeforeBatch409WhereServerStillHasEveryItemKeepsThemWithNoBanner`, `testUndoBeforeBatch409WhereServerRemovedEveryItemEndsHiddenWithNoBannerAndNoRestore`.
+- Mutation notes: treating a batch decode error as a failure/settle turns the first test red; not re-hiding removed-elsewhere rows (or calling restore for them) turns the first "Undo before 409" test red.
+Runs (build-for-testing exit 0): full unit target 535 run, 3 skipped, 0 failed, exit 0, twice in a row, parallel testing on.
+
+### Round 4 (review of HEAD e5e0a35)
+Builder change: `AuthStore.expireSession(ifTokenIs:)` compares the session token and expires in one synchronous main-actor call; `LiveAPIClient` and `LiveAPIClient+FriendCode` use it for 401s (the old check-then-expire was two hops, so a sign-in between them could be cleared).
+Tests added (`AuthStoreTests`, in-memory storage): `testExpireIfTokenIsCurrentExpiresTheSession` (signed out, `sessionExpired` true, storage cleared), `testExpireIfTokenIsStaleLeavesTheNewerSessionAlone` (newer session and storage kept, `sessionExpired` false), `testExpireIfTokenIsNilWhileSignedInIsANoOp`, `testExpireIfTokenIsNilWithNoSessionIsANoOp` (no SessionExpired banner), `testExpireIfTokenIsAfterDeliberateSignOutIsANoOp`. The existing stale-token tests (`testStaleTokenUnauthorizedKeepsNewerSession`, `testFriendCodeStaleTokenUnauthorizedKeepsNewerSession`) stay green. Mutation note: making `expireSession(ifTokenIs:)` unconditional turns the stale and nil-while-signed-in tests red; the end-to-end stale 401 tests only cover the wiring, not the atomicity (a sign-in landing between two hops is not testable from a single-threaded stub).
+Runs (build-for-testing exit 0): full unit target 540 run, 3 skipped, 0 failed, exit 0, twice in a row, parallel testing on.
+
+### Verdict: PASS (IOS-73 fixed; rounds 2 to 4 closed; full unit target green twice, 540 run / 3 skipped / 0 failed. Known coverage gaps: `undo` success guard, `settleBatch` listing-failure guard)

@@ -11,7 +11,32 @@ actor SessionGate {
         waiting = true
         await withCheckedContinuation { waiter = $0 }
     }
-    func open() { opened = true; waiter?.resume(); waiter = nil }
+    func open() {
+        opened = true
+        waiter?.resume(); waiter = nil
+        throwing?.resume(); throwing = nil
+    }
+
+    // Cancellation-aware wait, like URLSession: a cancelled task leaves the gate by throwing, and the
+    // call never reaches the server. Used to prove the model does NOT cancel in-flight operations.
+    private var throwing: CheckedContinuation<Void, Error>?
+    private(set) var sawCancellation = false
+    func waitCancellable() async throws {
+        if opened { return }
+        waiting = true
+        try await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation { (c: CheckedContinuation<Void, Error>) in
+                if Task.isCancelled { sawCancellation = true; c.resume(throwing: CancellationError()); return }
+                throwing = c
+            }
+        } onCancel: {
+            Task { await self.cancelWaiter() }
+        }
+    }
+    private func cancelWaiter() {
+        sawCancellation = true
+        throwing?.resume(throwing: CancellationError()); throwing = nil
+    }
 }
 
 /// Forwards to whichever Mock is `current` when a call STARTS (A = fridge fixture, B = long fixture:
@@ -19,35 +44,65 @@ actor SessionGate {
 actor SwitchAPIClient: APIClient {
     private(set) var current: MockAPIClient
     private(set) var lists = 0
+    /// Calls that actually reached a server (a mock), in order.
+    private(set) var removeCalls: [String] = []
+    private(set) var restoreCalls: [String] = []
+    private(set) var batchRestoreCalls: [[String]] = []
     var listGate: SessionGate?
     var removeGate: SessionGate?
     var restoreGate: SessionGate?
+    /// One-shot, captured when the call STARTS (so a later call by another user is not affected).
     var removeError: APIError?
     var restoreError: APIError?
+    /// When true the gates throw if the calling task is cancelled (like URLSession).
+    var cancellable = false
+    /// remove-batch: calls that reached the server, an optional gate, and "committed, then the reply body is unreadable".
+    private(set) var batchRemoveCalls: [[String]] = []
+    var batchGate: SessionGate?
+    var batchDecodeAfterCommit = false
+    func holdBatch(_ g: SessionGate?) { batchGate = g }
+    func setBatchDecodeAfterCommit(_ on: Bool) { batchDecodeAfterCommit = on }
     init(_ start: MockAPIClient) { current = start }
     func switchTo(_ m: MockAPIClient) { current = m }
-    func hold(list: SessionGate? = nil, remove: SessionGate? = nil, restore: SessionGate? = nil) {
-        listGate = list; removeGate = remove; restoreGate = restore
+    func hold(list: SessionGate? = nil, remove: SessionGate? = nil, restore: SessionGate? = nil, cancellable: Bool = false) {
+        listGate = list; removeGate = remove; restoreGate = restore; self.cancellable = cancellable
     }
     func fail(remove: APIError? = nil, restore: APIError? = nil) { removeError = remove; restoreError = restore }
+
+    private func pass(_ g: SessionGate) async throws {
+        if cancellable { try await g.waitCancellable() } else { await g.wait() }
+    }
 
     func listItems(storage: Storage?, groupBy: ItemGrouping?) async throws -> ItemListing {
         lists += 1
         let mock = current
-        if let g = listGate { listGate = nil; await g.wait() }
+        if let g = listGate { listGate = nil; try await pass(g) }
         return try await mock.listItems(storage: storage, groupBy: groupBy)
     }
     func removeItem(id: String, outcome: RemoveOutcome, wasteReason: WasteReason?, recipient: RecipientChoice) async throws -> Item {
         let mock = current
-        if let g = removeGate { removeGate = nil; await g.wait() }
-        if let e = removeError { throw e }
+        let err = removeError; removeError = nil
+        if let g = removeGate { removeGate = nil; try await pass(g) }
+        if let e = err { throw e }
+        removeCalls.append(id)
         return try await mock.removeItem(id: id, outcome: outcome, wasteReason: wasteReason, recipient: recipient)
     }
     func restoreItem(id: String) async throws -> Item {
         let mock = current
-        if let g = restoreGate { restoreGate = nil; await g.wait() }
-        if let e = restoreError { throw e }
+        let err = restoreError; restoreError = nil
+        if let g = restoreGate { restoreGate = nil; try await pass(g) }
+        if let e = err { throw e }
+        restoreCalls.append(id)
         return try await mock.restoreItem(id: id)
+    }
+    func restoreBatch(ids: [String]) async throws -> [Item] { batchRestoreCalls.append(ids); return try await current.restoreBatch(ids: ids) }
+    func removeBatch(ids: [String], outcome: RemoveOutcome, recipient: RecipientChoice) async throws -> [Item] {
+        let mock = current
+        if let g = batchGate { batchGate = nil; try await pass(g) }
+        batchRemoveCalls.append(ids)
+        let r = try await mock.removeBatch(ids: ids, outcome: outcome, recipient: recipient)
+        if batchDecodeAfterCommit { throw APIError.decoding("keyNotFound") }   // 2xx, body unreadable: the batch committed
+        return r
     }
     func signup(email: String, password: String, displayName: String) async throws -> AuthSession { try await current.signup(email: email, password: password, displayName: displayName) }
     func login(email: String, password: String) async throws -> AuthSession { try await current.login(email: email, password: password) }
@@ -57,8 +112,6 @@ actor SwitchAPIClient: APIClient {
     func health() async throws -> Bool { try await current.health() }
     func me() async throws -> Me { try await current.me() }
     func googleSignIn(idToken: String) async throws -> GoogleAuthResult { try await current.googleSignIn(idToken: idToken) }
-    func removeBatch(ids: [String], outcome: RemoveOutcome, recipient: RecipientChoice) async throws -> [Item] { try await current.removeBatch(ids: ids, outcome: outcome, recipient: recipient) }
-    func restoreBatch(ids: [String]) async throws -> [Item] { try await current.restoreBatch(ids: ids) }
     func fromReceipt(imageData: Data) async throws -> ReceiptResponse { try await current.fromReceipt(imageData: imageData) }
     func barcode(_ code: String) async throws -> BarcodeResult { try await current.barcode(code) }
     func listShares() async throws -> [PantryListing] { try await current.listShares() }
@@ -75,6 +128,10 @@ actor SwitchAPIClient: APIClient {
     func acceptFriend(userId: String) async throws -> Friend { try await current.acceptFriend(userId: userId) }
     func declineFriend(userId: String) async throws { try await current.declineFriend(userId: userId) }
     func removeFriend(userId: String) async throws { try await current.removeFriend(userId: userId) }
+    func friendCode() async throws -> FriendCodeInfo { try await current.friendCode() }
+    func addFriend(code: String) async throws -> FriendAddResult { try await current.addFriend(code: code) }
+    func share(itemId: String, audience: ShareAudience, pickup: Pickup?) async throws -> Listing { try await current.share(itemId: itemId, audience: audience, pickup: pickup) }
+    func updatePickup(listingId: String, pickup: Pickup?) async throws -> Listing { try await current.updatePickup(listingId: listingId, pickup: pickup) }
     func listGroups() async throws -> [SharingGroup] { try await current.listGroups() }
     func createGroup(name: String) async throws -> SharingGroup { try await current.createGroup(name: name) }
     func joinGroup(inviteCode: String) async throws -> SharingGroup { try await current.joinGroup(inviteCode: inviteCode) }
@@ -257,6 +314,72 @@ final class FridgeSessionTests: XCTestCase {
         XCTAssertEqual(ids(m).count, 8)
     }
 
+    /// The view feeds the model whole sessions (user + token): the same user with a NEW token is a
+    /// token refresh, an identical session is a no-op.
+    func testSessionOverloadTokenRefreshKeepsRowsNoRefetch() async {
+        let (m, api, _, _) = make()
+        await m.loadIfNeeded(.fridge)
+        let before = ids(m)
+        let gen = m.generation
+        await m.sessionChanged(fromSession: AuthSession(token: "tok-1", user: userA), toSession: AuthSession(token: "tok-2", user: userA))
+        XCTAssertEqual(ids(m), before, "rows stay on a token refresh")
+        XCTAssertEqual(m.generation, gen, "same user: in-flight work is NOT invalidated")
+        XCTAssertEqual(m.staggerRestarts, 1)
+        let lists = await api.lists
+        XCTAssertEqual(lists, 1, "no refetch when content is already shown (original 9997699 behaviour)")
+    }
+
+    func testSessionOverloadIdenticalSessionIsNoOp() async {
+        let (m, api, _, _) = make()
+        await m.loadIfNeeded(.fridge)
+        let s = AuthSession(token: "tok-1", user: userA)
+        await m.sessionChanged(fromSession: s, toSession: s)
+        let lists = await api.lists
+        XCTAssertEqual(lists, 1)
+        XCTAssertEqual(ids(m).count, 8)
+    }
+
+    func testSessionOverloadSameUserNewTokenAfterSignInErrorRecovers() async {
+        var b = MockAPIClient.Behavior(delay: .zero); b.failFirst["listItems"] = 1
+        let (m, _, _, _) = make(b)
+        await m.loadIfNeeded(.fridge)
+        guard case .error = m.state(for: .fridge) else { return XCTFail("first load should fail") }
+        await m.sessionChanged(fromSession: AuthSession(token: "old", user: userA), toSession: AuthSession(token: "new", user: userA))
+        XCTAssertEqual(ids(m).count, 8)
+    }
+
+    func testDifferentUserAndSignOutBumpGenerationButTokenRefreshDoesNot() async {
+        let (m, _, _, b) = make()
+        await m.loadIfNeeded(.fridge)
+        let g0 = m.generation
+        await m.sessionChanged(from: userA, to: userA)
+        XCTAssertEqual(m.generation, g0)
+        await m.sessionChanged(from: nil, to: nil)
+        XCTAssertEqual(m.generation, g0)
+        await m.sessionChanged(from: userA, to: nil)
+        XCTAssertEqual(m.generation, g0 + 1)
+        await m.sessionChanged(from: nil, to: userB)
+        XCTAssertEqual(m.generation, g0 + 2)
+        _ = b
+    }
+
+    /// A token refresh must not discard an in-flight remove: the generation is unchanged, so its
+    /// failure still rolls the row back and its success still leaves the toast.
+    func testRemoveInFlightSurvivesTokenRefresh() async {
+        let (m, api, _, _) = make()
+        await m.loadIfNeeded(.fridge)
+        let gate = SessionGate()
+        await api.hold(remove: gate)
+        await api.fail(remove: .network("offline"))
+        m.remove(item(m, "item-chicken"), choice: .init(outcome: .used), reduceMotion: false)
+        m.showPendingToast()
+        await until { await gate.waiting }
+        await m.sessionChanged(from: userA, to: userA)
+        await gate.open()
+        await until { m.banner != nil }
+        XCTAssertTrue(ids(m).contains("item-chicken"), "the failed remove still rolls back after a token refresh")
+    }
+
     func testSessionNilToNilIsNoOp() async {
         let (m, api, _, _) = make()
         await m.loadIfNeeded(.fridge)
@@ -395,5 +518,204 @@ final class FridgeSessionTests: XCTestCase {
         XCTAssertNil(m.toast)
         XCTAssertFalse(ids(m).contains("item-chicken"))
         XCTAssertEqual(ids(m).count, 36)
+    }
+
+    // MARK: Round 2: in-flight operations are not cancelled by a session change, and never leak
+
+    /// Same item ids for both users, so anything that leaks from A's operations lands on a row B also has.
+    private func makeSameIds(_ b: MockAPIClient.Behavior = .init(delay: .zero)) -> (FridgeModel, SwitchAPIClient, MockAPIClient, MockAPIClient) {
+        let a = mock(.fridge, b), bb = mock(.fridge)
+        let api = SwitchAPIClient(a)
+        return (FridgeModel(api: api), api, a, bb)
+    }
+
+    /// The gate throws when the calling task is cancelled (like URLSession). If `sessionChanged` cancelled
+    /// the tail, the remove would never reach the server and A's removal would be silently lost.
+    func testRemoveInFlightIsNotCancelledBySwitchAndStillReachesTheServer() async {
+        let (m, api, a, b) = make()
+        await m.loadIfNeeded(.fridge)
+        let gate = SessionGate()
+        await api.hold(remove: gate, cancellable: true)
+        m.remove(item(m, "item-chicken"), choice: .init(outcome: .used), reduceMotion: false)
+        m.showPendingToast()
+        await until { await gate.waiting }
+        await api.switchTo(b)
+        await m.sessionChanged(from: userA, to: userB)
+        await gate.open()
+        await until { await api.removeCalls == ["item-chicken"] }
+        let cancelled = await gate.sawCancellation
+        XCTAssertFalse(cancelled, "a session change must not cancel in-flight operations")
+        let removedOnA = await a.currentItems().first { $0.id == "item-chicken" }?.isRemoved
+        XCTAssertEqual(removedOnA, true, "A's remove reached A's server")
+        await settle()
+        XCTAssertNil(m.toast); XCTAssertNil(m.banner)
+        XCTAssertTrue(haptics.events.isEmpty, "\(haptics.events)")
+        XCTAssertEqual(ids(m).count, 36, "nothing leaked into B")
+    }
+
+    func testUndoInFlightIsNotCancelledBySwitchAndStillReachesTheServer() async {
+        let (m, api, a, b) = make()
+        await m.loadIfNeeded(.fridge)
+        m.remove(item(m, "item-chicken"), choice: .init(outcome: .used), reduceMotion: false)
+        m.showPendingToast()
+        await until { await api.removeCalls == ["item-chicken"] }
+        let gate = SessionGate()
+        await api.hold(restore: gate, cancellable: true)
+        m.toast?.onUndo()
+        await until { await gate.waiting }
+        await api.switchTo(b)
+        await m.sessionChanged(from: userA, to: userB)
+        await gate.open()
+        await until { await api.restoreCalls == ["item-chicken"] }
+        let cancelled = await gate.sawCancellation
+        XCTAssertFalse(cancelled)
+        let removedOnA = await a.currentItems().first { $0.id == "item-chicken" }?.isRemoved
+        XCTAssertEqual(removedOnA, false, "A's Undo reached A's server")
+        await settle()
+        XCTAssertNil(m.toast); XCTAssertNil(m.banner)
+        XCTAssertEqual(ids(m).count, 36)
+    }
+
+    /// `enqueue` guard: an Undo queued behind a held remove must not run once the session changed
+    /// (it would otherwise call restore as the NEW user).
+    func testUndoQueuedBehindHeldRemoveMakesNoRestoreCallAfterSwitch() async {
+        let (m, api, a, b) = make()
+        await m.loadIfNeeded(.fridge)
+        let gate = SessionGate()
+        await api.hold(remove: gate)
+        m.remove(item(m, "item-chicken"), choice: .init(outcome: .used), reduceMotion: false)
+        m.showPendingToast()
+        m.toast?.onUndo()                       // queued behind the held remove
+        await until { await gate.waiting }
+        await api.switchTo(b)
+        await m.sessionChanged(from: userA, to: userB)
+        await gate.open()
+        await until { await api.removeCalls == ["item-chicken"] }
+        await settle()
+        let restores = await api.restoreCalls, batch = await api.batchRestoreCalls
+        XCTAssertEqual(restores, [], "the queued Undo belongs to the old session and must not run")
+        XCTAssertEqual(batch, [])
+        let removedOnA = await a.currentItems().first { $0.id == "item-chicken" }?.isRemoved
+        XCTAssertEqual(removedOnA, true)
+        XCTAssertNil(m.banner); XCTAssertNil(m.toast)
+        XCTAssertEqual(ids(m).count, 36)
+        XCTAssertTrue(haptics.events.isEmpty)
+    }
+
+    /// `perform` catch guard: A's remove fails after the switch while B has its OWN remove of the same id in
+    /// flight. A's failure must not roll back B's row, show a banner or buzz.
+    func testFailingRemoveAfterSwitchDoesNotTouchBsInFlightRemoveOfTheSameId() async {
+        let (m, api, _, b) = makeSameIds()
+        await m.loadIfNeeded(.fridge)
+        let gateA = SessionGate()
+        await api.hold(remove: gateA)
+        await api.fail(remove: .network("offline"))
+        m.remove(item(m, "item-chicken"), choice: .init(outcome: .used), reduceMotion: false)
+        m.showPendingToast()
+        await until { await gateA.waiting }
+        await api.switchTo(b)
+        await m.sessionChanged(from: userA, to: userB)
+        XCTAssertTrue(ids(m).contains("item-chicken"))
+        let gateB = SessionGate()
+        await api.hold(remove: gateB)
+        m.remove(item(m, "item-chicken"), choice: .init(outcome: .used), reduceMotion: false)   // B's own, held
+        await until { await gateB.waiting }
+        XCTAssertFalse(ids(m).contains("item-chicken"))
+        await gateA.open()                      // A's remove now fails
+        await settle()
+        XCTAssertFalse(ids(m).contains("item-chicken"), "A's failure must not re-insert B's removed row")
+        XCTAssertNil(m.banner, "no banner about A's item in B's session")
+        XCTAssertTrue(haptics.events.isEmpty, "\(haptics.events)")
+        await gateB.open()
+        await until { await api.removeCalls == ["item-chicken"] }
+        await settle()
+        XCTAssertFalse(ids(m).contains("item-chicken"))
+        XCTAssertNil(m.banner)
+    }
+
+    /// `undo` catch guard: A's restore fails after the switch while B has its own Undo of the same id in flight.
+    func testFailingRestoreAfterSwitchDoesNotRemoveBsRestoredRow() async {
+        let (m, api, _, b) = makeSameIds()
+        await m.loadIfNeeded(.fridge)
+        m.remove(item(m, "item-chicken"), choice: .init(outcome: .used), reduceMotion: false)
+        m.showPendingToast()
+        await until { await api.removeCalls == ["item-chicken"] }
+        let gateA = SessionGate()
+        await api.hold(restore: gateA)
+        await api.fail(restore: .network("offline"))
+        m.toast?.onUndo()
+        await until { await gateA.waiting }
+        await api.switchTo(b)
+        await m.sessionChanged(from: userA, to: userB)
+        m.remove(item(m, "item-chicken"), choice: .init(outcome: .used), reduceMotion: false)
+        m.showPendingToast()
+        await until { await api.removeCalls == ["item-chicken", "item-chicken"] }
+        let gateB = SessionGate()
+        await api.hold(restore: gateB)
+        m.toast?.onUndo()                       // B's Undo, held: B's reconcile entry for the id is alive
+        await until { await gateB.waiting }
+        XCTAssertTrue(ids(m).contains("item-chicken"))
+        await gateA.open()                      // A's restore now fails
+        await settle()
+        XCTAssertTrue(ids(m).contains("item-chicken"), "A's failed Undo must not delete B's restored row")
+        XCTAssertNil(m.banner)
+        XCTAssertTrue(haptics.events.isEmpty, "\(haptics.events)")
+        await gateB.open()
+        await settle()
+        XCTAssertTrue(ids(m).contains("item-chicken"))
+    }
+
+    /// `settleBatch` guard: the batch gets 409 already_removed, settleBatch asks for the listing, the user
+    /// switches while that listing is held; the late answer must not roll back B's in-flight remove of the same id.
+    func testBatchSettleAfterSwitchDoesNotTouchB() async {
+        var beh = MockAPIClient.Behavior(delay: .zero)
+        beh.failures["removeBatch"] = .server(status: 409, code: "already_removed", message: "x")
+        let (m, api, _, b) = makeSameIds(beh)
+        await m.loadIfNeeded(.fridge)
+        let listGate = SessionGate()
+        await api.hold(list: listGate)
+        m.removeBatch([item(m, "item-chicken"), item(m, "item-eggs")], outcome: .used, reduceMotion: false)
+        await until { await listGate.waiting }  // settleBatch is asking for the listing
+        await api.switchTo(b)
+        await m.sessionChanged(from: userA, to: userB)
+        let gateB = SessionGate()
+        await api.hold(remove: gateB)
+        m.remove(item(m, "item-chicken"), choice: .init(outcome: .used), reduceMotion: false)
+        await until { await gateB.waiting }
+        XCTAssertFalse(ids(m).contains("item-chicken"))
+        await listGate.open()
+        await settle()
+        XCTAssertFalse(ids(m).contains("item-chicken"), "A's late settle must not re-insert B's removed row")
+        XCTAssertNil(m.banner)
+        XCTAssertTrue(haptics.events.isEmpty, "\(haptics.events)")
+        await gateB.open()
+        await settle()
+    }
+
+    // MARK: Selection
+
+    func testUserSwitchAndSignOutClearSelectModeAndSelection() async {
+        let (m, _, _, _) = make()
+        await m.loadIfNeeded(.fridge)
+        m.enterSelection()
+        m.toggleSelection("item-chicken")
+        XCTAssertTrue(m.isSelecting); XCTAssertEqual(m.selection, ["item-chicken"])
+        await m.sessionChanged(from: userA, to: userB)
+        XCTAssertFalse(m.isSelecting)
+        XCTAssertTrue(m.selection.isEmpty)
+        m.enterSelection(); m.toggleSelection("item-long-1")
+        await m.sessionChanged(from: userB, to: nil)
+        XCTAssertFalse(m.isSelecting)
+        XCTAssertTrue(m.selection.isEmpty)
+    }
+
+    func testTokenRefreshKeepsSelectMode() async {
+        let (m, _, _, _) = make()
+        await m.loadIfNeeded(.fridge)
+        m.enterSelection()
+        m.toggleSelection("item-chicken")
+        await m.sessionChanged(from: userA, to: userA)
+        XCTAssertTrue(m.isSelecting)
+        XCTAssertEqual(m.selection, ["item-chicken"])
     }
 }

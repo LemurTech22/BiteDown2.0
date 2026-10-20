@@ -28,6 +28,8 @@ final class ComponentAccessibilityTests: XCTestCase {
 
     private func leaves<V: View>(of view: V, size: DynamicTypeSize = .large, width: CGFloat = 402) throws -> [NSObject] {
         _ = Self.axEnabled
+        window?.isHidden = true
+        window = nil
         let root = view
             .environment(\.dynamicTypeSize, size)
             .environment(\.reduceMotionOverride, true)

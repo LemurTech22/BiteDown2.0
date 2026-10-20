@@ -71,10 +71,11 @@ struct HomeHeader: View {
                 HStack(spacing: Theme.Spacing.stack) {
                     Image(systemName: "leaf").accessibilityHidden(true)
                     Text("\(f.string(kg: savedKg)) saved")
-                        .lineLimit(1)
+                        .lineLimit(stacked ? nil : 1)
                 }
                 // IOS-43: keep the pill on one line on 375 pt phones; the greeting wraps instead.
-                .fixedSize(horizontal: true, vertical: false)
+                // At accessibility sizes the pill sits on its own row and wraps inside the width.
+                .fixedSize(horizontal: !stacked, vertical: stacked)
                 .font(Theme.Fonts.badge)
                 .foregroundStyle(Theme.Colors.onLime)
                 .padding(.horizontal, Theme.Spacing.sm)

@@ -103,4 +103,12 @@ final class AuthStore {
         storage.clear()
         if hadSession { sessionExpired = true }
     }
+
+    /// Like `expireSession()`, but only if the current session still uses `token`. The check and the
+    /// expiry happen in one synchronous call, so a sign-in can't land between them and lose to a
+    /// stale 401 from the previous session.
+    func expireSession(ifTokenIs token: String?) {
+        guard session?.token == token else { return }
+        expireSession()
+    }
 }

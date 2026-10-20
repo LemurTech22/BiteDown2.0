@@ -17,7 +17,8 @@ extension LiveAPIClient {
         req.setValue("application/json", forHTTPHeaderField: "Accept")
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
         req.httpBody = try APICoding.encoder.encode(["code": code])
-        if let token = await auth.token { req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization") }
+        let usedToken = await auth.token
+        if let token = usedToken { req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization") }
 
         let data: Data, response: URLResponse
         do { (data, response) = try await session.data(for: req) }
@@ -27,7 +28,7 @@ extension LiveAPIClient {
         guard let http = response as? HTTPURLResponse else { throw APIError.network("No HTTP response") }
         guard (200..<300).contains(http.statusCode) else {
             if http.statusCode == 401 {
-                await auth.signOut()
+                await auth.expireSession(ifTokenIs: usedToken)
                 throw APIError.unauthorized
             }
             if let body = try? APICoding.decoder.decode(APIErrorBody.self, from: data) {

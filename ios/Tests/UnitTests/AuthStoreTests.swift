@@ -60,4 +60,50 @@ final class AuthStoreTests: XCTestCase {
         XCTAssertTrue(s.isSignedIn)
         XCTAssertNil(KeychainSessionStorage(service: service).load())
     }
+
+    // MARK: expireSession(ifTokenIs:) (atomic compare-and-expire for 401s)
+
+    @MainActor func testExpireIfTokenIsCurrentExpiresTheSession() {
+        let store = InMemorySessionStorage(session)
+        let s = AuthStore(storage: store)
+        s.expireSession(ifTokenIs: "jwt-123")
+        XCTAssertFalse(s.isSignedIn)
+        XCTAssertNil(s.token)
+        XCTAssertTrue(s.sessionExpired, "SessionExpired is shown")
+        XCTAssertNil(store.load(), "the stored session is cleared too")
+    }
+
+    @MainActor func testExpireIfTokenIsStaleLeavesTheNewerSessionAlone() {
+        let store = InMemorySessionStorage(session)
+        let s = AuthStore(storage: store)
+        s.signIn(AuthSession(token: "jwt-new", user: MockData.priya))      // signed in again; old request still in flight
+        s.expireSession(ifTokenIs: "jwt-123")                              // the stale 401 arrives
+        XCTAssertTrue(s.isSignedIn)
+        XCTAssertEqual(s.token, "jwt-new")
+        XCTAssertFalse(s.sessionExpired)
+        XCTAssertEqual(store.load()?.token, "jwt-new", "the stored session is untouched")
+    }
+
+    @MainActor func testExpireIfTokenIsNilWhileSignedInIsANoOp() {
+        let s = AuthStore(storage: InMemorySessionStorage(session))
+        s.expireSession(ifTokenIs: nil)       // a request sent without a token must not expire a session
+        XCTAssertTrue(s.isSignedIn)
+        XCTAssertEqual(s.token, "jwt-123")
+        XCTAssertFalse(s.sessionExpired)
+    }
+
+    @MainActor func testExpireIfTokenIsNilWithNoSessionIsANoOp() {
+        let s = AuthStore(storage: InMemorySessionStorage(nil))
+        XCTAssertFalse(s.isSignedIn)
+        s.expireSession(ifTokenIs: nil)
+        XCTAssertFalse(s.isSignedIn)
+        XCTAssertFalse(s.sessionExpired, "nothing to lose, so no SessionExpired banner")
+    }
+
+    @MainActor func testExpireIfTokenIsAfterDeliberateSignOutIsANoOp() {
+        let s = AuthStore(storage: InMemorySessionStorage(session))
+        s.signOut()
+        s.expireSession(ifTokenIs: "jwt-123")
+        XCTAssertFalse(s.sessionExpired, "a stale 401 after a deliberate sign-out must not show SessionExpired")
+    }
 }

@@ -65,6 +65,7 @@ struct RemoveSheet: View {
             .toolbar(.hidden, for: .navigationBar)
             .navigationDestination(isPresented: $showReason) {
                 RemoveReasonView(item: item) { reason in
+                    finished = true
                     onRemove(RemoveChoice(outcome: .thrownOut, wasteReason: reason))
                 } close: { close() }
             }

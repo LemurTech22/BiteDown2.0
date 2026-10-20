@@ -465,7 +465,7 @@ final class MockFoundationTests: XCTestCase {
     // MARK: People
 
     func testReachablePeopleMarkTheClaimerOnce() async throws {
-        let people = try await mock().reachablePeople()
+        let people = try await mock().reachablePeople(itemId: "item-spinach")
         XCTAssertEqual(people.filter { $0.isClaimer == true }.map(\.id), [MockData.marcusFull.id])
         XCTAssertEqual(Set(people.map(\.id)).count, people.count)
         XCTAssertTrue(people.contains { $0.kind == .groupMember })
