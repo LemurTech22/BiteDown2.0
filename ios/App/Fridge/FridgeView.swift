@@ -49,6 +49,10 @@ struct FridgeView: View {
         .toolbar(.hidden, for: .navigationBar)
         .onAppear { model.showPendingToast() }  // a removal made from Item detail
         .task(id: model.storage) { await model.loadIfNeeded(model.storage) }
+        // Sign-in, sign-out, a different user or a refreshed token: reset or reload. Not fired at launch.
+        .onChange(of: env.auth.session) { old, new in
+            Task { await model.sessionChanged(fromSession: old, toSession: new) }
+        }
         .onReceive(NotificationCenter.default.publisher(for: .itemsDidChange)) { _ in Task { await model.refresh() } }
         // The Undo toast appears (and its countdown starts) only after the sheet has gone.
         .sheet(item: $removing, onDismiss: { model.showPendingToast() }) { item in

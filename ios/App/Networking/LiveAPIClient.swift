@@ -134,7 +134,8 @@ final class LiveAPIClient: APIClient {
             req.httpBody = rawBody
             req.setValue(contentType, forHTTPHeaderField: "Content-Type")
         }
-        if authenticated, let token = await auth.token {
+        let usedToken: String? = authenticated ? await auth.token : nil
+        if let token = usedToken {
             req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         }
 
@@ -156,7 +157,8 @@ final class LiveAPIClient: APIClient {
         guard let http = response as? HTTPURLResponse else { throw APIError.network("No HTTP response") }
         guard (200..<300).contains(http.statusCode) else {
             if http.statusCode == 401 && authenticated {
-                await auth.expireSession()
+                // Only if the session that made this request is still current (a newer sign-in survives).
+                if await auth.token == usedToken { await auth.expireSession() }
                 throw APIError.unauthorized
             }
             if let body = try? APICoding.decoder.decode(APIErrorBody.self, from: data) {

@@ -54,8 +54,8 @@ final class FridgeModel {
         var settledAfterLoad: Int?
     }
 
-    /// Whether the remove request for one user action failed (shared by its items), so Undo can skip the restore.
-    private final class RemovalRecord { var failed = false }
+    /// Which items of one user action the server did not remove (shared by its items), so Undo can skip their restore.
+    private final class RemovalRecord { var failedIds: Set<String> = [] }
 
     private struct Tail {
         let token: UUID
@@ -86,6 +86,10 @@ final class FridgeModel {
     private var tails: [String: Tail] = [:]
     private var loadSeq = 0
     private var activeLoads = 0
+    /// Bumped when the signed-in user changes (or signs out). Every load, remove, restore and queued
+    /// operation captures it at the start and drops its result if it moved, so a late completion
+    /// from the previous identity can't touch the new user's lists.
+    private(set) var generation = 0
     private let api: APIClient
 
     init(api: APIClient) { self.api = api }
@@ -112,13 +116,53 @@ final class FridgeModel {
 
     func refresh() async { await load(storage, isRefresh: true) }
 
+    /// The session changed (sign-in, sign-out, 401, different user, token refresh).
+    /// - A different user, or none: everything per-user is dropped (lists, errors, selection, queued
+    ///   operations, toast, banner). Signed out shows `.unauthorized` on every storage; a new user
+    ///   loads the visible storage (one stagger restart). The other storages load when selected.
+    /// - The same user with a new token: items stay, errors clear, and the visible storage loads only
+    ///   if it isn't already showing items.
+    func sessionChanged(fromSession old: AuthSession?, toSession new: AuthSession?) async {
+        if let old, let new, old.user.id == new.user.id, old.token == new.token { return }
+        await sessionChanged(from: old?.user, to: new?.user)
+    }
+
+    /// Same as above by user: the same user means the token changed (token refresh).
+    func sessionChanged(from old: User?, to new: User?) async {
+        if let old, let new, old.id == new.id {
+            errors = [:]
+            await loadIfNeeded(storage)
+            return
+        }
+        guard old != nil || new != nil else { return }
+        generation += 1
+        sections = [:]
+        errors = [:]
+        everLoaded = []
+        isSelecting = false
+        selection = []
+        for tail in tails.values { tail.task.cancel() }
+        tails = [:]
+        reconcile = [:]
+        pendingToast = nil
+        toast = nil
+        banner = nil
+        guard new != nil else {
+            for s in Storage.allCases { errors[s] = APIError.unauthorized }
+            return
+        }
+        await load(storage, isRefresh: false)
+    }
+
     private func load(_ storage: Storage, isRefresh: Bool) async {
+        let gen = generation
         loadSeq += 1
         let seq = loadSeq
         activeLoads += 1
         defer { activeLoads -= 1 }
         do {
             let listing = try await api.listItems(storage: storage, groupBy: .foodGroup)
+            guard gen == generation else { return }
             var fresh = Self.grouped(listing)
             applyReconcile(to: &fresh, storage: storage)
             pruneReconcile(upTo: seq)
@@ -136,6 +180,7 @@ final class FridgeModel {
             return
         } catch {
             if (error as? URLError)?.code == .cancelled { return }
+            guard gen == generation else { return }
             if sections[storage] == nil {
                 errors[storage] = error
             } else if isRefresh {
@@ -187,8 +232,10 @@ final class FridgeModel {
     private func enqueue(_ ids: [String], _ work: @escaping @MainActor () async -> Void) {
         let prior = ids.compactMap { tails[$0]?.task }
         let token = UUID()
+        let gen = generation
         let task = Task { @MainActor [weak self] in
             for p in prior { await p.value }
+            guard self?.generation == gen else { return }   // the session changed while queued
             await work()
             self?.operationFinished(ids, token: token)
         }
@@ -214,12 +261,15 @@ final class FridgeModel {
 
     /// Optimistic removal from the sheet: the row goes now, the toast offers Undo for 5 s, and the
     /// request runs in the background. A failure puts the row back and shows the banner.
-    func remove(_ item: Item, choice: RemoveChoice, reduceMotion: Bool) {
-        perform([item], message: "\(item.name) removed", holdToast: true,
-                failure: "Couldn't remove \(item.name). It's back in your list.", reduceMotion: reduceMotion,
+    /// `showToastNow` is for a removal made without a sheet (the banner's "Try again"): the Undo toast
+    /// shows at once instead of waiting for a sheet dismissal that never comes, and nothing stays pending.
+    func remove(_ item: Item, choice: RemoveChoice, reduceMotion: Bool, showToastNow: Bool = false) {
+        if showToastNow { pendingToast = nil }
+        perform([item], message: "\(item.name) removed", holdToast: !showToastNow,
+                failure: { _ in "Couldn't remove \(item.name). It's back in your list." }, reduceMotion: reduceMotion,
                 retry: { [weak self] in
                     guard let self, let current = self.item(id: item.id) else { return }
-                    self.remove(current, choice: choice, reduceMotion: reduceMotion)
+                    self.remove(current, choice: choice, reduceMotion: reduceMotion, showToastNow: true)
                 },
                 remote: { api in
                     _ = try await api.removeItem(id: item.id, outcome: choice.outcome,
@@ -235,9 +285,9 @@ final class FridgeModel {
         let message = outcome == .used ? "\(noun) marked used" : (n == 1 ? "1 item shared" : "\(n) items shared")
         let ids = items.map(\.id)
         perform(items, message: message, holdToast: false,
-                failure: n == 1 ? "Couldn't update that item. It's back in your list."
-                                : "Couldn't update \(n) items. They're back in your list.",
-                reduceMotion: reduceMotion,
+                failure: { k in k == 1 ? "Couldn't update that item. It's back in your list."
+                                       : "Couldn't update \(k) items. They're back in your list." },
+                isBatch: true, reduceMotion: reduceMotion,
                 retry: { [weak self] in
                     guard let self else { return }
                     let current = ids.compactMap { self.item(id: $0) }
@@ -257,7 +307,11 @@ final class FridgeModel {
         removeBatch(items, outcome: outcome, reduceMotion: reduceMotion)
     }
 
-    private func perform(_ items: [Item], message: String, holdToast: Bool, failure: String, reduceMotion: Bool,
+    /// `failure` gets the number of items that came back. A batch whose request fails with 409
+    /// `already_removed` (or a body we can't read after a 2xx) is not assumed removed: the server may
+    /// have left some items active, so each item is checked against the listing (`settleBatch`).
+    private func perform(_ items: [Item], message: String, holdToast: Bool, failure: @escaping (Int) -> String,
+                         isBatch: Bool = false, reduceMotion: Bool,
                          retry: @escaping () -> Void, remote: @escaping @Sendable (APIClient) async throws -> Void) {
         let located = items.compactMap { item in location(of: item.id).map { (item: item, location: $0) } }
         guard !located.isEmpty else { return }
@@ -272,14 +326,51 @@ final class FridgeModel {
         }
         if holdToast { pendingToast = toastItem } else { toast = toastItem }
         let api = self.api
+        let gen = generation
         enqueue(ids) { [weak self] in
             do {
                 try await remote(api)
             } catch {
-                record.failed = true
-                self?.removeFailed(located, failure: failure, retry: retry, reduceMotion: reduceMotion)
+                guard let self, self.generation == gen else { return }
+                if error.removeStands {
+                    // Single remove: the server already removed it (409 already_removed) or answered
+                    // 2xx with a body we couldn't read, so the removal stands and Undo still restores.
+                    if !isBatch { return }
+                    await self.settleBatch(located, gen: gen, record: record, failure: failure, retry: retry,
+                                           reduceMotion: reduceMotion)
+                    return
+                }
+                self.markFailed(located, record: record, failure: failure, retry: retry, reduceMotion: reduceMotion)
             }
         }
+    }
+
+    private func markFailed(_ located: [(item: Item, location: Location)], record: RemovalRecord,
+                            failure: (Int) -> String, retry: @escaping () -> Void, reduceMotion: Bool) {
+        record.failedIds.formUnion(located.map(\.item.id))
+        removeFailed(located, failure: failure(located.count), retry: retry, reduceMotion: reduceMotion)
+    }
+
+    /// A batch got 409 `already_removed` (or an unreadable 2xx): ask the server which of its items are
+    /// still active. Those come back with the banner; the rest stay removed. If the server can't be
+    /// asked, nothing is assumed: every item comes back.
+    private func settleBatch(_ located: [(item: Item, location: Location)], gen: Int, record: RemovalRecord,
+                             failure: (Int) -> String, retry: @escaping () -> Void, reduceMotion: Bool) async {
+        var active: Set<String> = []
+        do {
+            for storage in Set(located.map(\.location.storage)) {
+                let listing = try await api.listItems(storage: storage, groupBy: .foodGroup)
+                active.formUnion(Self.grouped(listing).flatMap(\.items).map(\.id))
+            }
+        } catch {
+            guard generation == gen else { return }
+            markFailed(located, record: record, failure: failure, retry: retry, reduceMotion: reduceMotion)
+            return
+        }
+        guard generation == gen else { return }
+        let stillActive = located.filter { active.contains($0.item.id) }
+        guard !stillActive.isEmpty else { return }
+        markFailed(stillActive, record: record, failure: failure, retry: retry, reduceMotion: reduceMotion)
     }
 
     /// Called once the remove sheet has finished dismissing: the toast (and its countdown) starts now.
@@ -302,8 +393,9 @@ final class FridgeModel {
                 }
             }
         }
-        if let held = pendingToast, !held.itemIds.isDisjoint(with: ids) { pendingToast = nil }
-        if let shown = toast, !shown.itemIds.isDisjoint(with: ids) { toast = nil }
+        // A toast that still covers items the server did remove stays, so they can be undone.
+        if let held = pendingToast, held.itemIds.isSubset(of: ids) { pendingToast = nil }
+        if let shown = toast, shown.itemIds.isSubset(of: ids) { toast = nil }
         guard !undone else { return }   // already back via Undo; nothing to report
         Haptics.error()
         showBanner(failure, retry: retry)
@@ -322,19 +414,23 @@ final class FridgeModel {
             }
         }
         let api = self.api
+        let gen = generation
         enqueue(ids) { [weak self] in
-            // If the removal never reached the server, there is nothing to restore.
-            if record.failed {
-                for id in ids { self?.reconcile[id] = nil }
-                return
-            }
+            // Items whose removal never reached the server have nothing to restore.
+            guard let self else { return }
+            for id in record.failedIds { self.reconcile[id] = nil }
+            let live = located.filter { !record.failedIds.contains($0.item.id) }
+            guard !live.isEmpty else { return }
+            let liveIds = live.map(\.item.id)
             do {
-                let restored = ids.count == 1 ? [try await api.restoreItem(id: ids[0])]
-                                              : try await api.restoreBatch(ids: ids)
-                self?.applyRestored(restored)
+                let restored = liveIds.count == 1 ? [try await api.restoreItem(id: liveIds[0])]
+                                                  : try await api.restoreBatch(ids: liveIds)
+                guard self.generation == gen else { return }
+                self.applyRestored(restored)
             } catch {
-                self?.restoreFailed(located, record: record, failureName: failureName, error: error,
-                                    reduceMotion: reduceMotion)
+                guard self.generation == gen else { return }
+                self.restoreFailed(live, record: record, failureName: failureName, error: error,
+                                   reduceMotion: reduceMotion)
             }
         }
     }
@@ -482,5 +578,15 @@ enum ItemText {
         if let e = expiryPhrase(item) { parts.append(e) }
         if hasOpenListing(item) { parts.append("on Share") }
         return parts.joined(separator: " · ")
+    }
+}
+
+private extension Error {
+    /// True when a failed remove call may still mean the item is removed on the server:
+    /// 409 `already_removed`, or a 2xx whose body couldn't be decoded.
+    var removeStands: Bool {
+        guard let e = self as? APIError else { return false }
+        if case .decoding = e { return true }
+        return e.code == "already_removed"
     }
 }
