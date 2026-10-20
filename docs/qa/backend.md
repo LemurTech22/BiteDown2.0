@@ -1031,3 +1031,32 @@ Independent of the builder's QA; this section supersedes it. IDs: highest in `do
 - PF-4: on a Docker restart the test Postgres (`items-wave2-db-1`, port 5433) was down; I restarted that one container only.
 Files written: `backend/tests/test_qa_pr95_receipt.py`, this section.
 **Re-check after the PR #95 independent QA (BE-29, BE-30, BE-31).** BE-29: the guard test's call-site count is now 7. BE-30: `gemini._to_num` takes the last separator as the decimal point (`1.234,56` is 1234.56), reads `1,234` as 1234 and maps the unicode minus; the three strict xfails became passing tests. BE-31: the reader runs once after a failed ML call and a read over 40 s skips the categorize call, so the worst case is 105 s (the ML service's own `ml_serve` copy of `_to_num` in `ml/ocr/receipt_pipeline.py` has the same two parsing gaps and is left for the ML owner). Targeted run after the fixes: 568 passed, 3 xfailed (the known PARITY gaps), 2 errors in `test_gunicorn_gthread.py` that need a Linux gunicorn and fail on this Windows host before any test code runs. DEMO.md now states the receipt facts; its remaining TODOs are Mac-only facts (Add and Impact screens in the current build).
+
+## 2026-10-19 slow marker
+
+`backend/pytest.ini` registers `slow` (with `--strict-markers`; plain `pytest` still runs everything). PRs can run `pytest -m "not slow"`; main and nightly run all.
+
+Tagged (9 tests, ~22 s together): `test_gunicorn_gthread.py` (whole module, real gunicorn; 3.3 s and 3.1 s calls plus ~1.2 s teardown each), `test_backend_gaps.py::test_reachable_query_count_constant` (2.0 s), `test_donation_recipient.py::test_batch_query_count_constant_2_vs_20` (4 params, ~1.8 s each), `test_qa_pr79_gemini.py::test_real_sdk_honours_the_timeout_against_a_local_slow_server` (1.0 s, real socket).
+
+Numbers (TimescaleDB, 2967 tests): full run 445 s, 98.6% coverage. `-m "not slow"`: 444 s, 98.63% coverage, 2960 passed. `-m slow`: 9 passed in 22 s wall.
+
+Finding: the suite is slow because of volume, not outliers. Nothing but the gunicorn tests exceeds 2 s; the cost is a per-test fixture (autouse TRUNCATE ... CASCADE in `conftest.py`, 0.1-0.8 s setup), so tagging saves almost nothing. Speeding PR CI needs a cheaper reset (or pytest-xdist), not markers.
+
+### pytest-xdist (per-worker databases)
+
+Change (tests only): under xdist, `conftest.py` points each worker at its own database `fwr_test_<worker>` (`fwr_test_gw0`, `fwr_test_gw1`, ...), created on first use. Workers never share tables, the schema rebuild or the advisory lock. The per-test `TRUNCATE ... RESTART IDENTITY CASCADE` is unchanged, so ids still start at 1 in every test. Plain `pytest` without `-n` still uses `fwr_test` as before. The DATABASE_URL guard now compares against the caller's original value: the xdist controller overwrites `DATABASE_URL`, and the workers inherit that. `test_qa_pr79_crops.py::test_garbage_bytes` gave `os.urandom(4096)` a fixed id (`urandom-4096`). Before, the id came from random bytes, so the workers collected different node ids and xdist refused to run.
+
+Before/after (same Mac, TimescaleDB on :5434, 2969 tests = 2967 + the 2 marker tests; wall time from `/usr/bin/time -p`):
+
+| Run | Before (serial) | After (`-n 4`) | Result after |
+|---|---|---|---|
+| full, `--cov=app` | 445 s, 98.6% | 133.2 s, 98.63% | 2969 passed, 4 skipped, 7 xfailed |
+| `-m "not slow" --cov=app --cov-fail-under=80` | 444 s, 98.63% | 133.9 s, 98.63% | 2960 passed, 4 skipped, 7 xfailed; gate met |
+
+That is about 3.3x faster with identical counts and coverage. An iOS build shared the machine during both runs (load average 6-16). In the strategy trial on the base branch, `-n auto` (12 workers) took 79 s. Under xdist the slow tests overlap with the rest, so `-m "not slow"` no longer saves wall time.
+
+Leak checks: three random files (`test_gemini_retry.py`, `test_wave2_expiry_roundtrip.py`, `test_qa_pr79_contract.py`) were run alone, in forward order and in reverse order, both serially and with `-n 3`. All passed: 20, 18 and 49 alone; 87 forward and 87 reverse. `test_qa_pr79_crops.py` + `test_slow_marker.py` under `-n 3` gave 75 passed. `test_gunicorn_gthread.py` under `-n 2` gave 3 passed. Its gunicorn subprocess gets the worker's URL from `app.config["SQLALCHEMY_DATABASE_URI"]`; that comes from reading the code, not from checking the connection.
+
+Mutation check: with the TRUNCATE commented out, `test_items.py` had 7 failed, `test_qa_friend_qr.py` 5 failed and `test_wave2_freshness.py` 28 failed; with `-n 3`, the three files together had 32 failed. With the TRUNCATE restored (byte-identical `conftest.py`), they passed 18, 49 and 75, and 142 with `-n 3` in both orders. `test_removal.py` passes 26/26 even with no reset, so it is not useful as a canary.
+
+CI follow-up (not done here): add `pytest-xdist==3.6.1` to `backend/requirements.txt` (it brings in `execnet==2.1.2`). Add `-n 4` to both pytest lines in `.github/workflows/backend.yml`. The CI Postgres role needs CREATEDB or superuser; the stock timescale image's `POSTGRES_USER` is superuser.

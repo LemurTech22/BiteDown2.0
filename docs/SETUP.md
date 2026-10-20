@@ -85,7 +85,7 @@ xcodebuild test -project FoodWasteReducer.xcodeproj -scheme FoodWasteReducer -te
 ```
 CI (`.github/workflows/ios.yml`) runs `Smoke` on every PR touching `ios/`. `Full` runs on pushes to `main`, nightly and on manual dispatch.
 
-Backend tests that are slow (real gunicorn, query-count scaling) carry `@pytest.mark.slow`. PR CI skips them with `-m "not slow"`; a plain local `pytest` runs everything.
+Backend tests that are slow (real gunicorn, query-count scaling) carry `@pytest.mark.slow`. PR CI skips them with `-m "not slow"`; a plain local `pytest` runs everything. Run the suite in parallel with `pytest -n auto` (pytest-xdist): each worker gets its own database, `fwr_test_gw<N>`, created on first use, so the test role needs `CREATEDB` (the compose and CI `fwr` role is a superuser).
 Test matrix: iPhone 17 Pro (iOS 26.5) for everything, plus an iPhone SE simulator at the largest
 accessibility text size for layout stress (create one with `xcrun simctl create "iPhone SE QA"
 "iPhone SE (3rd generation)" <iOS 26.5 runtime>` and `xcrun simctl ui <udid> content_size

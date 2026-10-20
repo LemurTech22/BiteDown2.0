@@ -14,7 +14,10 @@ Newest first. Each entry: date, decision, why, alternatives considered.
   - PRs run `pytest -m "not slow"`. `main`, nightly and manual runs execute everything.
   - `slow` is registered in `backend/pytest.ini` with `--strict-markers`. It tags 9 tests, the real-gunicorn and query-count ones.
   - Plain local `pytest` still runs everything.
-  - The marker alone barely helps: the suite is about 445 s because of a per-test `TRUNCATE` of every table. A cheaper reset is being measured (see `docs/qa/backend.md`).
+  - The marker alone barely helps: the suite takes about 445 s because of a per-test `TRUNCATE` of every table.
+  - **The suite runs in parallel instead:** `pytest -n 4` with pytest-xdist, one database per worker. That takes it from about 445 s to about 130 s with identical results.
+  - Three reset strategies were measured, each on the full suite twice (`docs/qa/backend.md`). Truncating only written tables was about 5% faster; truncating only non-empty tables was about 13% faster. Both kept identical results, but neither was enough on its own.
+  - Combining xdist with the non-empty reset is a possible follow-up, but only once it is measured.
 - **The merge gate is back to normal:** PRs wait for green CI, which replaces the 2026-10-11 checkpoint-12 "merge without waiting for CI" override.
 - **Alternatives considered:**
   - Shard the full UI suite across runners on every PR: more runner minutes for the same coverage of the demo path.

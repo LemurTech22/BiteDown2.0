@@ -44,13 +44,14 @@ jobs:
         run: |
           python -m venv .venv
           .venv/bin/pip install -r backend/requirements.txt
-      # PRs skip tests marked `slow` (real gunicorn, threads, worst-case timeouts); main, nightly and manual
+      # PRs skip tests marked `slow` (real gunicorn, query-count scaling); main, nightly and manual
       # runs execute the whole suite. Locally, plain `pytest` still runs everything.
       - name: pytest
         working-directory: backend
         run: |
+          # -n 4: one test database per xdist worker (fwr_test_gw0..3, created by conftest); 445 s -> ~130 s.
           if [ "${{ github.event_name }}" = "pull_request" ]; then
-            ../.venv/bin/pytest -q -m "not slow" --cov=app --cov-fail-under=80
+            ../.venv/bin/pytest -q -n 4 -m "not slow" --cov=app --cov-fail-under=80
           else
-            ../.venv/bin/pytest -q --cov=app --cov-fail-under=80
+            ../.venv/bin/pytest -q -n 4 --cov=app --cov-fail-under=80
           fi

@@ -746,6 +746,7 @@ def test_reachable_after_membership_change_matches_recipient(client, rw):
                     headers=rw.a["headers"]), 404)
 
 
+@pytest.mark.slow
 def test_reachable_query_count_constant(app, client, rw):
     it = rw.make_item(rw.a)
     share(client, rw.a, it)

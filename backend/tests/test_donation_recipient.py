@@ -472,6 +472,7 @@ def _count(app, fn):
     return n[0], r
 
 
+@pytest.mark.slow
 @pytest.mark.parametrize("case", ["omitted", "null", "friend", "mate"])
 def test_batch_query_count_constant_2_vs_20(app, client, signup, make_item, case):
     counts, base = {}, {}
