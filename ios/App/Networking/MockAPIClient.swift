@@ -30,6 +30,10 @@ actor MockAPIClient: APIClient {
     var signedInUser: User?
     private var callCounts: [String: Int] = [:]
     var nextID = 1
+    /// One `remove` event per item removed through this mock (keyed by item id), the way the backend writes
+    /// them. `impact(range:)` adds them to the fixture baseline; a restore deletes the item's entry, so Undo
+    /// leaves Impact exactly as it was. Actor-isolated like `items`.
+    var impactEvents: [String: MockImpactEvent] = [:]
     /// Friends, groups, Food Pantry, requests and people (see `MockSocialFixtures.swift`).
     var social: MockSocialState
 
@@ -125,6 +129,7 @@ actor MockAPIClient: APIClient {
     func deleteAccount() async throws {
         try await gate("deleteAccount")
         items.removeAll()
+        impactEvents.removeAll()
         signedInUser = nil
         await auth?.signOut()
     }
@@ -227,6 +232,7 @@ actor MockAPIClient: APIClient {
         items[i].outcome = outcome
         items[i].wasteReason = wasteReason
         items[i].removedAfterExpiry = items[i].predictedExpiry.map { Calendar.current.startOfDay(for: now) > $0 }
+        impactEvents[items[i].id] = MockImpact.event(for: items[i], outcome: outcome, wasteReason: wasteReason, at: now)
         if outcome == .donated, let share = items[i].share, share.status == .open {
             items[i].share = ItemShare(id: share.id, status: .fulfilled, claimedBy: share.claimedBy, audience: share.audience)
             if let l = social.listings.firstIndex(where: { $0.id == share.id }) {
@@ -260,6 +266,7 @@ actor MockAPIClient: APIClient {
             }
         }
         items[i].removedAt = nil; items[i].outcome = nil; items[i].wasteReason = nil; items[i].removedAfterExpiry = nil
+        impactEvents[items[i].id] = nil  // the backend deletes the item's remove event on restore
     }
 
     func removeBatch(ids: [String], outcome: RemoveOutcome, recipient: RecipientChoice) async throws -> [Item] {
@@ -329,7 +336,9 @@ actor MockAPIClient: APIClient {
 
     func impact(range: ImpactRange) async throws -> Impact {
         try await gate("impact")
-        return behavior.emptyImpact ? MockData.emptyImpact(range: range) : MockData.impact(range: range)
+        // Fixture baseline plus this session's removals (restores already dropped theirs).
+        let base = behavior.emptyImpact ? MockData.emptyImpact(range: range) : MockData.impact(range: range)
+        return MockImpact.apply(Array(impactEvents.values), to: base, range: range)
     }
 
     func tips() async throws -> [Tip] { try await gate("tips"); return MockData.tips }
