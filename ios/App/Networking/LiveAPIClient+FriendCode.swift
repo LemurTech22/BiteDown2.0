@@ -28,7 +28,7 @@ extension LiveAPIClient {
         guard let http = response as? HTTPURLResponse else { throw APIError.network("No HTTP response") }
         guard (200..<300).contains(http.statusCode) else {
             if http.statusCode == 401 {
-                if await auth.token == usedToken { await auth.expireSession() }
+                await auth.expireSession(ifTokenIs: usedToken)
                 throw APIError.unauthorized
             }
             if let body = try? APICoding.decoder.decode(APIErrorBody.self, from: data) {

@@ -158,7 +158,7 @@ final class LiveAPIClient: APIClient {
         guard (200..<300).contains(http.statusCode) else {
             if http.statusCode == 401 && authenticated {
                 // Only if the session that made this request is still current (a newer sign-in survives).
-                if await auth.token == usedToken { await auth.expireSession() }
+                await auth.expireSession(ifTokenIs: usedToken)
                 throw APIError.unauthorized
             }
             if let body = try? APICoding.decoder.decode(APIErrorBody.self, from: data) {
