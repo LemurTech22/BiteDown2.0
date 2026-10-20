@@ -105,6 +105,7 @@ Detail lives in [`qa/backend.md`](qa/backend.md) and [`qa/ml.md`](qa/ml.md). The
 | 2026-10-11 | #88 | ML-69: the classifier is never RAM-cached (Jose) | ML QA by the teammate's own sessions (`docs/qa/ml.md`, "Addendum: ML-69 fix re-check"); CI green | PASS (self) | **Merged on the owner's instruction without independent QA.** ML-69 fixed |
 | 2026-10-11 | #89 | ML: opt-in compose `ml` service, `OCR_BACKEND=off`, the serve Dockerfile (Jose) | ML QA by the teammate's own sessions (`docs/qa/ml.md`, "ML QA for the compose `ml` service"); the builder's live container run (`source: "yolo"`); compose and `.env.example` reviewed by `food-main`; CI green | PASS (self) | **Merged on the owner's instruction without independent QA.** ML-70/71/72 fixed |
 | 2026-10-11 | #90 | ML: run log for `fwr_20261011` (docs only) | Review only | n/a (docs) | **Merged on the owner's instruction without independent QA.** The model is **not scored**: no metrics from it may be quoted |
+| 2026-10-19 | #125 | iOS | iOS QA over 4 review rounds (independent reviewer + 4 Codex rounds). Restored the Fridge session reload, the single-remove 409/decode-keeps-removal rule, batch-409 per-item reconcile (remove-batch is atomic; Undo dropped), batch decode-after-2xx success, stale-token 401 (atomic compare-and-expire), banner-retry toast; restored `FridgeSessionTests` and the page-sweep tests; order-independent removal asserts; AX5 Home pill. Full unit target 540 executed / 3 skipped / 0 failed, twice with parallel testing. Orchestrator mutation check: load generation guard, 409-keep rule and stale-token check each turn their tests red | **PASS** | IOS-74 (low) |
 
 **Not yet tested anywhere:** the live ML service and YOLO accuracy (paused: a teammate owns the models), GLM-OCR image-to-text, Google Sign-In end to end, and the integration demo path.
 
@@ -149,6 +150,8 @@ Severity: **blocker** (breaks demo path) · high · medium · low. Full repros a
 | IOS-4 – IOS-11 | medium/low | iOS | Foundation review and QA findings (tab selection after Add, date decoding, AX5 toast wrapping, a11y ids, ad-hoc sizes); detail in `qa/ios.md` | fixed (#47) |
 | IOS-12 | medium | iOS | Shared error-state "Try again" buttons were 28 pt (below 44 pt) | fixed (#64) |
 | IOS-13 | low | iOS | XCUITest still sees each row's food-group icon by asset name despite `accessibilityHidden`. Needs a real-VoiceOver check on a device | open: Item detail PR |
+| IOS-73 | low | iOS | A same-user token refresh refetched a storage already showing items (port of 9997699 called `load` instead of `loadIfNeeded`) | fixed (#125) |
+| IOS-74 | low | iOS | A batch remove that gets 409 settles by listing only the items' cached storages. An item another device moved to a different storage in the same seconds is treated as removed and stays hidden until the next refresh (Codex review round 4, #125). Fix: list all active items when settling | open |
 | ML-1 – ML-6 | medium/low | ML | Receipt parser: qty-first lines, trailing UPCs, Costco item numbers, "Merchandise Total", EUR totals, OCR-spaced decimals | fixed (#3) |
 | ML-7 – ML-9 | medium/low | ML | Mixed-case total phrases, voided items, and multi-buy lines | fixed (#8) |
 | ML-10 | medium | ML | Products containing a skip word were dropped (`INSTANT OATMEAL`) | fixed (#8) |
