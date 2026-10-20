@@ -10,6 +10,8 @@ enum HID {
     static let banner = "home.banner", bannerRetry = "home.banner.retry"
     static let server = "home.server", serverChange = "home.server.change"
     static let empty = "home.empty", error = "home.error", retry = "home.error.retry", loading = "home.loading"
+    /// Impact, opened by the pill (`AccessibilityID.Impact`).
+    static let impact = "impact", impactBack = "impact.back", impactHeroValue = "impact.hero.value"
     /// `@AppStorage` key of the dismissed tip message.
     static let dismissedKey = "home.dismissedTip"
     static let ax5 = ["-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryAccessibilityXXXL"]
@@ -92,8 +94,15 @@ final class HomeUITests: XCTestCase {
         XCTAssertTrue(pill.label.contains("30 days"), pill.label)
         XCTAssertTrue(pill.isHittable)
         XCTAssertGreaterThanOrEqual(pill.frame.height, 43.5)
-        pill.tap()   // Impact is a later PR: tapping must not crash or leave Home.
-        XCTAssertTrue(app.home(HID.greeting).exists)
+        // The pill opens Impact full screen (a cover over the tabs) and Back returns to Home.
+        pill.tap()
+        XCTAssertTrue(app.home(HID.impact).waitForExistence(timeout: 15), "the pill did not open Impact")
+        XCTAssertTrue(app.home(HID.impactHeroValue).waitForExistence(timeout: 15), "Impact opened without its hero value")
+        let back = app.buttons[HID.impactBack]
+        XCTAssertTrue(back.waitForExistence(timeout: 10), "Impact has no Back button")
+        back.tap()
+        XCTAssertTrue(app.home(HID.impact).waitForNonExistence(timeout: 10), "Impact stayed open after Back")
+        XCTAssertTrue(app.home(HID.pill).waitForExistence(timeout: 10), "Home did not come back")
     }
 
     func testCookTonightCardShowsTheRecipeAndWhatItUses() {

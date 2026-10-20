@@ -34,6 +34,7 @@
         "FridgePolishUITests/testUsedThemThenUndoRestoresAllRows()",
         "FridgeUITests/testErrorStateAndRetry()",
         "FridgeUITests/testGroupsFollowDesignOrderWithCounts()",
+        "HomeUITests/testImpactPillShowsTheMonthInPoundsAndIsATappableButton()",
         "LaunchUITests/testAppLaunchesToTabBar()",
         "RemoveFlowUITests/testThrewAwayPushesReasonThenRemoves()",
         "RemoveFlowUITests/testUndoRestoresRowWithoutHaptic()",

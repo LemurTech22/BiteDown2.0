@@ -11,17 +11,16 @@ private enum DID {
     static let detailExpiry = "itemdetail.expiry"
     static let detailRemove = "itemdetail.remove"
     static let impactPill = "home.impact"
-    /// `impact` (AccessibilityID.Impact.screen) is not attached to ImpactView yet; the title marks the screen.
-    static let impact = "impact.title"
+    static let impact = "impact"
     static let impactValue = "impact.hero.value"
+    static let impactBack = "impact.back"
 }
 
-/// The merge-gate demo path on the mock API, end to end: Add → photo → review → add → Fridge →
-/// open the new item (expiry shown) → remove it as Used → Home's Impact pill → the Impact screen loads.
-/// The removal is checked in the Fridge (the row disappears). The Impact step is navigation only: the mock's
-/// Impact is a fixed fixture (`MockData.impact`) that removals never change, so it can't prove that removing
-/// an item updates Impact. That needs a removal-aware mock first.
-/// Runs in the PR Smoke plan. Waits are generous upper bounds for slow CI runners, never speed checks.
+/// The merge-gate demo path on the mock API, end to end: Home's Impact pill (Food saved before) → Add → photo →
+/// review → add → Fridge → open the new item (expiry shown) → remove it as Used → Home's Impact pill → Impact
+/// shows MORE Food saved than before. The mock's Impact follows removals (`MockImpact`), so the last step proves
+/// that removing an item moves Impact. Runs in the PR Smoke plan. Waits are generous upper bounds for slow CI
+/// runners, never speed checks.
 final class DemoPathUITests: XCTestCase {
     override func setUp() { continueAfterFailure = false }
 
@@ -29,6 +28,11 @@ final class DemoPathUITests: XCTestCase {
         // Default `fridge` seed (the `empty` seed also zeroes Impact). Created mock items get ids `item-new-<n>`.
         let app = XCUIApplication.mockSignedIn(RemoveArgs.undoWindow)
         XCTAssertTrue(app.tab(ID.add).waitForExistence(timeout: 20), "tab bar missing")
+
+        // Baseline: open Impact from Home, read Food saved, close.
+        let savedBefore = openImpactAndReadFoodSaved(app)
+        attachScreenshot(app, name: "demo-impact-before")
+        closeImpact(app)
 
         // Add → Snap a photo (the mock uses a stand-in photo; no camera in the Simulator).
         app.tab(ID.add).tap()
@@ -82,17 +86,44 @@ final class DemoPathUITests: XCTestCase {
         XCTAssertTrue(app.any(DID.detail).waitForNonExistence(timeout: 10), "Item detail stayed open")
         XCTAssertTrue(app.any(rowID).waitForNonExistence(timeout: 10), "removed row still in the Fridge")
 
-        // Home → Impact pill → the Impact screen loads with a value. Navigation only: the mock's Impact is a
-        // static fixture, so this does not check that the Used removal above changed it.
+        // Home → Impact pill → Food saved went up: the Used removal above is in Impact.
         app.tab(ID.home).tap()
+        let savedAfter = openImpactAndReadFoodSaved(app)
+        attachScreenshot(app, name: "demo-impact-after")
+        XCTAssertGreaterThan(savedAfter, savedBefore, "removing an item as Used did not raise Food saved (before \(savedBefore) lb, after \(savedAfter) lb)")
+    }
+
+    /// Taps Home's Impact pill, waits for the Impact screen and its hero value, and returns Food saved in pounds.
+    /// Impact stays open.
+    private func openImpactAndReadFoodSaved(_ app: XCUIApplication) -> Double {
         let pill = app.any(DID.impactPill)
         XCTAssertTrue(pill.waitForExistence(timeout: 15), "Impact pill missing on Home")
         pill.tap()
         XCTAssertTrue(app.any(DID.impact).waitForExistence(timeout: 15), "Impact did not open")
         let value = app.any(DID.impactValue)
         XCTAssertTrue(value.waitForExistence(timeout: 15), "Impact hero value missing")
-        XCTAssertNotNil(value.label.range(of: #"\d"#, options: .regularExpression), "Impact screen loaded without a value: '\(value.label)'")
-        attachScreenshot(app, name: "demo-impact")
+        guard let pounds = Self.pounds(fromHeroLabel: value.label) else {
+            XCTFail("Impact screen loaded without a readable value: '\(value.label)'")
+            return 0
+        }
+        return pounds
+    }
+
+    private func closeImpact(_ app: XCUIApplication) {
+        let back = app.buttons[DID.impactBack]
+        XCTAssertTrue(back.waitForExistence(timeout: 10), "Impact has no Back button")
+        back.tap()
+        XCTAssertTrue(app.any(DID.impact).waitForNonExistence(timeout: 10), "Impact stayed open after Back")
+    }
+
+    /// "Food saved, 23.2 pounds" (also "5 ounces", "1.4 kilograms", "250 grams") as pounds.
+    private static func pounds(fromHeroLabel label: String) -> Double? {
+        guard let r = label.range(of: #"[0-9]+(\.[0-9]+)?"#, options: .regularExpression), let n = Double(label[r]) else { return nil }
+        let l = label.lowercased()
+        if l.contains("ounce") { return n / 16 }
+        if l.contains("kilogram") { return n * 2.20462262 }
+        if l.contains("gram") { return n * 0.00220462262 }
+        return n
     }
 
     private func waitFor(_ element: XCUIElement, _ predicate: String, timeout: TimeInterval) -> Bool {
