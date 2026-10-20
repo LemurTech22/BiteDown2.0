@@ -4,12 +4,15 @@ on:
     paths: ["backend/**", "docker-compose.yml", ".github/workflows/backend.yml"]
   push:
     branches: [main]
-    paths: ["backend/**"]
+    paths: ["backend/**", "docker-compose.yml", ".github/workflows/backend.yml"]
+  schedule:
+    - cron: "47 7 * * *" # nightly full suite incl. slow tests, 07:47 UTC
+  workflow_dispatch:
 
 concurrency:
   # PRs: a new push cancels the stale run. main: runs queue and are never cancelled mid-run, so the full
   # UI suite on main always completes.
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
@@ -35,10 +38,19 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
       - name: Install into a venv
         run: |
           python -m venv .venv
           .venv/bin/pip install -r backend/requirements.txt
+      # PRs skip tests marked `slow` (real gunicorn, threads, worst-case timeouts); main, nightly and manual
+      # runs execute the whole suite. Locally, plain `pytest` still runs everything.
       - name: pytest
         working-directory: backend
-        run: ../.venv/bin/pytest -q --cov=app --cov-fail-under=80
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            ../.venv/bin/pytest -q -m "not slow" --cov=app --cov-fail-under=80
+          else
+            ../.venv/bin/pytest -q --cov=app --cov-fail-under=80
+          fi

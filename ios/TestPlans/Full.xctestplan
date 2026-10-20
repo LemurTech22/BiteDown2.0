@@ -1,0 +1,36 @@
+{
+  "configurations": [
+    {
+      "id": "3F1A6B52-7C1E-4E0B-9D7A-2B5F0C1E9A01",
+      "name": "Configuration 1",
+      "options": {}
+    }
+  ],
+  "defaultOptions": {
+    "codeCoverage": false,
+    "targetForVariableExpansion": {
+      "containerPath": "container:FoodWasteReducer.xcodeproj",
+      "identifier": "E018AE982FA4D3576C7D99E0",
+      "name": "FoodWasteReducer"
+    }
+  },
+  "testTargets": [
+    {
+      "parallelizable": false,
+      "target": {
+        "containerPath": "container:FoodWasteReducer.xcodeproj",
+        "identifier": "6EAF5482502300CD5C526BB8",
+        "name": "FoodWasteReducerTests"
+      }
+    },
+    {
+      "parallelizable": false,
+      "target": {
+        "containerPath": "container:FoodWasteReducer.xcodeproj",
+        "identifier": "C384B46D4FBA3C4B993A2329",
+        "name": "FoodWasteReducerUITests"
+      }
+    }
+  ],
+  "version": 1
+}

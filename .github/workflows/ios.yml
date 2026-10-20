@@ -4,12 +4,15 @@ on:
     paths: ["ios/**", ".github/workflows/ios.yml"]
   push:
     branches: [main]
-    paths: ["ios/**"]
+    paths: ["ios/**", ".github/workflows/ios.yml"]
+  schedule:
+    - cron: "17 7 * * *" # nightly Full plan, 07:17 UTC (off the busy top of the hour)
+  workflow_dispatch:
 
 concurrency:
-  # PRs: a new push cancels the stale run. main: runs queue and are never cancelled mid-run, so the full
-  # UI suite on main always completes.
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  # PRs: a new push cancels the stale run. Other events never cancel a run in progress. Each event type gets its own
+  # group, so a nightly or manual run can't replace a queued main push run (GitHub keeps one pending run per group).
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
@@ -17,26 +20,55 @@ jobs:
     # macos-26 image: Xcode 26.x with the iOS 26 SDK and iPhone 17 simulators
     # (verified in actions/runner-images images/macos/macos-26-arm64-Readme.md).
     runs-on: macos-26
+    # PRs run the Smoke plan (unit tests + the demo-path UI smoke set); main, nightly and manual runs use Full.
+    timeout-minutes: ${{ github.event_name == 'pull_request' && 35 || 75 }}
     env:
       XCODE_APP: /Applications/Xcode_26.6.app
       SIM_NAME: iPhone 17 Pro
+      XCODEGEN_VERSION: 2.45.4
+      PLAN: ${{ github.event_name == 'pull_request' && 'Smoke' || 'Full' }}
     steps:
       - uses: actions/checkout@v4
       - name: Select Xcode 26.6
         run: |
           sudo xcode-select -s "$XCODE_APP/Contents/Developer"
           xcodebuild -version
-      - name: Install XcodeGen
-        run: brew install xcodegen
+      - name: Pick the iOS 26.5 simulator and boot it (it finishes booting while the build runs)
+        run: |
+          UDID=$(xcrun simctl list devices available -j | python3 -c "import json,sys; d=json.load(sys.stdin)['devices']; print(next(x['udid'] for k,v in d.items() if k.endswith('iOS-26-5') for x in v if x['name']==sys.argv[1]))" "$SIM_NAME")
+          echo "SIM_UDID=$UDID" >> "$GITHUB_ENV"
+          xcrun simctl boot "$UDID" || true
+      - name: Cache XcodeGen
+        id: xcodegen-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/xcodegen
+          key: xcodegen-${{ env.XCODEGEN_VERSION }}
+      - name: Install XcodeGen (pinned release, not brew)
+        if: steps.xcodegen-cache.outputs.cache-hit != 'true'
+        run: |
+          curl -fsSL -o /tmp/xcodegen.zip \
+            "https://github.com/yonaskolb/XcodeGen/releases/download/$XCODEGEN_VERSION/xcodegen.zip"
+          unzip -q /tmp/xcodegen.zip -d /tmp/xcodegen-unzip
+          mkdir -p ~/xcodegen && cp -R /tmp/xcodegen-unzip/xcodegen/* ~/xcodegen/
       - name: Generate project
         working-directory: ios
-        run: xcodegen generate
-      # PRs: build everything (UI tests included) but run only the unit tests (~5 min). The XCUITest suites
-      # run locally by each screen's iOS QA on Simulators before sign-off, and in full here on every push to main.
-      - name: Build and test
+        run: ~/xcodegen/bin/xcodegen generate
+      - name: Cache Swift packages
+        uses: actions/cache@v4
+        with:
+          path: ios/.spm
+          key: spm-${{ hashFiles('ios/project.yml') }}
+      - name: Build for testing
         working-directory: ios
         run: |
-          SKIP=""
-          if [ "${{ github.event_name }}" = "pull_request" ]; then SKIP="-skip-testing:FoodWasteReducerUITests"; fi
-          xcodebuild test -project FoodWasteReducer.xcodeproj -scheme FoodWasteReducer \
-            -destination "platform=iOS Simulator,name=$SIM_NAME,OS=26.5" CODE_SIGNING_ALLOWED=NO $SKIP
+          xcodebuild build-for-testing -project FoodWasteReducer.xcodeproj -scheme FoodWasteReducer \
+            -testPlan "$PLAN" -destination "platform=iOS Simulator,id=$SIM_UDID" \
+            -derivedDataPath DD -clonedSourcePackagesDirPath .spm \
+            CODE_SIGNING_ALLOWED=NO COMPILER_INDEX_STORE_ENABLE=NO -quiet
+      - name: Test (${{ env.PLAN }} plan)
+        working-directory: ios
+        run: |
+          xcodebuild test-without-building -project FoodWasteReducer.xcodeproj -scheme FoodWasteReducer \
+            -testPlan "$PLAN" -destination "platform=iOS Simulator,id=$SIM_UDID" \
+            -derivedDataPath DD -clonedSourcePackagesDirPath .spm CODE_SIGNING_ALLOWED=NO

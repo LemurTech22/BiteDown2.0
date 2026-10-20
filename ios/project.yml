@@ -102,4 +102,9 @@ schemes:
       targets:
         FoodWasteReducer: all
     test:
-      targets: [FoodWasteReducerTests, FoodWasteReducerUITests]
+      # Test plans live in ios/TestPlans. Smoke runs on PRs, Full on main/nightly (see .github/workflows/ios.yml).
+      # CI always passes -testPlan; Full is the default so a plain `xcodebuild test` / Cmd-U still runs every test.
+      testPlans:
+        - path: TestPlans/Full.xctestplan
+          defaultPlan: true
+        - path: TestPlans/Smoke.xctestplan
