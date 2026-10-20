@@ -12,53 +12,57 @@ checkpoints. **Since checkpoint 10:** `food-modal-test` (iOS simulator test pass
 merges on the Mac; `food-main` reviews the Auth PR. All of them update this file and the affected `docs/` at
 every checkpoint (`CLAUDE.md` Rules). Rules: [`CLAUDE.md`](CLAUDE.md)._
 
-## Checkpoint 13 (2026-10-19): revamp started. Read this first
-**Owner's goal (2026-10-19):** three phases, in order.
-- **A. Clean up and re-enable tests.** Branches, worktrees and PRs, then CI tests back on but short.
-- **B. Web design.** Add web layouts to the design canvas. **Stop for the owner's review** before C.
-- **C. Rewrite.** Rebuild the frontend as an Expo (React Native) universal app in `client/` for iOS and web. Swift stays until the RN app passes parity QA.
+## Checkpoint 13 (2026-10-20): Phase A done, Phase B awaiting owner review. Read this first
+**The owner's revamp, in three phases.** Plan: `~/.claude/plans/1-i-want-to-vivid-bachman.md` (owner-approved and Codex-reviewed).
+- **A. Clean up and shorten CI.** Done when this PR merges.
+- **B. Web design.** Built; next is review fixes, then the **owner's review**.
+- **C. Expo (React Native) universal app in `client/`, for iOS and web.** Not started. It waits for the owner to approve B.
 
-The full plan is in `~/.claude/plans/1-i-want-to-vivid-bachman.md` (owner-approved, Codex-reviewed).
+**Phase A: what landed**
+- **#124** merged (40ce577).
+- **#125** merged (6598c6a). It restored the Fridge session reload and the removal rules:
+  - a single-remove 409 or decode error keeps the removal;
+  - a batch 409 is checked item by item, since remove-batch is atomic;
+  - a batch whose 2xx body can't be decoded counts as a success;
+  - a 401 from a stale token is a compare-and-expire.
+  - QA PASS: 540 unit tests. Reviewed by one independent agent and 4 Codex rounds. IOS-74 (low) is still open.
+- **Branch cleanup:**
+  - 72 remote branches and 34 local branches deleted, plus 9 worktrees.
+  - Restore record: `../remote-branch-cleanup-2026-10-19.txt` (restore with `git push origin <sha>:refs/heads/<branch>`).
+  - Env backups: `../mldata/env-backups/`.
+  - The remote now has only `main`, `Jose_Branch`, `Truc_branch` and `feat/data-pipeline` (the owner keeps these).
+  - Dirty worktrees kept: `wt/fix-camera`, `wt/codex-backend-ci`, `wt/fmt-pr95`, `wt/glm-ocr`, plus LemurTech22's `colab`, `semi-data` and `pr21`.
+- **This PR (`chore/cleanup-ci`), which ends deadline mode:**
+  - **iOS:**
+    - XCTest plans. `Smoke` runs on PRs: every unit test plus 15 UI tests, including `DemoPathUITests`, about 4 min locally. `Full` runs on `main`, nightly and on manual dispatch.
+    - The mock's Impact follows removals, so the demo path proves a removal raises Food saved.
+  - **Backend:**
+    - pytest-xdist with one database per worker: 445 s down to about 130 s.
+    - A `slow` marker that PRs skip.
+  - **Workflows:** pinned XcodeGen, caches, split build and test steps, the simulator picked by UDID, per-event concurrency, nightly runs.
+- **Known red on `main`:** 9 UI tests fail in the Full plan (IOS-75 to IOS-78, in `docs/QA.md`). They predate this PR, because deadline mode skipped UI tests on PRs. Fix them before relying on the nightly Full run.
 
-- **Owner rulings (2026-10-19):**
-  - Delete merged branches and worktrees only. Keep the dirty worktrees (`fix-camera`, `codex-backend-ci`, `fmt-pr95`, `glm-ocr`), `Jose_Branch`, `Truc_branch` and LemurTech22's data branches.
-  - Merge #124 and fix #125.
-  - #125 restores `FridgeModel.sessionChanged` and its 18 tests. It also restores "a 409 `already_removed` or decode-after-2xx keeps a single removal". Batch removes reconcile per item.
-  - CI: PRs run the unit tests plus about 16 UI smoke tests (XCTest test plan); the full suite runs on `main` and nightly. The backend gets a `slow` marker.
-  - **This ends deadline mode:** PRs wait for green CI again once the shorter CI lands.
-  - The web is local-first (local Docker API, CORS for localhost). Vercel and a hosted API get decided after parity.
-  - Extras: Playwright e2e in Chrome, Swift↔RN screenshot parity, axe/Lighthouse.
-  - QA-agent rule on: one independent QA agent per screen group, in Chrome, against the local web build.
-  - Skills impeccable, Taste and Web Design Guidelines: the owner installs them before phase B.
-- **Done (2026-10-19):**
-  - **#124 merged** (40ce577).
-  - **Deleted 69 merged remote branches and 32 local branches.**
-  - **Removed 7 worktrees:** `api-migrate`, `fg-followups`, `fix-launch`, `fix-impact-r4`, `food-group`, `fmt-main`, `fmt-pr104`. Also removed the `dd-*` DerivedData folders and logs in `../wt`.
-  - **Restore record:** `../remote-branch-cleanup-2026-10-19.txt` has a SHA for every branch. Restore one with `git push origin <sha>:refs/heads/<branch>`.
-  - **Env backups:** the worktrees' ignored `.env` and `Local.xcconfig` files are in `../mldata/env-backups/<worktree>/` (mode 600).
-  - **Remaining remote branches:** `main`, `Jose_Branch`, `Truc_branch`, `feat/data-pipeline`, `fix/codex-ios-ci` (#125), `qa/page-sweep-2026-10-11` (the restore source for #125), and `docs/checkpoint-12` (merged, delete next).
-- **#125 merged (6598c6a, 2026-10-19).**
-  - It restores the Fridge session reload and the removal rules: a single-remove 409 keeps the removal; a batch 409 checks each item (remove-batch is atomic); a batch whose 2xx body can't be decoded counts as a success; a 401 from a stale token is a compare-and-expire.
-  - Tests are restored. iOS QA PASS: 540 unit tests, 0 failed, twice.
-  - Reviewed by 1 independent agent and 4 Codex rounds.
-  - **Left open:** IOS-74 (low).
-- **Branches:** `fix/codex-ios-ci`, `docs/checkpoint-12` and `qa/page-sweep-2026-10-11` are deleted. Their SHAs are in the restore record. The remote now has `main`, `Jose_Branch`, `Truc_branch` and `feat/data-pipeline`.
-- **In flight:**
-  - Phase A CI work on `chore/cleanup-ci` (`wt/cleanup-ci`, rebased on 6598c6a):
-    - Smoke/Full test plans and the demo-path UI test;
-    - backend runs in parallel (xdist, 445 s → about 130 s) with a `slow` marker;
-    - workflow fixes.
-  - Follow-up in progress: the mock's Impact reflects removals, so the demo-path test proves the remove changed Impact; the stale Home pill UI test is fixed and back in Smoke. Then the PR.
-  - Phase B on `design/web` (`wt/design-web`):
-    - `docs/design/WEB.md`;
-    - 14 fluid web artboards (light and dark) published to the canvas's new **Web** / **Web (dark)** pages.
-    - **Stop for the owner's review** before Phase C.
-  - The impeccable and Taste skills are NOT installed: the auto-mode classifier blocked vendoring them, and their quarantined copies were reviewed. Phase B used the installed `frontend-design`, `design` and `audit-suite` plugins.
-  - The #125 fix on `fix/codex-ios-ci` (`wt/codex-ios-ci`).
-- **Resume:**
-  - `git -C ../wt/cleanup-ci log --oneline -5`
-  - `gh pr list --state open`
-  - Then follow the plan's next unchecked step.
+**Phase B: `design/web` (`wt/design-web`), not merged**
+- **What exists:**
+  - `docs/design/WEB.md`: breakpoints, the shell, how each of the 42 screens works on the web, the implementation contract and shared patterns.
+  - 14 fluid web artboards, light and dark, on the canvas's **Web** / **Web (dark)** pages. Only Home is published so far (canvas v57).
+  - `docs/design/tools/mkdark.py` now maps `color-scheme`.
+  - DESIGN_SYSTEM has a new `fieldBorder` token, **pending the owner's review**.
+- **Review:** a design critique, a web-guidelines review and a WCAG audit ran.
+  - Round 1 fixes are done: the shell (spliced into all 12 shell artboards; the splice script is in `scratchpad/shell-splice/`), Home, Landing and Log in.
+  - **Not done:** the family fixes for Fridge + Remove, Add + Photo review, Recipes + Impact + Settings, and Social + Connect. The agents stopped at a usage limit before writing anything, so the files are unchanged since b76a417.
+  - The fix lists are in `scratchpad/web-ref/FIX-COMMON.md` and in the round-1 messages (also in this plan's spirit). Rerun them per family, then publish all 28 files and stop for the owner.
+- **Questions for the owner:**
+  1. The dark-mode brand panel on Landing turns lime (`#B9D871`). Is that correct by the tokens, or should it be a dark-ground panel?
+  2. The `fieldBorder` token.
+  3. The phone tab bar shows icons only at 200% text.
+  4. Social on desktop: Yours and + sit beside Requests, per the round-3 ruling.
+- **Skills:** impeccable and Taste are NOT installed. The auto-mode classifier blocked vendoring them, and reviewed copies are in `scratchpad/quarantine/`. Phase B used the installed `frontend-design`, `design` and `audit-suite` plugins.
+
+**Resume**
+- `git -C ../wt/design-web log --oneline -3`
+- `gh pr list --state open`
+- Then finish Phase B's family fixes, publish to the canvas, and stop for the owner's review.
 
 ## Checkpoint 12 (food-orch, 2026-10-11 late)
 - **Merged since checkpoint 11:** #109 (faster PR checks), #111 Home, #113 Add 2a, #115/#116 iOS ship batches, #118 friend QR + pickup, #95 receipt Gemini fallback, #104/#105 QA sweeps, #106 README, #122 launch-crash fix (`.handlesFriendLinks()` moved inside `.environment(env)`), #123 BE-52 receipt test fixtures; folds #114/#117/#119/#120/#121. No PRs open at writing.

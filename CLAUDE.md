@@ -149,3 +149,10 @@ outcome is how waste is measured. Product: [`docs/IDEA.md`](docs/IDEA.md). Statu
   `accessibilityIdentifier`s (`screen.element.id`).
 - Tests: `backend/tests/test_<area>.py`, `ios/Tests/{UnitTests,UITests}`, `ml/eval/tests`,
   `pipeline/tests`.
+- **iOS test plans** (`ios/TestPlans/`):
+  - **Smoke** gates every PR: all unit tests plus the UI smoke set, including `DemoPathUITests`, the merge-gate demo path. A UI test for a demo-path step belongs in Smoke.
+  - **Full** runs on `main`, nightly and on manual dispatch.
+  - Run them with `xcodebuild … -testPlan Smoke|Full`.
+- **Backend tests:**
+  - Run in parallel with `pytest -n auto` (pytest-xdist; each worker uses its own `fwr_test_gw<N>` database).
+  - Tag a test `@pytest.mark.slow` only if it really is slow (real servers, scaling checks). PR CI skips those, and `main` and nightly run everything.
