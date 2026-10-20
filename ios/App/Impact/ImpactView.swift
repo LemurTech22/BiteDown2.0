@@ -33,6 +33,10 @@ struct ImpactView: View {
         .toolbar(.hidden, for: .navigationBar)
         .task { await model.loadIfNeeded() }
         .accessibilityIdentifier(AccessibilityID.Impact.scroll)
+        // Screen root: its own container element, so `impact` marks the screen while the scroll view and
+        // every child keep their own identifiers (same pattern as the hero card).
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier(screen)
     }
 
     // MARK: Header

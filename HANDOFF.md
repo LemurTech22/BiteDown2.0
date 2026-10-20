@@ -2,7 +2,7 @@
 
 _The app is **BiteDown** (owner, 2026-10-10; see `docs/DECISIONS.md`). Internal names such as `FoodWasteReducer` stay._
 
-_Last updated: 2026-10-11 (checkpoint 12). **`food-main` (VPS) orchestrates**: it plans, rules, reviews and merges,
+_Last updated: 2026-10-19 (checkpoint 13; see below). Older text from 2026-10-11: **`food-main` (VPS) orchestrates**: it plans, rules, reviews and merges,
 and owns the canvas and the orchestrator docs. **`food-main-mac` (the Mac) does all the building**: builder + QA
 sub-agents (**Sonnet**, owner preference), Xcode and simulators, Docker and every test run, plus any
 `.github/workflows` push. The owner also lets the Mac merge a PR when it judges it ready, and edit the canvas when
@@ -12,7 +12,59 @@ checkpoints. **Since checkpoint 10:** `food-modal-test` (iOS simulator test pass
 merges on the Mac; `food-main` reviews the Auth PR. All of them update this file and the affected `docs/` at
 every checkpoint (`CLAUDE.md` Rules). Rules: [`CLAUDE.md`](CLAUDE.md)._
 
-## Checkpoint 12 (food-orch, 2026-10-11 late): read this first
+## Checkpoint 13 (2026-10-20): Phase A done, Phase B awaiting owner review. Read this first
+**The owner's revamp, in three phases.** Plan: `~/.claude/plans/1-i-want-to-vivid-bachman.md` (owner-approved and Codex-reviewed).
+- **A. Clean up and shorten CI.** Done when this PR merges.
+- **B. Web design.** Built; next is review fixes, then the **owner's review**.
+- **C. Expo (React Native) universal app in `client/`, for iOS and web.** Not started. It waits for the owner to approve B.
+
+**Phase A: what landed**
+- **#124** merged (40ce577).
+- **#125** merged (6598c6a). It restored the Fridge session reload and the removal rules:
+  - a single-remove 409 or decode error keeps the removal;
+  - a batch 409 is checked item by item, since remove-batch is atomic;
+  - a batch whose 2xx body can't be decoded counts as a success;
+  - a 401 from a stale token is a compare-and-expire.
+  - QA PASS: 540 unit tests. Reviewed by one independent agent and 4 Codex rounds. IOS-74 (low) is still open.
+- **Branch cleanup:**
+  - 72 remote branches and 34 local branches deleted, plus 9 worktrees.
+  - Restore record: `../remote-branch-cleanup-2026-10-19.txt` (restore with `git push origin <sha>:refs/heads/<branch>`).
+  - Env backups: `../mldata/env-backups/`.
+  - The remote now has only `main`, `Jose_Branch`, `Truc_branch` and `feat/data-pipeline` (the owner keeps these).
+  - Dirty worktrees kept: `wt/fix-camera`, `wt/codex-backend-ci`, `wt/fmt-pr95`, `wt/glm-ocr`, plus LemurTech22's `colab`, `semi-data` and `pr21`.
+- **This PR (`chore/cleanup-ci`), which ends deadline mode:**
+  - **iOS:**
+    - XCTest plans. `Smoke` runs on PRs: every unit test plus 15 UI tests, including `DemoPathUITests`, about 4 min locally. `Full` runs on `main`, nightly and on manual dispatch.
+    - The mock's Impact follows removals, so the demo path proves a removal raises Food saved.
+  - **Backend:**
+    - pytest-xdist with one database per worker: 445 s down to about 130 s.
+    - A `slow` marker that PRs skip.
+  - **Workflows:** pinned XcodeGen, caches, split build and test steps, the simulator picked by UDID, per-event concurrency, nightly runs.
+- **Known red on `main`:** 9 UI tests fail in the Full plan (IOS-75 to IOS-78, in `docs/QA.md`). They predate this PR, because deadline mode skipped UI tests on PRs. Fix them before relying on the nightly Full run.
+
+**Phase B: `design/web` (`wt/design-web`), not merged**
+- **What exists:**
+  - `docs/design/WEB.md`: breakpoints, the shell, how each of the 42 screens works on the web, the implementation contract and shared patterns.
+  - 14 fluid web artboards, light and dark, on the canvas's **Web** / **Web (dark)** pages. Only Home is published so far (canvas v57).
+  - `docs/design/tools/mkdark.py` now maps `color-scheme`.
+  - DESIGN_SYSTEM has a new `fieldBorder` token, **pending the owner's review**.
+- **Review:** a design critique, a web-guidelines review and a WCAG audit ran.
+  - Round 1 fixes are done: the shell (spliced into all 12 shell artboards; the splice script is in `scratchpad/shell-splice/`), Home, Landing and Log in.
+  - **Not done:** the family fixes for Fridge + Remove, Add + Photo review, Recipes + Impact + Settings, and Social + Connect. The agents stopped at a usage limit before writing anything, so the files are unchanged since b76a417.
+  - The fix lists are in `scratchpad/web-ref/FIX-COMMON.md`, plus one list per family (Fridge, Add, Insights, Social) recorded in the session transcript. Rerun them per family, then publish all 28 files and stop for the owner.
+- **Questions for the owner:**
+  1. The dark-mode brand panel on Landing turns lime (`#B9D871`). Is that correct by the tokens, or should it be a dark-ground panel?
+  2. The `fieldBorder` token.
+  3. The phone tab bar shows icons only at 200% text.
+  4. Social on desktop: Yours and + sit beside Requests, per the round-3 ruling.
+- **Skills:** impeccable and Taste are NOT installed. The auto-mode classifier blocked vendoring them, and reviewed copies are in `scratchpad/quarantine/`. Phase B used the installed `frontend-design`, `design` and `audit-suite` plugins.
+
+**Resume**
+- `git -C ../wt/design-web log --oneline -3`
+- `gh pr list --state open`
+- Then finish Phase B's family fixes, publish to the canvas, and stop for the owner's review.
+
+## Checkpoint 12 (food-orch, 2026-10-11 late)
 - **Merged since checkpoint 11:** #109 (faster PR checks), #111 Home, #113 Add 2a, #115/#116 iOS ship batches, #118 friend QR + pickup, #95 receipt Gemini fallback, #104/#105 QA sweeps, #106 README, #122 launch-crash fix (`.handlesFriendLinks()` moved inside `.environment(env)`), #123 BE-52 receipt test fixtures; folds #114/#117/#119/#120/#121. No PRs open at writing.
 - **Owner rulings (deadline):** no heavy lock (parallel; each agent its own simulator + DerivedData); merge without waiting for CI; stop QA/CI work on PRs. Codex (GPT 6 SOL, `codex exec -m gpt-6-sol -c model_reasoning_effort=medium|high -s workspace-write`) may take tasks: own worktree, no secrets, no live Gemini, no force-push, never merge. Give `codex exec` `< /dev/null` or it hangs on stdin; use `-s danger-full-access` only when it must push/`gh pr create`.
 - **CI on main:** backend green (c44a8cc). **iOS red:** the test target doesn't compile (stale test doubles/tests from #105/#115/#116: missing `friendCode`/`addFriend`/`share(pickup)`/`updatePickup`, `showToastNow:`, `FridgeModel.sessionChanged`). Codex is fixing it on `fix/codex-ios-ci` (`wt/codex-ios-ci`) and opens its own PR. The app itself builds and runs.

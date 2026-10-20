@@ -84,7 +84,9 @@ def test_config_ceiling_lowers_the_limit(ctx, monkeypatch):
 
 
 # ---- corrupt, truncated and odd inputs ------------------------------------------------------------------------
-@pytest.mark.parametrize("data", [b"", b"x", b"\xff\xd8\xff", b"not an image at all" * 100, os.urandom(4096),
+@pytest.mark.parametrize("data", [b"", b"x", b"\xff\xd8\xff", b"not an image at all" * 100,
+                                   # explicit id: xdist workers must collect identical node ids
+                                   pytest.param(os.urandom(4096), id="urandom-4096"),
                                    b"GIF89a", b"\x89PNG\r\n\x1a\n" + b"\x00" * 50])
 def test_garbage_bytes(ctx, data):
     assert crops.make(data, [[0, 0, 100, 100], None]) == [None, None]

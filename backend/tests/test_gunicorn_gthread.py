@@ -19,6 +19,8 @@ from pathlib import Path
 
 import pytest
 
+pytestmark = pytest.mark.slow
+
 pytest.importorskip("gunicorn")
 requests = pytest.importorskip("requests")
 

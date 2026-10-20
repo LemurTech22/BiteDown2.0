@@ -1,0 +1,53 @@
+{
+  "configurations": [
+    {
+      "id": "8C2D4E61-0A3B-4F59-8E17-6D9B3A2C5F02",
+      "name": "Configuration 1",
+      "options": {}
+    }
+  ],
+  "defaultOptions": {
+    "codeCoverage": false,
+    "targetForVariableExpansion": {
+      "containerPath": "container:FoodWasteReducer.xcodeproj",
+      "identifier": "E018AE982FA4D3576C7D99E0",
+      "name": "FoodWasteReducer"
+    }
+  },
+  "testTargets": [
+    {
+      "parallelizable": false,
+      "target": {
+        "containerPath": "container:FoodWasteReducer.xcodeproj",
+        "identifier": "6EAF5482502300CD5C526BB8",
+        "name": "FoodWasteReducerTests"
+      }
+    },
+    {
+      "parallelizable": false,
+      "selectedTests": [
+        "AuthUITests/testLogInSuccessGoesToTabs()",
+        "AuthUITests/testServerDownShowsRetryAndRetryStaysOnError()",
+        "AuthUITests/testSignedOutShowsLandingNotTabs()",
+        "AuthUITests/testValidSessionGoesToTabs()",
+        "DemoPathUITests/testDemoPath()",
+        "FridgePolishUITests/testUsedThemThenUndoRestoresAllRows()",
+        "FridgeUITests/testErrorStateAndRetry()",
+        "FridgeUITests/testGroupsFollowDesignOrderWithCounts()",
+        "HomeUITests/testImpactPillShowsTheMonthInPoundsAndIsATappableButton()",
+        "LaunchUITests/testAppLaunchesToTabBar()",
+        "RemoveFlowUITests/testThrewAwayPushesReasonThenRemoves()",
+        "RemoveFlowUITests/testUndoRestoresRowWithoutHaptic()",
+        "RemoveFlowUITests/testUsedRemovesRowAndShowsToast()",
+        "TabShellUITests/testAddPresentsSheetAndKeepsHomeSelected()",
+        "TabShellUITests/testFiveTabsExist()"
+      ],
+      "target": {
+        "containerPath": "container:FoodWasteReducer.xcodeproj",
+        "identifier": "C384B46D4FBA3C4B993A2329",
+        "name": "FoodWasteReducerUITests"
+      }
+    }
+  ],
+  "version": 1
+}

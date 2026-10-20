@@ -43,3 +43,7 @@ pipeline/data/*
 
 # Per-developer signing config
 ios/Local.xcconfig
+
+# Swift packages cloned by CI-style builds (-clonedSourcePackagesDirPath)
+ios/.spm/
+ios/DD/

@@ -14,8 +14,45 @@ load_dotenv(BACKEND_ROOT / ".env")
 TEST_DB = os.environ.get("TEST_DATABASE_URL")
 if not TEST_DB:  # pragma: no cover
     raise RuntimeError("TEST_DATABASE_URL is not set")
-if TEST_DB == os.environ.get("DATABASE_URL"):  # pragma: no cover
+# The xdist controller imports this file first and overwrites DATABASE_URL below; workers inherit its
+# environment, so they check against the caller's original value, which the controller stashes here.
+os.environ.setdefault("_FWR_CALLER_DATABASE_URL", os.environ.get("DATABASE_URL", ""))
+if TEST_DB == os.environ["_FWR_CALLER_DATABASE_URL"]:  # pragma: no cover
     raise RuntimeError("TEST_DATABASE_URL must differ from DATABASE_URL")
+
+
+def _worker_db(url, worker):
+    """pytest-xdist: give each worker its own database (<name>_<worker_id>), created on first use.
+
+    Workers then never share tables, the schema rebuild, or the advisory lock (advisory locks are per database).
+    The gunicorn subprocess test inherits it via app.config["SQLALCHEMY_DATABASE_URI"]."""
+    import time
+
+    import psycopg
+    from psycopg import sql as pgsql
+    from sqlalchemy.engine import make_url
+
+    u = make_url(url)
+    name = f"{u.database}_{worker}"
+    admin = u.set(drivername="postgresql").render_as_string(hide_password=False)
+    for attempt in range(10):
+        try:
+            with psycopg.connect(admin, autocommit=True) as conn:
+                if conn.execute("SELECT 1 FROM pg_database WHERE datname = %s", (name,)).fetchone() is None:
+                    conn.execute(pgsql.SQL("CREATE DATABASE {}").format(pgsql.Identifier(name)))
+            break
+        except psycopg.errors.DuplicateDatabase:  # another process created it first
+            break
+        except psycopg.errors.ObjectInUse:  # template1 busy with a concurrent CREATE DATABASE: retry
+            time.sleep(0.2 * (attempt + 1))
+    else:  # pragma: no cover
+        raise RuntimeError(f"could not create per-worker test database {name}")
+    return u.set(database=name).render_as_string(hide_password=False)
+
+
+_XDIST_WORKER = os.environ.get("PYTEST_XDIST_WORKER")
+if _XDIST_WORKER:
+    TEST_DB = _worker_db(TEST_DB, _XDIST_WORKER)
 
 # Never let tests see real upstream config.
 os.environ["DATABASE_URL"] = TEST_DB

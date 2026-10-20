@@ -76,12 +76,16 @@ cd ios
 xcodegen generate            # creates FoodWasteReducer.xcodeproj (gitignored — re-run after editing project.yml); the app's display name is BiteDown
 open FoodWasteReducer.xcodeproj
 ```
-Tests from the command line:
+Tests from the command line. The scheme has two XCTest plans. `Smoke` is the default: all unit tests plus the UI smoke set, including the demo path. `Full` is every unit and UI test:
 ```bash
-xcodebuild test -project FoodWasteReducer.xcodeproj -scheme FoodWasteReducer \
+xcodebuild test -project FoodWasteReducer.xcodeproj -scheme FoodWasteReducer -testPlan Smoke \
+  -destination 'platform=iOS Simulator,name=iPhone 17 Pro'
+xcodebuild test -project FoodWasteReducer.xcodeproj -scheme FoodWasteReducer -testPlan Full \
   -destination 'platform=iOS Simulator,name=iPhone 17 Pro'
 ```
-CI (`.github/workflows/ios.yml`) runs the same on every PR touching `ios/`.
+CI (`.github/workflows/ios.yml`) runs `Smoke` on every PR touching `ios/`. `Full` runs on pushes to `main`, nightly and on manual dispatch.
+
+Backend tests that are slow (real gunicorn, query-count scaling) carry `@pytest.mark.slow`. PR CI skips them with `-m "not slow"`; a plain local `pytest` runs everything. Run the suite in parallel with `pytest -n auto` (pytest-xdist): each worker gets its own database, `fwr_test_gw<N>`, created on first use, so the test role needs `CREATEDB` (the compose and CI `fwr` role is a superuser).
 Test matrix: iPhone 17 Pro (iOS 26.5) for everything, plus an iPhone SE simulator at the largest
 accessibility text size for layout stress (create one with `xcrun simctl create "iPhone SE QA"
 "iPhone SE (3rd generation)" <iOS 26.5 runtime>` and `xcrun simctl ui <udid> content_size

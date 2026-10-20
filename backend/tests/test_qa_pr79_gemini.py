@@ -336,6 +336,7 @@ def test_plain_read_timeout_is_not_retried(app, client, user, monkeypatch, gemin
     assert len(fake.calls) == 1
 
 
+@pytest.mark.slow
 def test_real_sdk_honours_the_timeout_against_a_local_slow_server(app, monkeypatch, gemini_on):
     """Real google-genai 1.2.0 transport, local socket that never answers (not Google): the call must fail in
     about the configured timeout instead of hanging."""
