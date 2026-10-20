@@ -623,21 +623,28 @@ Scope: a bad merge (241366f) dropped commits 9997699 and 44916f3. #125 made the 
 ### CI failures: cause and fix
 `testThrownOutSendsReasonAndDonatedSendsRecipient` and `testRecipientChoiceIsPassedThroughUnchanged` indexed `spy.removes[0]` / `spy.choices[0...2]`. Removes run on separate per-item tails (`enqueue`), so their arrival order at the spy actor is not deterministic under parallel testing. Each test passes alone (run in isolation: 0 failures), so the cause is call order, not a per-item reordering bug (per-item order is covered by `testRemoveUndoRemoveUndoRunsInIssuedOrder`, `testRestoreNeverStartsBeforeItsRemoveEnds`, which pass). Fix: the spy records `choiceByID`; both tests assert per item id.
 
-### Guards and the test that goes red if one is removed (mutation notes for the orchestrator)
-| Guard (`FridgeModel.swift`) | Mutation | Red tests |
+### Guards and the test that goes red if one is removed (round 2, corrected)
+By reasoning, not by mutation (the orchestrator runs the mutations). Round 1 over-claimed: with disjoint item ids (the `long` fixture) a late failure from user A is already harmless because the switch clears `reconcile`, so those old tests do not detect a missing guard. The round-2 tests give B the SAME ids (`makeSameIds`) and keep B's own operation in flight (held gate), which makes a leak visible.
+| Guard / rule (`FridgeModel.swift`) | Mutation | Red tests |
 |---|---|---|
-| `load`: `guard gen == generation` after the await | delete it | `testUserSwitchDuringSlowLoadDiscardsOldResult`, `testSignOutDuringSlowLoadDiscardsOldResult` |
-| `enqueue`: `guard self?.generation == gen` before `work()` | delete it | `testRemoveInFlightThatSucceedsAfterSwitchLeaksNothingIntoB` (also needs the guard in `perform`'s catch for the two Fails tests) |
-| `perform` catch: `guard self.generation == gen` | delete it | `testRemoveInFlightThatFailsAfterSwitchDoesNotInsertARowIntoB`, `testRemoveInFlightThatFailsAfterSignOutShowsNothing` |
-| `undo`: `guard self.generation == gen` (success and failure) | delete both | `testRestoreInFlightThatFailsAfterSwitchShowsNoBannerInB`, `testRestoreInFlightThatSucceedsAfterSwitchLeaksNothingIntoB` |
-| `generation += 1` on user change | delete it | all five race tests above; `testDifferentUserAndSignOutBumpGenerationButTokenRefreshDoesNot` |
-| `generation += 1` also on same user (over-invalidating) | add it | `testRemoveInFlightSurvivesTokenRefresh`, `testDifferentUserAndSignOutBumpGenerationButTokenRefreshDoesNot` |
-| single remove 409 `already_removed` / decoding keeps the removal (`removeStands`, `!isBatch` return) | make it roll back | `testAlreadyRemoved409CountsAsSuccess`, `testDecodingErrorOnRemoveCountsAsSuccess`, `testUndoAfterAlreadyRemovedStillRestores` |
-| batch reconcile (`settleBatch`) | assume batch 409 removed everything | `testBatchAlreadyRemoved409OnlyRestoresItemsTheServerStillHas`, `testBatchDecodingErrorReconcilesPerItemToo` |
-| batch reconcile | roll back everything, even items the server removed | same test (chicken must stay hidden) |
-| batch reconcile, listing unreadable | do not restore | `testBatchAlreadyRemoved409WithUnreadableListingRestoresEverything` |
-| 401 only signs out for the current token (`LiveAPIClient.perform`) | always `expireSession()` | `testStaleTokenUnauthorizedKeepsNewerSession` (current-token 401 still signs out: `testUnauthorizedExpiresSession...` neighbours in the class) |
-| `remove(... showToastNow:)` from banner retry | ignore the flag | `testRetryFromBannerShowsToastImmediatelyAndLeavesNothingPending`, `testRetryThatFailsAgainClearsItsToastAndShowsBannerAgain` |
+| `load`: `gen == generation` after the await | delete | `testUserSwitchDuringSlowLoadDiscardsOldResult`, `testSignOutDuringSlowLoadDiscardsOldResult` |
+| `enqueue`: skip queued work if the generation moved | delete | `testUndoQueuedBehindHeldRemoveMakesNoRestoreCallAfterSwitch` (restore reaches the new user's API; `SwitchAPIClient.restoreCalls` non-empty) |
+| `perform` catch: `generation == gen` | delete | `testFailingRemoveAfterSwitchDoesNotTouchBsInFlightRemoveOfTheSameId` (banner, haptic, B's row re-inserted) |
+| `undo` catch: `generation == gen` | delete | `testFailingRestoreAfterSwitchDoesNotRemoveBsRestoredRow` |
+| `undo` success: `generation == gen` | delete | NOT covered: `applyRestored` only acts on a `.restored` reconcile entry and the result is the same item, so nothing observable differs. Gap, low value |
+| `settleBatch`: guard after the listing await | delete | `testBatchSettleAfterSwitchDoesNotTouchB` |
+| `settleBatch`: guard in the listing-failure branch | delete | NOT covered (would need a held listing that then fails). Gap |
+| `generation += 1` on user change / sign-out | delete | the five race tests of round 1, plus all of the above |
+| `generation += 1` on a token refresh | add | `testRemoveInFlightSurvivesTokenRefresh`, `testDifferentUserAndSignOutBumpGenerationButTokenRefreshDoesNot` |
+| `sessionChanged` cancels in-flight tails | add `cancel()` | `testRemoveInFlightIsNotCancelledBySwitchAndStillReachesTheServer`, `testUndoInFlightIsNotCancelledBySwitchAndStillReachesTheServer` (cancellation-aware gate throws, so the call never reaches the server and `sawCancellation` is true) |
+| user switch / sign-out clears select mode and selection | delete | `testUserSwitchAndSignOutClearSelectModeAndSelection`; token refresh keeps it: `testTokenRefreshKeepsSelectMode` |
+| single remove 409 `already_removed` / decoding keeps the removal | make it roll back | `testAlreadyRemoved409CountsAsSuccess`, `testDecodingErrorOnRemoveCountsAsSuccess`, `testUndoAfterAlreadyRemovedStillRestores` (now asserts the spy recorded `restores == [id]`), `testUndoAfterDecodingErrorOnRemoveStillRestores` |
+| batch 409 / decode drops the toast and pendingToast | keep the toast | the five `testBatch...409/Decoding...` tests (`assertNoUndoPossible`: `toast` nil, nothing pending, a stale Undo makes no `restoreItem` / `restoreBatch` call) |
+| batch reconcile per item | assume all removed / roll back all | `testBatchAlreadyRemoved409OnlyRestoresItemsTheServerStillHas`, `...WhereServerStillHasEveryItemRestoresAll`, `...WhereServerRemovedEveryItemKeepsThemHidden...`, `testBatchDecodingErrorReconcilesPerItemToo`, `...UnreadableListingRestoresEverything` |
+| batch Undo kept when nothing failed | drop it | `testBatchUndoWhenNothingFailedRestoresViaRestoreBatch` |
+| 401 only expires the session for the current token | always expire | `testStaleTokenUnauthorizedKeepsNewerSession`, `testFriendCodeStaleTokenUnauthorizedKeepsNewerSession`; current-token cases: `testCurrentTokenUnauthorizedSignsOut`, `testFriendCodeUnauthorizedWithCurrentTokenExpiresTheSession` (`sessionExpired` true) |
+| banner retry shows the toast now | ignore `showToastNow` | `testRetryFromBannerShowsToastImmediatelyAndLeavesNothingPending`, `testRetryThatFailsAgainClearsItsToastAndShowsBannerAgain` |
+Observation (not a bug): calling a batch's stale Undo closure directly (after the 409 dropped its toast) re-inserts the rows locally, though it makes no server call. It is unreachable from the UI once `toast` is nil, so the tests assert only that no restore request is made.
 
 ### Bug found
 | ID | Severity | Summary | Where |
@@ -655,4 +662,12 @@ After the IOS-73 fix (build-for-testing exit 0):
 | Full unit target, run 1 | 519 run, 3 skipped (Keychain), 0 failed, exit 0 |
 | Full unit target, run 2 | 519 run, 3 skipped (Keychain), 0 failed, exit 0 |
 
-### Verdict: PASS (IOS-73 fixed and verified; the full unit target passed twice in a row, 519 run / 3 skipped / 0 failed, parallel testing on, including both previously CI-failing tests)
+### Round 2 (review of HEAD 6d681ab)
+Builder changes: sessionChanged no longer cancels tails; a batch 409 / unreadable 2xx drops the batch's toast, marks all ids failed, restores only still-active items; mock `createRequest` sets `source.name`; friend-code 401 calls `expireSession`; Home pill wraps at AX sizes.
+Tests changed or added (`ios/Tests/UnitTests`):
+- `FridgeSessionTests`: `SwitchAPIClient` records calls that reach a server, one-shot errors captured at call start, optional cancellation-aware gate. New: the two not-cancelled tests, `testUndoQueuedBehindHeldRemoveMakesNoRestoreCallAfterSwitch`, `testFailingRemoveAfterSwitchDoesNotTouchBsInFlightRemoveOfTheSameId`, `testFailingRestoreAfterSwitchDoesNotRemoveBsRestoredRow`, `testBatchSettleAfterSwitchDoesNotTouchB`, `testUserSwitchAndSignOutClearSelectModeAndSelection`, `testTokenRefreshKeepsSelectMode`.
+- `PageSweepFixTests`: batch-409 tests now assert no toast and nothing pending, no restore call, still-active items back with the banner, already-removed ones hidden (a new case: server removed every item); `testUndoAfterAlreadyRemovedStillRestores` asserts `spy.restores == [id]`; added `testUndoAfterDecodingErrorOnRemoveStillRestores`, `testBatchUndoWhenNothingFailedRestoresViaRestoreBatch`; mock createRequest asserts `source.name == author name`; two friend-code 401 tests.
+- `HomeAccessibilityTests.testPillSitsBelowTheGreetingAtAX5`: restored `pill.maxX <= 320.5`. It passes with the builder's HomeHeader change, so no IOS-74.
+Runs (build-for-testing exit 0): full unit target 532 run, 3 skipped, 0 failed, exit 0, twice in a row. (One earlier attempt hit a simulator launch error, "Application failed preflight checks", before any test ran; re-run clean. The first run of the new tests had 2 failures in my own stale-Undo assertions, removed as the observation above.)
+
+### Verdict: PASS (IOS-73 fixed; round-2 gaps closed; full unit target green twice, 532 run / 3 skipped / 0 failed, parallel testing on. Known coverage gaps: `undo` success guard, `settleBatch` listing-failure guard)
