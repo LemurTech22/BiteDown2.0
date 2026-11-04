@@ -43,6 +43,9 @@ npx expo run:android
 later JavaScript-only changes, use `npx expo start` instead. The debug build permits cleartext HTTP so it
 can reach the API through `adb reverse`.
 
+Windows: local native builds fail on CMake path length; use Expo Go for development and EAS
+(`npx eas-cli@latest build -p android --profile development`) for dev-client/release builds.
+
 ## Samsung or other Android phone over USB
 
 1. Enable Developer options and USB debugging on the phone.
