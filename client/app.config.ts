@@ -38,6 +38,14 @@ const config: ExpoConfig = {
   plugins: [
     'expo-router',
     [
+      'expo-image-picker',
+      {
+        cameraPermission: 'Allow BiteDown to take food photos to identify items and predict expiry.',
+        photosPermission: 'Allow BiteDown to choose food photos to identify items and predict expiry.',
+        microphonePermission: false,
+      },
+    ],
+    [
       'expo-splash-screen',
       {
         backgroundColor: '#F4F8E8',
