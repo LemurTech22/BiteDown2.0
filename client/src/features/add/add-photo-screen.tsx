@@ -1,3 +1,4 @@
+import * as Haptics from 'expo-haptics';
 import * as ImagePicker from 'expo-image-picker';
 import { router } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
@@ -128,6 +129,7 @@ function PhotoReview({ photo, onReset }: { photo: Photo; onReset: () => void }) 
     setSaveError('');
     try {
       await api.createItems({ items: drafts.map((draft) => toCreateItem(draft, photo.mode)) });
+      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
       if (mounted.current) router.back();
     } catch (cause) {
       if (mounted.current) setSaveError(cause instanceof Error ? cause.message : 'We couldn’t save your food. Try again.');

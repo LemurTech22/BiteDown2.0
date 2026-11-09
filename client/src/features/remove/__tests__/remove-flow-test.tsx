@@ -1,5 +1,6 @@
 import { act, fireEvent, render } from '@testing-library/react-native';
-import { AppState, type AppStateStatus, Vibration } from 'react-native';
+import * as Haptics from 'expo-haptics';
+import { AppState, type AppStateStatus } from 'react-native';
 
 import { ApiError, ApiProvider, MockApiClient, type Item, type ItemsResponse } from '@/api';
 import { FridgeScreen } from '@/features/fridge/fridge-screen';
@@ -7,6 +8,10 @@ import { UNDO_WINDOW_MS } from '@/features/remove/use-removal-undo';
 import { useReducedMotion } from '@/hooks/use-reduced-motion';
 
 jest.mock('@/hooks/use-reduced-motion', () => ({ useReducedMotion: jest.fn(() => true) }));
+jest.mock('expo-haptics', () => ({
+  notificationAsync: jest.fn(() => Promise.resolve()),
+  NotificationFeedbackType: { Success: 'success', Error: 'error' },
+}));
 jest.mock('expo-router', () => {
   const React = jest.requireActual<typeof import('react')>('react');
   return {
@@ -31,7 +36,6 @@ describe('Remove and Undo', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     jest.mocked(useReducedMotion).mockReturnValue(true);
-    jest.spyOn(Vibration, 'vibrate').mockImplementation(() => {});
   });
   afterEach(() => { jest.restoreAllMocks(); jest.useRealTimers(); });
 
@@ -43,7 +47,7 @@ describe('Remove and Undo', () => {
 
     expect(screen.getByText('Why was it thrown out?')).toBeTruthy();
     expect(remove).not.toHaveBeenCalled();
-    expect(Vibration.vibrate).not.toHaveBeenCalled();
+    expect(Haptics.notificationAsync).not.toHaveBeenCalled();
     await fireEvent.press(screen.getByTestId('remove.cancel.button'));
     expect(screen.getByTestId(`fridge.item.${item.id}`)).toBeTruthy();
     expect(screen.queryByTestId(`remove.toast.${item.id}`)).toBeNull();
@@ -59,7 +63,8 @@ describe('Remove and Undo', () => {
     expect(remove).toHaveBeenCalledWith(item.id, { outcome: 'thrown_out', waste_reason: reason });
     expect(await screen.findByTestId(`remove.toast.${item.id}`)).toBeTruthy();
     expect(screen.queryByTestId(`fridge.item.${item.id}`)).toBeNull();
-    expect(Vibration.vibrate).toHaveBeenCalledTimes(1);
+    expect(Haptics.notificationAsync).toHaveBeenCalledTimes(1);
+    expect(Haptics.notificationAsync).toHaveBeenCalledWith(Haptics.NotificationFeedbackType.Success);
   });
 
   test.each(['used', 'donated'] as const)('%s hides the item; Undo restores it without a waste reason', async (outcome) => {
@@ -77,21 +82,24 @@ describe('Remove and Undo', () => {
     expect(restore).toHaveBeenCalledWith(item.id);
     expect(await screen.findByTestId(`fridge.item.${item.id}`)).toBeTruthy();
     expect(screen.queryByTestId(`remove.toast.${item.id}`)).toBeNull();
-    expect(Vibration.vibrate).toHaveBeenCalledTimes(1);
+    expect(Haptics.notificationAsync).toHaveBeenCalledTimes(1);
+    expect(Haptics.notificationAsync).toHaveBeenCalledWith(Haptics.NotificationFeedbackType.Success);
   });
 
-  test('failed removal leaves the item and offers Try again; only success vibrates', async () => {
+  test('failed removal gives error feedback and Try again gives success feedback', async () => {
     const { api, screen, item } = await setup();
     const remove = jest.spyOn(api, 'removeItem').mockRejectedValueOnce(new ApiError(0, 'upstream_unavailable', 'Offline'));
     await fireEvent.press(screen.getByTestId(`fridge.remove.${item.id}`));
     await fireEvent.press(screen.getByTestId('remove.outcome.used'));
 
     expect(await screen.findByText('Offline')).toBeTruthy();
-    expect(Vibration.vibrate).not.toHaveBeenCalled();
+    expect(Haptics.notificationAsync).toHaveBeenCalledTimes(1);
+    expect(Haptics.notificationAsync).toHaveBeenCalledWith(Haptics.NotificationFeedbackType.Error);
     await fireEvent.press(screen.getByTestId('remove.error.retry'));
     expect(await screen.findByTestId(`remove.toast.${item.id}`)).toBeTruthy();
     expect(remove).toHaveBeenNthCalledWith(2, item.id, { outcome: 'used' });
-    expect(Vibration.vibrate).toHaveBeenCalledTimes(1);
+    expect(Haptics.notificationAsync).toHaveBeenCalledTimes(2);
+    expect(Haptics.notificationAsync).toHaveBeenLastCalledWith(Haptics.NotificationFeedbackType.Success);
   });
 
   test('pending removal shows skeletons, disables Cancel and prevents duplicate requests', async () => {
@@ -104,7 +112,7 @@ describe('Remove and Undo', () => {
     expect(screen.getByTestId('remove.loading.skeleton')).toBeTruthy();
     expect(screen.getByTestId('remove.cancel.button')).toBeDisabled();
     expect(remove).toHaveBeenCalledTimes(1);
-    expect(Vibration.vibrate).not.toHaveBeenCalled();
+    expect(Haptics.notificationAsync).not.toHaveBeenCalled();
 
     await act(async () => complete?.(await originalRemove(item.id, { outcome: 'used' })));
     expect(await screen.findByTestId(`remove.toast.${item.id}`)).toBeTruthy();

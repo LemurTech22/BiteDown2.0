@@ -14,6 +14,7 @@
     "expo-device": "58.0.5",
     "expo-font": "58.0.11",
     "expo-glass-effect": "58.0.5",
+    "expo-haptics": "58.0.7",
     "expo-image": "58.0.18",
     "expo-image-picker": "58.0.10",
     "expo-linking": "~58.0.16",
@@ -56,7 +57,7 @@
   "jest": {
     "preset": "jest-expo",
     "transformIgnorePatterns": [
-      "node_modules/(?!((jest-)?react-native|@react-native(-community)?)|expo(nent)?|@expo(nent)?/.*|@expo-google-fonts/.*|react-navigation|@react-navigation/.*|react-native-svg)"
+      "node_modules/(?!((jest-)?react-native|@react-native(-community)?)|expo(nent)?|@expo(nent)?/.*|@expo-google-fonts/.*|react-navigation|@react-navigation/.*|react-native-svg|standard-navigation)"
     ]
   },
   "private": true

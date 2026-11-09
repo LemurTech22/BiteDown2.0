@@ -1,4 +1,5 @@
 import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
+import * as Haptics from 'expo-haptics';
 import * as ImagePicker from 'expo-image-picker';
 import { router } from 'expo-router';
 
@@ -6,6 +7,10 @@ import { ApiError, ApiProvider, MockApiClient, type PhotoCandidatesResponse } fr
 import AddModalScreen from '@/app/add-modal';
 
 jest.mock('expo-router', () => ({ router: { back: jest.fn() } }));
+jest.mock('expo-haptics', () => ({
+  notificationAsync: jest.fn(() => Promise.resolve()),
+  NotificationFeedbackType: { Success: 'success', Error: 'error' },
+}));
 jest.mock('expo-image-picker', () => ({
   requestCameraPermissionsAsync: jest.fn(),
   launchCameraAsync: jest.fn(),
@@ -49,6 +54,8 @@ describe('add by photo', () => {
     await fireEvent.changeText(screen.getByTestId('add.expiry.0'), '2027-01-15');
     await fireEvent.press(screen.getByTestId('add.save.button'));
     await waitFor(() => expect(router.back).toHaveBeenCalledTimes(1));
+    expect(Haptics.notificationAsync).toHaveBeenCalledTimes(1);
+    expect(Haptics.notificationAsync).toHaveBeenCalledWith(Haptics.NotificationFeedbackType.Success);
     expect(createItems).toHaveBeenCalledWith({ items: [expect.objectContaining({
       name: 'Green apples', quantity: 2.5, storage: 'freezer', predicted_expiry: '2027-01-15',
       expiry_source: 'user', source: 'single_photo', freshness: 'fresh', confidence: 0.95, nutrition: null,
@@ -138,11 +145,14 @@ describe('add by photo', () => {
     await fireEvent.changeText(screen.getByTestId('add.expiry.0'), '2027-02-28');
     await fireEvent.press(screen.getByTestId('add.save.button'));
     expect(await screen.findByTestId('add.save.error')).toBeTruthy();
+    expect(Haptics.notificationAsync).not.toHaveBeenCalled();
     expect(router.back).not.toHaveBeenCalled();
     expect(screen.getByDisplayValue('Edited apples')).toBeTruthy();
     await fireEvent.press(screen.getByTestId('add.save.retry'));
     await waitFor(() => expect(router.back).toHaveBeenCalledTimes(1));
     expect(createItems).toHaveBeenCalledTimes(2);
+    expect(Haptics.notificationAsync).toHaveBeenCalledTimes(1);
+    expect(Haptics.notificationAsync).toHaveBeenCalledWith(Haptics.NotificationFeedbackType.Success);
   });
 
   test('ignores an analysis response after canceling', async () => {

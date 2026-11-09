@@ -1,5 +1,6 @@
+import * as Haptics from 'expo-haptics';
 import { useRef, useState } from 'react';
-import { Modal, Pressable, ScrollView, StyleSheet, Text, Vibration, View } from 'react-native';
+import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { useApi, type Item, type RemoveItemInput, type WasteReason } from '@/api';
@@ -50,14 +51,15 @@ export function RemoveSheet({ item, onClose, onRemoved }: RemoveSheetProps) {
       removed = response.item;
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Couldn’t remove this item. Try again.');
+      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error).catch(() => {});
       return;
     } finally {
       submitting.current = false;
       setPending(false);
     }
+    void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
     onRemoved(removed);
     onClose();
-    Vibration.vibrate(theme.motion.quickMs);
   }
 
   return (
