@@ -2,7 +2,7 @@
 
 _The app is **BiteDown** (owner, 2026-10-10; see `docs/DECISIONS.md`). Internal names such as `FoodWasteReducer` stay._
 
-_Last updated: 2026-10-19 (checkpoint 13; see below). Older text from 2026-10-11: **`food-main` (VPS) orchestrates**: it plans, rules, reviews and merges,
+_Last updated: 2026-11-09 (checkpoint 14, Expo Android; see below). Older text from 2026-10-11: **`food-main` (VPS) orchestrates**: it plans, rules, reviews and merges,
 and owns the canvas and the orchestrator docs. **`food-main-mac` (the Mac) does all the building**: builder + QA
 sub-agents (**Sonnet**, owner preference), Xcode and simulators, Docker and every test run, plus any
 `.github/workflows` push. The owner also lets the Mac merge a PR when it judges it ready, and edit the canvas when
@@ -11,6 +11,38 @@ teammate PRs, canvas rounds when handed the canvas (round 3 is done, and the can
 checkpoints. **Since checkpoint 10:** `food-modal-test` (iOS simulator test pass) and the "PR merge review" session own
 merges on the Mac; `food-main` reviews the Auth PR. All of them update this file and the affected `docs/` at
 every checkpoint (`CLAUDE.md` Rules). Rules: [`CLAUDE.md`](CLAUDE.md)._
+
+## Checkpoint 14 (2026-11-09, Windows PC): Phase C (Expo Android app) Phase 2 done. Read this first
+**Where:** branch `feat/expo-android` (local only, **not pushed**: GitHub account `FrankinstyLe` has read-only access
+to `LemurTech22/BiteDown2.0`, so pushing returns 403 until the owner grants Write or we push to a fork). Repo remote is now
+`https://github.com/LemurTech22/BiteDown2.0`. App lives in `client/` (Expo SDK 58, RN 0.88.1, React 19.3, expo-router, TS 6;
+exact pins). Phase 1 (scaffold) and Phase 2 (demo path) are done; Phases 3-5 remain.
+
+**Phase 2: what landed** (all on `feat/expo-android`; 8 suites / 61 Jest tests, tsc and lint clean):
+- `0783a80` email auth, `a185080` tab shell (OpenCode); `7e294cb` Fridge + remove (used/donated/thrown_out, reason required
+  only for thrown_out) + 10-minute Undo; `4a87c27` add by photo; `9f28c8e` Impact (week/month/all); `c8230e2` demo-path
+  test (real router: login, photo, Fridge, remove, Impact rises, Undo restores Impact exactly) + haptics; `d0ee8bc` upload
+  fix; `426918b` Add modal Close/back, "Move to..." storage via `PATCH /items/:id` (`ApiClient.updateItem`), scanner-busy message.
+- Verified by hand on the emulator against the real backend: sign up, photo scan (Gemini), save, move, remove.
+- **Upload gotcha:** Expo SDK 58's `fetch` rejects React Native `{uri, name, type}` FormData parts ("Unsupported FormDataPart
+  implementation"). `live-client.ts` `appendImage` sends bytes via `expo-file-system` `File`. Mock tests can't catch this.
+
+**Not built yet (Phase 3):** Home content, Item detail/edit, multi-select + batch remove/Undo, Add by text/voice, barcode,
+receipt, Recipes + detail, all of Social (Food Pantry, requests, friends & groups, friend QR, pickup spot, claims), Profile &
+settings + delete account, Signed-out screen, global Server-error screen, camera-denied card. Row numbers: `docs/design/SCREENS.md`.
+**Phase 4:** Google Sign-In (needs an EAS build, plus backend `GOOGLE_CLIENT_IDS` so the Android client ID passes the
+audience check, on its own branch). **Phase 5:** `client.yml` CI, APK, README/HANDOFF, PR only when the owner says so.
+
+**How work runs on this PC:**
+- Builders are **Codex** (`codex exec -s workspace-write`, ChatGPT login) and OpenCode (Go plan, often out of quota). Claude
+  reviews, commits, merges and verifies. Codex's Windows sandbox **can't write `.git`**: it leaves changes uncommitted and
+  Claude commits them (`Co-Authored-By: Codex <noreply@openai.com>`). Parallel Codex runs use separate worktrees and disjoint files.
+- Windows native Android builds fail (CMake 260-char paths), so develop in **Expo Go** (`cd client; npx expo start --android`);
+  dev-client/release builds go through EAS. Emulator `BiteDown_Pixel7_API36` (`hw.keyboard=yes`); after each emulator start run
+  `adb reverse tcp:5055 tcp:5055`. Deleting a worktree with `node_modules` needs `rd /s /q "\\?\<path>"`.
+- **Gemini:** `gemini-3.8-flash` hung or returned 503 on 2026-11-09 (even a one-word prompt), so the owner's local `.env` uses
+  `gemini-3.1-flash-lite` for testing. `docs/DECISIONS.md` still names 3.8-flash; switch back when it recovers. A throwaway
+  `probe…@example.com` account exists in the local DB.
 
 ## Checkpoint 13 (2026-10-20): Phase A done, Phase B awaiting owner review. Read this first
 **The owner's revamp, in three phases.** Plan: `~/.claude/plans/1-i-want-to-vivid-bachman.md` (owner-approved and Codex-reviewed).
