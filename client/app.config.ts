@@ -22,6 +22,7 @@ const config: ExpoConfig = {
     },
   },
   android: {
+    permissions: ['android.permission.CAMERA', 'android.permission.ACCESS_COARSE_LOCATION', 'android.permission.ACCESS_FINE_LOCATION'],
     package: 'com.coderedorion.bitedown',
     adaptiveIcon: {
       backgroundColor: '#F4F8E8',
@@ -37,6 +38,24 @@ const config: ExpoConfig = {
   },
   plugins: [
     'expo-router',
+    [
+      'expo-camera',
+      {
+        cameraPermission: 'Allow BiteDown to scan food barcodes and friend QR codes.',
+        barcodeScannerEnabled: true,
+        recordAudioAndroid: false,
+        microphonePermission: false,
+      },
+    ],
+    [
+      'expo-location',
+      {
+        locationWhenInUsePermission: 'Allow BiteDown to use your location to set a food pickup spot.',
+        locationAlwaysPermission: false,
+        locationAlwaysAndWhenInUsePermission: false,
+        motionUsagePermission: false,
+      },
+    ],
     [
       'expo-image-picker',
       {

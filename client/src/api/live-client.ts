@@ -4,22 +4,38 @@ import { Platform } from 'react-native';
 import { normalizeBaseUrl } from './config';
 import { ApiError } from './errors';
 import type {
+  AddFriendInput,
   ApiClient,
   AuthMeResponse,
   AuthResponse,
   CreateItemInput,
+  CreateRequestInput,
+  CreateShareInput,
+  FoodRequest,
+  Friend,
+  FriendCode,
+  FriendsResponse,
+  Group,
+  GroupDetail,
   ImpactRange,
   ImpactResponse,
+  ItemCandidate,
+  ItemSectionsResponse,
   ItemsQuery,
   ItemsResponse,
-  ItemSectionsResponse,
+  PantryListing,
   PhotoCandidatesResponse,
+  ReachablePerson,
   ReceiptCandidatesResponse,
   Recipe,
   RecipesRequest,
   RemoveBatchInput,
   RemoveItemInput,
+  RequestsQuery,
+  ShareListing,
+  Tip,
   UpdateItemInput,
+  UpdateShareInput,
 } from './types';
 
 interface LiveApiClientOptions {
@@ -170,6 +186,68 @@ export class LiveApiClient implements ApiClient {
 
   getImpact(range: ImpactRange = 'all') {
     return this.request<ImpactResponse>(`/impact?range=${range}`);
+  }
+
+
+  getBarcode(code: string) {
+    return this.request<{ candidate: ItemCandidate }>(`/items/barcode/${encodeURIComponent(code)}`);
+  }
+
+  getTips() { return this.request<{ tips: Tip[] }>('/tips'); }
+  getShare() { return this.request<{ listings: PantryListing[] }>('/share'); }
+  createShare(input: CreateShareInput) {
+    return this.request<{ listing: ShareListing }>('/share', { method: 'POST', body: JSON.stringify(input) });
+  }
+  updateShare(id: string, input: UpdateShareInput) {
+    return this.request<{ listing: ShareListing }>(`/share/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify(input) });
+  }
+  deleteShare(id: string) {
+    return this.request<{ listing: ShareListing }>(`/share/${encodeURIComponent(id)}`, { method: 'DELETE' });
+  }
+  claimShare(id: string) {
+    return this.request<{ listing: ShareListing }>(`/share/${encodeURIComponent(id)}/claim`, { method: 'POST' });
+  }
+  getFriends() { return this.request<FriendsResponse>('/friends'); }
+  getFriendCode() { return this.request<FriendCode>('/friends/code'); }
+  addFriend(input: AddFriendInput) {
+    return this.request<{ friend: Friend }>('/friends', { method: 'POST', body: JSON.stringify(input) });
+  }
+  acceptFriend(id: string) {
+    return this.request<{ friend: Friend }>(`/friends/${encodeURIComponent(id)}/accept`, { method: 'POST' });
+  }
+  deleteFriend(id: string) {
+    return this.request<void>(`/friends/${encodeURIComponent(id)}`, { method: 'DELETE' });
+  }
+  getGroups() { return this.request<{ groups: Group[] }>('/groups'); }
+  createGroup(input: { name: string }) {
+    return this.request<{ group: Group }>('/groups', { method: 'POST', body: JSON.stringify(input) });
+  }
+  joinGroup(input: { invite_code: string }) {
+    return this.request<{ group: Group }>('/groups/join', { method: 'POST', body: JSON.stringify(input) });
+  }
+  getGroup(id: string) {
+    return this.request<{ group: GroupDetail }>(`/groups/${encodeURIComponent(id)}`);
+  }
+  getGroupPantry(id: string) {
+    return this.request<ItemsResponse>(`/groups/${encodeURIComponent(id)}/pantry`);
+  }
+  leaveGroup(id: string) {
+    return this.request<{ left: true }>(`/groups/${encodeURIComponent(id)}/leave`, { method: 'POST' });
+  }
+  getRequests(query: RequestsQuery = {}) {
+    return this.request<{ requests: FoodRequest[] }>(`/requests${query.mine ? '?mine=1' : ''}`);
+  }
+  createRequest(input: CreateRequestInput) {
+    return this.request<{ request: FoodRequest }>('/requests', { method: 'POST', body: JSON.stringify(input) });
+  }
+  deleteRequest(id: string) {
+    return this.request<{ request: FoodRequest }>(`/requests/${encodeURIComponent(id)}`, { method: 'DELETE' });
+  }
+  fulfilRequest(id: string) {
+    return this.request<{ request: FoodRequest }>(`/requests/${encodeURIComponent(id)}/fulfil`, { method: 'POST' });
+  }
+  getReachablePeople(itemId?: string) {
+    return this.request<{ people: ReachablePerson[] }>(`/people/reachable${itemId === undefined ? '' : `?item_id=${encodeURIComponent(itemId)}`}`);
   }
 
   // Expo's fetch (SDK 52+) rejects React Native's { uri, name, type } parts, so native

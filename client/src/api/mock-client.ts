@@ -1,26 +1,42 @@
 import { ApiError } from './errors';
 import type {
+  AddFriendInput,
   ApiClient,
   AuthMeResponse,
   AuthResponse,
   CreateItemInput,
+  CreateRequestInput,
+  CreateShareInput,
   FoodGroup,
+  FoodRequest,
+  Friend,
+  FriendCode,
+  FriendsResponse,
+  Group,
+  GroupDetail,
   ImpactRange,
   ImpactResponse,
   ImpactTotals,
   Item,
   ItemCandidate,
+  ItemSectionsResponse,
   ItemsQuery,
   ItemsResponse,
-  ItemSectionsResponse,
   Outcome,
+  PantryListing,
   PhotoCandidatesResponse,
+  PickupSpot,
+  ReachablePerson,
   ReceiptCandidatesResponse,
   Recipe,
   RecipesRequest,
   RemoveBatchInput,
   RemoveItemInput,
+  RequestsQuery,
+  ShareListing,
+  Tip,
   UpdateItemInput,
+  UpdateShareInput,
   User,
   WasteReason,
 } from './types';
@@ -38,6 +54,23 @@ interface MockEvent {
   co2eKg: number;
   at: string;
 }
+
+interface SocialState {
+  friends: FriendsResponse;
+  groups: GroupDetail[];
+  memberships: Set<string>;
+  pantry: Item[];
+  listings: ShareListing[];
+  requests: FoodRequest[];
+  code: FriendCode | null;
+}
+
+const DEMO_PEOPLE = [
+  { id: 'friend-ana', display_name: 'Ana Rivera', email: 'ana@example.com', code: 'AnaDemoCode123456' },
+  { id: 'friend-ben', display_name: 'Ben Chen', email: 'ben@example.com', code: 'BenDemoCode123456' },
+  { id: 'friend-dana', display_name: 'Dana Whitfield', email: 'dana@example.com', code: 'DanaDemoCode12345' },
+  { id: 'friend-eli', display_name: 'Eli Brooks', email: 'eli@example.com', code: 'EliDemoCode123456' },
+];
 
 const FOOD_GROUP_ORDER: FoodGroup[] = [
   'protein',
@@ -59,6 +92,8 @@ export class MockApiClient implements ApiClient {
   private currentUser: MockUser | null = null;
   private token: string | null = null;
   private sequence = 0;
+  private readonly socialByUser = new Map<string, SocialState>();
+  private readonly friendCodes = new Map<string, { owner_id: string; expires_at: string }>();
 
   async health() {
     return { status: 'ok' as const };
@@ -103,6 +138,7 @@ export class MockApiClient implements ApiClient {
     this.users.delete(user.email);
     this.items = [];
     this.events = [];
+    this.socialByUser.delete(user.id);
     this.currentUser = null;
     this.token = null;
   }
@@ -172,7 +208,8 @@ export class MockApiClient implements ApiClient {
     if (item.owner_id !== user.id) throw new ApiError(403, 'forbidden', 'That item belongs to another user.');
     Object.assign(item, patch);
     if (patch.predicted_expiry !== undefined) item.expiry_source = 'user';
-    if (patch.quantity !== undefined || patch.unit !== undefined || patch.category !== undefined) {
+    if (patch.freshness !== undefined) item.freshness_checked_at = patch.freshness === null ? null : new Date().toISOString();
+    if (patch.est_weight_kg === undefined && (patch.quantity !== undefined || patch.unit !== undefined || patch.category !== undefined)) {
       item.est_weight_kg = 0.2 * item.quantity;
     }
     return { item: copy(item) };
@@ -217,6 +254,13 @@ export class MockApiClient implements ApiClient {
     item.waste_reason = input.outcome === 'thrown_out' ? input.waste_reason ?? null : null;
     item.removed_after_expiry = item.predicted_expiry !== null && now.slice(0, 10) > item.predicted_expiry;
     this.events.push(eventFor(item, now));
+    const listing = this.socialByUser.get(this.requireUser().id)?.listings.find((entry) => entry.item_id === id && entry.status === 'open');
+    if (listing && input.outcome === 'donated') {
+      listing.status = 'fulfilled';
+      listing.fulfilled_at = now;
+      listing.recipient_id = 'recipient_id' in input ? input.recipient_id ?? null : listing.claimed_by;
+      this.syncItemShare(listing);
+    }
     return { item: copy(item) };
   }
 
@@ -226,6 +270,13 @@ export class MockApiClient implements ApiClient {
     if (!item.removed_at || !item.outcome) throw new ApiError(409, 'not_removed', 'That item is still active.');
     if (Date.now() - Date.parse(item.removed_at) >= 10 * 60 * 1000) {
       throw new ApiError(409, 'restore_window_expired', 'The 10-minute undo window has expired.');
+    }
+    const listing = this.socialByUser.get(this.requireUser().id)?.listings.find((entry) => entry.item_id === id && entry.status === 'fulfilled' && entry.fulfilled_at === item.removed_at);
+    if (listing) {
+      listing.status = 'open';
+      listing.fulfilled_at = null;
+      listing.recipient_id = null;
+      this.syncItemShare(listing);
     }
     this.events = this.events.filter((event) => event.itemId !== item.id);
     item.removed_at = null;
@@ -242,6 +293,8 @@ export class MockApiClient implements ApiClient {
     }
     const snapshot = copy(this.items);
     const eventSnapshot = copy(this.events);
+    const socialState = this.socialByUser.get(this.requireUser().id);
+    const listingSnapshot = socialState ? copy(socialState.listings) : null;
     try {
       const items: Item[] = [];
       for (const id of input.item_ids) {
@@ -255,6 +308,7 @@ export class MockApiClient implements ApiClient {
     } catch (error) {
       this.items = snapshot;
       this.events = eventSnapshot;
+      if (socialState && listingSnapshot) socialState.listings = listingSnapshot;
       throw error;
     }
   }
@@ -263,6 +317,8 @@ export class MockApiClient implements ApiClient {
     this.requireUser();
     const snapshot = copy(this.items);
     const eventSnapshot = copy(this.events);
+    const socialState = this.socialByUser.get(this.requireUser().id);
+    const listingSnapshot = socialState ? copy(socialState.listings) : null;
     try {
       const items: Item[] = [];
       for (const id of itemIds) items.push((await this.restoreItem(id)).item);
@@ -270,6 +326,7 @@ export class MockApiClient implements ApiClient {
     } catch (error) {
       this.items = snapshot;
       this.events = eventSnapshot;
+      if (socialState && listingSnapshot) socialState.listings = listingSnapshot;
       throw error;
     }
   }
@@ -301,8 +358,11 @@ export class MockApiClient implements ApiClient {
     this.requireUser();
     const parsed = await this.parseText({ text: 'Mock receipt item' });
     return {
-      candidates: parsed.candidates.map((candidate) => ({ ...candidate, source: 'receipt', price: 2.5, est_price: 2.5 })),
-      total: 2.5,
+      candidates: [
+        ...parsed.candidates.map((candidate) => ({ ...candidate, source: 'receipt' as const, price: 2.5, est_price: 2.5, receipt_text: 'MOCK FOOD 2.50' })),
+        { ...parsed.candidates[0], name: 'Paper towels', category: 'other', food_group: 'other', storage: 'pantry', source: 'receipt', price: 3, est_price: 3, receipt_text: 'PAPER TOWELS 3.00' },
+      ],
+      total: 5.5,
       categorized_by: 'heuristic',
       source: 'ocr',
     };
@@ -362,6 +422,376 @@ export class MockApiClient implements ApiClient {
     };
   }
 
+
+  async getBarcode(code: string): Promise<{ candidate: ItemCandidate }> {
+    this.requireUser();
+    if (!/^\d{6,14}$/.test(code)) fail(400, 'validation_error', 'Barcode must be 6-14 digits.');
+    if (code !== '012345678905') fail(404, 'not_found', 'No product found for that barcode.');
+    return { candidate: { ...(await this.parseText({ text: 'Whole grain cereal' })).candidates[0],
+      category: 'pantry_dry', food_group: 'grains', storage: 'pantry', source: 'barcode',
+      barcode: code, brand: 'BiteDown Market', quantity_text: '500 g' } };
+  }
+
+  async getTips(): Promise<{ tips: Tip[] }> {
+    const user = this.requireUser();
+    const active = this.items.filter((item) => item.owner_id === user.id && !item.removed_at &&
+      (!item.group_id || this.social().memberships.has(item.group_id)));
+    const tips: Tip[] = [];
+    const past = active.filter((item) => item.predicted_expiry && item.predicted_expiry < dateFromNow(0));
+    const soon = active.filter((item) => item.predicted_expiry && item.predicted_expiry >= dateFromNow(0) && item.predicted_expiry <= dateFromNow(2));
+    if (past.length) tips.push({ code: 'past_expiry', message: `${past.length} items are past their expiry date and still logged as in stock.` });
+    if (soon.length) tips.push({ code: 'expiring_soon', message: `${soon.length} items expire within 2 days.` });
+    const impact = await this.getImpact('month');
+    if (impact.wasted.count) tips.push({ code: 'top_wasted_category', message: `${impact.wasted.count} items were thrown out in the last 30 days.` });
+    if (impact.saved.count) tips.push({ code: 'saved_recent', message: `You used or donated ${impact.saved.count} items in the last 30 days.` });
+    return { tips: tips.length ? tips : [{ code: 'getting_started', message: 'Nothing used, donated or thrown out in the last 30 days.' }] };
+  }
+
+  async getShare(): Promise<{ listings: PantryListing[] }> {
+    const user = this.requireUser();
+    return { listings: this.allListings().filter((listing) => this.listingVisible(listing) &&
+      listing.owner_id !== user.id && listing.status === 'open' && (!listing.claimed_by || listing.claimed_by === user.id))
+      .filter((listing) => !this.socialItem(listing.item_id).removed_at)
+      .sort(newestFirst).map((listing) => {
+        const item = this.socialItem(listing.item_id);
+        const owner = this.personName(listing.owner_id);
+        return { id: listing.id, item_id: item.id, owner_id: listing.owner_id, owner_name: owner,
+          group_id: listing.group_id, status: 'open', claimed_by_me: listing.claimed_by === user.id,
+          created_at: listing.created_at,
+          source: listing.group_id ? { type: 'group', name: this.memberGroup(listing.group_id).name } : { type: 'friend', name: owner },
+          item: { name: item.name, category: item.category, quantity: item.quantity, unit: item.unit, predicted_expiry: item.predicted_expiry },
+          pickup: listing.claimed_by === user.id ? copy(listing.pickup) : null, pickup_set: listing.pickup_set };
+      }) };
+  }
+
+  async createShare(input: CreateShareInput): Promise<{ listing: ShareListing }> {
+    const user = this.requireUser();
+    const item = this.findItem(input.item_id);
+    if (item.owner_id !== user.id) fail(403, 'forbidden', 'This item belongs to another user.');
+    if (item.removed_at) fail(409, 'already_removed', 'Item has already been removed.');
+    if (item.group_id) fail(400, 'validation_error', 'Group pantry items cannot be shared.');
+    if (input.group_id) this.memberGroup(input.group_id);
+    const state = this.social();
+    if (state.listings.some((listing) => listing.item_id === item.id && listing.status === 'open')) fail(409, 'already_shared', 'Item already has an open listing.');
+    const pickup = normalizePickup(input.pickup ?? null);
+    const listing: ShareListing = { id: this.id('listing'), item_id: item.id, owner_id: user.id,
+      group_id: input.group_id ?? null, status: 'open', recipient_id: null, claimed_by: null,
+      created_at: new Date().toISOString(), fulfilled_at: null, pickup, pickup_set: pickup !== null };
+    state.listings.push(listing);
+    this.syncItemShare(listing);
+    return { listing: copy(listing) };
+  }
+
+  async updateShare(id: string, input: UpdateShareInput) {
+    const listing = this.ownedOpenListing(id);
+    if (!('pickup' in input)) fail(400, 'validation_error', 'Pickup is required.');
+    listing.pickup = normalizePickup(input.pickup);
+    listing.pickup_set = listing.pickup !== null;
+    this.syncItemShare(listing);
+    return { listing: copy(listing) };
+  }
+
+  async deleteShare(id: string) {
+    const listing = this.ownedOpenListing(id);
+    listing.status = 'cancelled';
+    this.syncItemShare(listing);
+    return { listing: copy(listing) };
+  }
+
+  async claimShare(id: string) {
+    const listing = this.visibleListing(id);
+    if (listing.owner_id === this.requireUser().id) fail(400, 'validation_error', 'You cannot claim your own listing.');
+    if (listing.status !== 'open' || this.socialItem(listing.item_id).removed_at) fail(409, 'listing_closed', 'Listing is closed.');
+    if (listing.claimed_by) fail(409, 'already_claimed', 'Someone has already claimed this listing.');
+    listing.claimed_by = this.requireUser().id;
+    if (this.items.some((item) => item.id === listing.item_id)) this.syncItemShare(listing);
+    return { listing: copy(listing) };
+  }
+
+  async getFriends() { return copy(this.social().friends); }
+
+  async getFriendCode() {
+    const state = this.social();
+    if (!state.code || Date.parse(state.code.expires_at) - Date.now() < 120_000) {
+      const code = this.id('code').padEnd(16, 'x');
+      state.code = { code, expires_at: new Date(Date.now() + 600_000).toISOString(), url: `bitedown://friend/${code}` };
+      this.friendCodes.set(code, { owner_id: this.requireUser().id, expires_at: state.code.expires_at });
+    }
+    return copy(state.code);
+  }
+
+  async addFriend(input: AddFriendInput): Promise<{ friend: Friend }> {
+    const user = this.requireUser();
+    const state = this.social();
+    if (Boolean(input.code) === Boolean(input.email)) fail(400, 'validation_error', 'Provide exactly one of code or email.');
+    const email = input.email?.trim().toLowerCase();
+    if (email === user.email || (input.code && input.code === state.code?.code)) fail(400, 'validation_error', 'You cannot add yourself.');
+    const codeRecord = input.code ? this.friendCodes.get(input.code) : undefined;
+    const codeOwner = codeRecord && Date.parse(codeRecord.expires_at) > Date.now() ? codeRecord.owner_id : undefined;
+    if (codeOwner === user.id) fail(400, 'validation_error', 'You cannot add yourself.');
+    const target = DEMO_PEOPLE.find((person) => input.code ? person.code === input.code : person.email === email)
+      ?? [...this.users.values()].find((person) => input.code ? person.id === codeOwner : person.email === email);
+    if (!target) fail(input.code ? 400 : 404, input.code ? 'invalid_code' : 'not_found', input.code ? 'That code is not valid any more.' : 'No account uses that email.');
+    const targetId = target.id;
+    const existing = [...state.friends.friends, ...state.friends.incoming, ...state.friends.outgoing].find((friend) => friend.user_id === targetId);
+    if (existing && !input.code) fail(409, existing.status === 'accepted' ? 'already_friends' : 'request_pending', 'A relationship already exists.');
+    if (existing?.status === 'accepted') return { friend: copy(existing) };
+    const friend: Friend = existing ?? { user_id: targetId, display_name: target.display_name, status: 'pending', created_at: new Date().toISOString() };
+    if (input.code) {
+      state.friends.incoming = state.friends.incoming.filter((entry) => entry.user_id !== targetId);
+      state.friends.outgoing = state.friends.outgoing.filter((entry) => entry.user_id !== targetId);
+      friend.status = 'accepted';
+      state.friends.friends.push(friend);
+    } else state.friends.outgoing.push(friend);
+    this.mirrorFriend(targetId, input.code ? 'accepted' : 'pending');
+    return { friend: copy(friend) };
+  }
+
+  async acceptFriend(id: string) {
+    const friends = this.social().friends;
+    const friend = friends.incoming.find((entry) => entry.user_id === id);
+    if (!friend) fail(404, 'not_found', 'Pending friend request not found.');
+    friends.incoming = friends.incoming.filter((entry) => entry !== friend);
+    friend.status = 'accepted';
+    friends.friends.push(friend);
+    this.mirrorFriend(id, 'accepted');
+    return { friend: copy(friend) };
+  }
+
+  async deleteFriend(id: string): Promise<void> {
+    const friends = this.social().friends;
+    if (![...friends.friends, ...friends.incoming, ...friends.outgoing].some((entry) => entry.user_id === id)) fail(404, 'not_found', 'Friend not found.');
+    for (const key of ['friends', 'incoming', 'outgoing'] as const) friends[key] = friends[key].filter((entry) => entry.user_id !== id);
+    this.mirrorFriend(id, null);
+  }
+
+  async getGroups(): Promise<{ groups: Group[] }> {
+    return { groups: this.social().groups.filter((group) => this.social().memberships.has(group.id)).map((group) => this.groupView(group)) };
+  }
+
+  async createGroup(input: { name: string }): Promise<{ group: Group }> {
+    const user = this.requireUser();
+    if (!input.name.trim() || input.name.trim().length > 60) fail(400, 'validation_error', 'Name must be 1-60 characters.');
+    const now = new Date().toISOString();
+    const group: GroupDetail = { id: this.id('group'), name: input.name.trim(), role: 'owner', member_count: 1,
+      invite_code: makeInviteCode(this.sequence),
+      created_by: user.id, created_at: now, members: [{ user_id: user.id, display_name: user.display_name, role: 'owner', joined_at: now }] };
+    this.social().groups.push(group);
+    this.social().memberships.add(group.id);
+    return { group: groupSummary(group) };
+  }
+
+  async joinGroup(input: { invite_code: string }): Promise<{ group: Group }> {
+    const state = this.social();
+    const group = this.allGroups().find((entry) => entry.invite_code === input.invite_code.replace(/[\s-]/g, '').toUpperCase());
+    if (!group) fail(404, 'not_found', 'No group with that invite code.');
+    if (state.memberships.has(group.id)) fail(409, 'already_member', 'You are already in this group.');
+    const user = this.requireUser();
+    group.members.push({ user_id: user.id, display_name: user.display_name, role: group.members.length ? 'member' : 'owner', joined_at: new Date().toISOString() });
+    group.role = group.members[group.members.length - 1].role;
+    group.member_count = group.members.length;
+    state.memberships.add(group.id);
+    if (!state.groups.includes(group)) state.groups.push(group);
+    return { group: this.groupView(group) };
+  }
+
+  async getGroup(id: string) {
+    const group = this.memberGroup(id);
+    return { group: { ...this.groupView(group), members: copy(group.members) } };
+  }
+
+  async getGroupPantry(id: string): Promise<ItemsResponse> {
+    this.memberGroup(id);
+    return { items: [...this.social().pantry, ...this.items].filter((item) => item.group_id === id && !item.removed_at)
+      .sort(compareItems).map((item) => ({ ...copy(item), added_by: this.personName(item.owner_id) })) };
+  }
+
+  async leaveGroup(id: string): Promise<{ left: true }> {
+    const user = this.requireUser();
+    const group = this.memberGroup(id);
+    group.members = group.members.filter((member) => member.user_id !== user.id);
+    if (!group.members.some((member) => member.role === 'owner') && group.members[0]) group.members[0].role = 'owner';
+    group.member_count = group.members.length;
+    const state = this.social();
+    state.memberships.delete(id);
+    for (const listing of state.listings) if (listing.group_id === id && listing.owner_id === user.id && listing.status === 'open') {
+      listing.status = 'cancelled';
+      this.syncItemShare(listing);
+    }
+    for (const request of state.requests) if (request.author_id === user.id && request.status === 'open' && request.audiences.groups.some((entry) => entry.id === id)) {
+      if (!request.audiences.friends && request.audiences.groups.length === 1) request.status = 'cancelled';
+      else request.audiences.groups = request.audiences.groups.filter((entry) => entry.id !== id);
+    }
+    return { left: true };
+  }
+
+  async getRequests(query: RequestsQuery = {}): Promise<{ requests: FoodRequest[] }> {
+    const uid = this.requireUser().id;
+    return { requests: this.allRequests().filter((request) => query.mine ? request.author_id === uid : request.status === 'open' && this.requestVisible(request))
+      .sort(newestFirst).map((request) => this.requestView(request)) };
+  }
+
+  async createRequest(input: CreateRequestInput) {
+    const user = this.requireUser();
+    const text = input.text.trim();
+    const ids = [...new Set(input.audiences.group_ids ?? [])];
+    if (!text || text.length > 280 || (!input.audiences.friends && !ids.length) || (input.audiences.group_ids?.length ?? 0) > 50) fail(400, 'validation_error', 'Enter a note and choose an audience.');
+    const groups = ids.map((id) => {
+      if (!this.social().memberships.has(id)) fail(404, 'not_found', 'Group not found.');
+      const group = this.memberGroup(id);
+      return { id, name: group.name };
+    }).sort((a, b) => a.name.localeCompare(b.name));
+    const request: FoodRequest = { id: this.id('request'), author_id: user.id, author_name: user.display_name,
+      text, status: 'open', fulfilled_by: null, fulfilled_by_name: null, created_at: new Date().toISOString(),
+      audiences: { friends: input.audiences.friends ?? false, groups, hidden_count: 0 },
+      source: { type: 'me', name: user.display_name }, group_id: groups[0]?.id ?? null, group_name: groups[0]?.name ?? null };
+    this.social().requests.push(request);
+    return { request: copy(request) };
+  }
+
+  async deleteRequest(id: string) {
+    const request = this.visibleRequest(id);
+    if (request.author_id !== this.requireUser().id) fail(403, 'forbidden', 'Only the author can cancel a request.');
+    if (request.status !== 'open') fail(409, 'request_closed', 'Request is closed.');
+    request.status = 'cancelled';
+    return { request: this.requestView(request) };
+  }
+
+  async fulfilRequest(id: string) {
+    const user = this.requireUser();
+    const request = this.visibleRequest(id);
+    if (request.author_id === user.id) fail(403, 'forbidden', 'You cannot fulfil your own request.');
+    if (request.status !== 'open') fail(409, 'request_closed', 'Request is closed.');
+    request.status = 'fulfilled';
+    request.fulfilled_by = user.id;
+    request.fulfilled_by_name = user.display_name;
+    return { request: this.requestView(request) };
+  }
+
+  async getReachablePeople(itemId?: string): Promise<{ people: ReachablePerson[] }> {
+    const user = this.requireUser();
+    const state = this.social();
+    const people = new Map<string, ReachablePerson>();
+    for (const friend of state.friends.friends) people.set(friend.user_id, { id: friend.user_id, display_name: friend.display_name, kind: 'friend', groups: [], is_claimer: false });
+    for (const group of state.groups.filter((entry) => state.memberships.has(entry.id))) for (const member of group.members.filter((entry) => entry.user_id !== user.id)) {
+      const person = people.get(member.user_id) ?? { id: member.user_id, display_name: member.display_name, kind: 'group_member', groups: [], is_claimer: false };
+      person.groups.push({ id: group.id, name: group.name });
+      people.set(person.id, person);
+    }
+    if (itemId !== undefined) {
+      const item = this.socialItem(itemId);
+      const listing = this.allListings().find((entry) => entry.item_id === itemId && entry.status === 'open');
+      if (item.owner_id !== user.id && !(item.group_id && state.memberships.has(item.group_id)) && !(listing && this.listingVisible(listing))) fail(404, 'not_found', 'Item not found.');
+      if (item.group_id && !state.memberships.has(item.group_id)) fail(404, 'not_found', 'Item not found.');
+      if (item.owner_id === user.id && listing?.claimed_by && people.has(listing.claimed_by)) people.get(listing.claimed_by)!.is_claimer = true;
+    }
+    return { people: [...people.values()].map((person) => ({ ...person, groups: person.groups.sort((a, b) => a.name.localeCompare(b.name)) }))
+      .sort((a, b) => Number(b.is_claimer) - Number(a.is_claimer) || a.display_name.localeCompare(b.display_name) || a.id.localeCompare(b.id)) };
+  }
+
+
+  private allListings(): ShareListing[] {
+    const own = this.social().listings;
+    return [...own, ...[...this.socialByUser.values()].flatMap((state) => state.listings)
+      .filter((listing) => !own.includes(listing) && !listing.id.startsWith('listing-seed-'))];
+  }
+  private allRequests(): FoodRequest[] {
+    const own = this.social().requests;
+    return [...own, ...[...this.socialByUser.values()].flatMap((state) => state.requests)
+      .filter((request) => !own.includes(request) && !['request-ana', 'request-mine'].includes(request.id))];
+  }
+  private allGroups(): GroupDetail[] {
+    const own = this.social().groups;
+    return [...new Set([...own, ...[...this.socialByUser.values()].flatMap((state) => state.groups)
+      .filter((group) => group.id !== 'group-flat')])];
+  }
+  private groupView(group: GroupDetail): Group {
+    return { ...groupSummary(group), role: group.members.find((member) => member.user_id === this.requireUser().id)?.role ?? 'member',
+      member_count: group.members.length };
+  }
+  private mirrorFriend(targetId: string, status: 'pending' | 'accepted' | null) {
+    const target = [...this.users.values()].find((user) => user.id === targetId);
+    if (!target) return;
+    let state = this.socialByUser.get(targetId);
+    if (!state) {
+      state = seedSocial(target);
+      this.socialByUser.set(targetId, state);
+    }
+    const user = this.requireUser();
+    for (const key of ['friends', 'incoming', 'outgoing'] as const) state.friends[key] = state.friends[key].filter((friend) => friend.user_id !== user.id);
+    if (status) state.friends[status === 'accepted' ? 'friends' : 'incoming'].push({
+      user_id: user.id, display_name: user.display_name, status, created_at: new Date().toISOString(),
+    });
+  }
+
+  private social(): SocialState {
+    const user = this.requireUser();
+    let state = this.socialByUser.get(user.id);
+    if (!state) {
+      state = seedSocial(user);
+      this.socialByUser.set(user.id, state);
+    }
+    return state;
+  }
+  private personName(id: string) {
+    return DEMO_PEOPLE.find((person) => person.id === id)?.display_name
+      ?? [...this.users.values()].find((person) => person.id === id)?.display_name ?? 'Group member';
+  }
+  private socialItem(id: string): Item {
+    const item = [...this.items, ...this.social().pantry].find((entry) => entry.id === id);
+    if (!item) fail(404, 'not_found', 'Item not found.');
+    return item;
+  }
+  private memberGroup(id: string) {
+    const group = this.allGroups().find((entry) => entry.id === id);
+    if (!group) fail(404, 'not_found', 'Group not found.');
+    if (!this.social().memberships.has(id)) fail(403, 'forbidden', 'You are not a member of this group.');
+    return group;
+  }
+  private listingVisible(listing: ShareListing) {
+    return listing.owner_id === this.requireUser().id || (listing.group_id ? this.social().memberships.has(listing.group_id)
+      : this.social().friends.friends.some((friend) => friend.user_id === listing.owner_id));
+  }
+  private visibleListing(id: string) {
+    const listing = this.allListings().find((entry) => entry.id === id);
+    if (!listing || !this.listingVisible(listing)) fail(404, 'not_found', 'Listing not found.');
+    return listing;
+  }
+  private ownedOpenListing(id: string) {
+    const listing = this.visibleListing(id);
+    if (listing.owner_id !== this.requireUser().id) fail(403, 'forbidden', 'Only the owner can edit a listing.');
+    if (listing.status !== 'open') fail(409, 'listing_closed', 'Listing is closed.');
+    return listing;
+  }
+  private syncItemShare(listing: ShareListing) {
+    const item = this.findItem(listing.item_id);
+    item.share = listing.status === 'cancelled' ? null : {
+      id: listing.id, status: listing.status, claimed_by: listing.claimed_by ? { id: listing.claimed_by, name: this.personName(listing.claimed_by) } : null,
+      audience: { friends: !listing.group_id, groups: listing.group_id ? [{ id: listing.group_id, name: this.social().groups.find((group) => group.id === listing.group_id)!.name }] : [] },
+      pickup: copy(listing.pickup), pickup_set: listing.pickup_set };
+  }
+  private requestVisible(request: FoodRequest) {
+    return request.author_id === this.requireUser().id ||
+      (request.audiences.friends && this.social().friends.friends.some((friend) => friend.user_id === request.author_id)) ||
+      request.audiences.groups.some((group) => this.social().memberships.has(group.id));
+  }
+  private visibleRequest(id: string) {
+    const request = this.allRequests().find((entry) => entry.id === id);
+    if (!request || !this.requestVisible(request)) fail(404, 'not_found', 'Request not found.');
+    return request;
+  }
+  private requestView(request: FoodRequest): FoodRequest {
+    const result = copy(request);
+    result.audiences.groups = result.audiences.groups.filter((group) => this.social().memberships.has(group.id));
+    result.audiences.friends = request.audiences.friends && (request.author_id === this.requireUser().id || this.social().friends.friends.some((friend) => friend.user_id === request.author_id));
+    result.audiences.hidden_count = request.audiences.groups.length - result.audiences.groups.length + Number(request.audiences.friends && !result.audiences.friends);
+    result.group_id = result.audiences.groups[0]?.id ?? null;
+    result.group_name = result.audiences.groups[0]?.name ?? null;
+    result.source = request.author_id === this.requireUser().id ? { type: 'me', name: request.author_name }
+      : result.group_name ? { type: 'group', name: result.group_name } : { type: 'friend', name: request.author_name };
+    return result;
+  }
+
   private requireUser(): MockUser {
     if (!this.currentUser || !this.token) throw new ApiError(401, 'unauthorized', 'Sign in again.');
     return this.currentUser;
@@ -377,6 +807,97 @@ export class MockApiClient implements ApiClient {
     this.sequence += 1;
     return `${prefix}-${this.sequence}`;
   }
+}
+
+
+function fail(status: number, code: string, message: string): never {
+  throw new ApiError(status, code, message);
+}
+
+function newestFirst(a: { created_at: string; id: string }, b: { created_at: string; id: string }) {
+  return b.created_at.localeCompare(a.created_at) || b.id.localeCompare(a.id);
+}
+
+function makeInviteCode(value: number): string {
+  const alphabet = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
+  let code = '';
+  do {
+    code = alphabet[value % alphabet.length] + code;
+    value = Math.floor(value / alphabet.length);
+  } while (value > 0);
+  return code.padStart(8, alphabet[0]);
+}
+
+function groupSummary(group: GroupDetail): Group {
+  const { members: _members, ...summary } = group;
+  return copy(summary);
+}
+
+function normalizePickup(input: Partial<PickupSpot> | null): PickupSpot | null {
+  if (input === null) return null;
+  if (!input || typeof input !== 'object') fail(400, 'validation_error', 'Invalid pickup spot.');
+  const text = (value: string | null | undefined) => {
+    if (value !== undefined && value !== null && typeof value !== 'string') fail(400, 'validation_error', 'Invalid pickup text.');
+    const trimmed = value?.trim() || null;
+    if (trimmed && (trimmed.length > 120 || trimmed.includes('\0'))) fail(400, 'validation_error', 'Pickup text must be at most 120 characters.');
+    return trimmed;
+  };
+  const note = text(input.note);
+  const place_name = text(input.place_name);
+  const lat = input.lat ?? null;
+  const lng = input.lng ?? null;
+  if ((lat === null) !== (lng === null) ||
+    (lat !== null && (!Number.isFinite(lat) || Math.abs(lat) > 90)) ||
+    (lng !== null && (!Number.isFinite(lng) || Math.abs(lng) > 180)) ||
+    (!note && lat === null)) fail(400, 'validation_error', 'Add a note or a valid latitude and longitude pair.');
+  return { note, lat, lng, place_name };
+}
+
+function seedSocial(user: User): SocialState {
+  const now = new Date(Date.now() - 86_400_000).toISOString();
+  const group: GroupDetail = {
+    id: 'group-flat', name: 'Flat 4B', role: 'member', member_count: 3, invite_code: 'F4AT8BCD',
+    created_by: DEMO_PEOPLE[0].id, created_at: now,
+    members: [
+      { user_id: DEMO_PEOPLE[0].id, display_name: DEMO_PEOPLE[0].display_name, role: 'owner', joined_at: now },
+      { user_id: 'group-maya', display_name: 'Maya Patel', role: 'member', joined_at: now },
+      { user_id: user.id, display_name: user.display_name, role: 'member', joined_at: now },
+    ],
+  };
+  const makeItem = (id: string, name: string, owner: string, groupId: string | null): Item => ({
+    id, name, owner_id: owner, group_id: groupId, category: 'produce_hardy', food_group: 'veggies',
+    storage: 'fridge', quantity: 2, unit: 'piece', est_weight_kg: 0.4, est_price: 2,
+    source: 'manual', added_at: now, predicted_expiry: dateFromNow(3), expiry_source: 'default',
+    removed_at: null, outcome: null, waste_reason: null, removed_after_expiry: null,
+    freshness: 'fresh', freshness_checked_at: now, confidence: null, nutrition: null, share: null,
+  });
+  const pantry = [
+    makeItem('group-carrots', 'Carrots', DEMO_PEOPLE[0].id, group.id),
+    makeItem('share-apples', 'Apples', DEMO_PEOPLE[0].id, null),
+    makeItem('share-peppers', 'Bell peppers', DEMO_PEOPLE[1].id, null),
+  ];
+  const pickup = { note: 'On the porch shelf', lat: 29.7604, lng: -95.3698, place_name: 'Community kitchen' };
+  const listings: ShareListing[] = pantry.slice(1).map((item, index) => ({
+    id: `listing-seed-${index}`, item_id: item.id, owner_id: item.owner_id,
+    group_id: index ? null : group.id, status: 'open', recipient_id: null,
+    claimed_by: index ? user.id : null, created_at: now, fulfilled_at: null,
+    pickup: copy(pickup), pickup_set: true,
+  }));
+  const requests: FoodRequest[] = [
+    { id: 'request-ana', author_id: DEMO_PEOPLE[0].id, author_name: DEMO_PEOPLE[0].display_name,
+      text: 'Does anyone have an onion for dinner?', status: 'open', fulfilled_by: null, fulfilled_by_name: null,
+      created_at: now, audiences: { friends: true, groups: [{ id: group.id, name: group.name }], hidden_count: 0 },
+      source: { type: 'group', name: group.name }, group_id: group.id, group_name: group.name },
+    { id: 'request-mine', author_id: user.id, author_name: user.display_name,
+      text: 'Looking for a little flour for pancakes.', status: 'open', fulfilled_by: null, fulfilled_by_name: null,
+      created_at: now, audiences: { friends: true, groups: [], hidden_count: 0 },
+      source: { type: 'me', name: user.display_name }, group_id: null, group_name: null },
+  ];
+  return { friends: {
+    friends: DEMO_PEOPLE.slice(0, 2).map((person) => ({ user_id: person.id, display_name: person.display_name, status: 'accepted', created_at: now })),
+    incoming: [{ user_id: DEMO_PEOPLE[2].id, display_name: DEMO_PEOPLE[2].display_name, status: 'pending', created_at: now }],
+    outgoing: [],
+  }, groups: [group], memberships: new Set([group.id]), pantry, listings, requests, code: null };
 }
 
 function publicUser(user: MockUser): User {

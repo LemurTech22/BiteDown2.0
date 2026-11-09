@@ -124,8 +124,8 @@ export interface ItemCandidate {
   bbox?: [number, number, number, number] | null;
   nutrition?: Nutrition | null;
   barcode?: string;
-  brand?: string;
-  quantity_text?: string;
+  brand?: string | null;
+  quantity_text?: string | null;
   price?: number | null;
   receipt_text?: string;
 }
@@ -155,7 +155,8 @@ export interface ItemsQuery {
 }
 
 export type UpdateItemInput = Partial<Pick<CreateItemInput,
-  'name' | 'quantity' | 'unit' | 'storage' | 'category' | 'predicted_expiry'>>;
+  'name' | 'quantity' | 'unit' | 'storage' | 'category' | 'food_group' | 'predicted_expiry' |
+  'est_price' | 'est_weight_kg' | 'freshness'>>;
 
 export interface ItemsResponse {
   items: Item[];
@@ -248,6 +249,107 @@ export interface RecipesRequest {
   item_ids?: string[] | null;
 }
 
+export interface Tip {
+  code: string;
+  message: string;
+}
+
+export type SocialStatus = 'open' | 'fulfilled' | 'cancelled';
+export interface ShareListing {
+  id: string;
+  item_id: string;
+  owner_id: string;
+  group_id: string | null;
+  status: SocialStatus;
+  recipient_id: string | null;
+  claimed_by: string | null;
+  created_at: string;
+  fulfilled_at: string | null;
+  pickup: PickupSpot | null;
+  pickup_set: boolean;
+}
+
+export interface PantryListing {
+  id: string;
+  item_id: string;
+  owner_id: string;
+  owner_name: string;
+  group_id: string | null;
+  status: 'open';
+  claimed_by_me: boolean;
+  created_at: string;
+  source: { type: 'friend' | 'group'; name: string };
+  item: Pick<Item, 'name' | 'category' | 'quantity' | 'unit' | 'predicted_expiry'>;
+  pickup: PickupSpot | null;
+  pickup_set: boolean;
+}
+
+export interface CreateShareInput {
+  item_id: string;
+  group_id?: string;
+  pickup?: Partial<PickupSpot> | null;
+}
+export interface UpdateShareInput {
+  pickup: Partial<PickupSpot> | null;
+}
+export interface Friend {
+  user_id: string;
+  display_name: string;
+  status: 'pending' | 'accepted';
+  created_at: string;
+}
+export interface FriendsResponse {
+  friends: Friend[];
+  incoming: Friend[];
+  outgoing: Friend[];
+}
+export interface FriendCode {
+  code: string;
+  expires_at: string;
+  url: string;
+}
+export type AddFriendInput = { code: string; email?: never } | { email: string; code?: never };
+export interface Group {
+  id: string;
+  name: string;
+  role: 'owner' | 'member';
+  member_count: number;
+  invite_code: string;
+  created_by: string | null;
+  created_at: string;
+}
+export interface GroupDetail extends Group {
+  members: { user_id: string; display_name: string; role: 'owner' | 'member'; joined_at: string }[];
+}
+export interface FoodRequest {
+  id: string;
+  author_id: string;
+  author_name: string;
+  text: string;
+  status: SocialStatus;
+  fulfilled_by: string | null;
+  fulfilled_by_name: string | null;
+  created_at: string;
+  audiences: ShareAudience & { hidden_count: number };
+  source: { type: 'me' | 'friend' | 'group'; name: string };
+  group_id: string | null;
+  group_name: string | null;
+}
+export interface CreateRequestInput {
+  text: string;
+  audiences: { friends?: boolean; group_ids?: string[] };
+}
+export interface RequestsQuery {
+  mine?: boolean;
+}
+export interface ReachablePerson {
+  id: string;
+  display_name: string;
+  kind: 'friend' | 'group_member';
+  groups: { id: string; name: string }[];
+  is_claimer: boolean;
+}
+
 export interface ApiClient {
   health(): Promise<{ status: 'ok' }>;
   signup(input: { email: string; password: string; display_name: string }): Promise<AuthResponse>;
@@ -276,4 +378,27 @@ export interface ApiClient {
   }): Promise<ReceiptCandidatesResponse>;
   suggestRecipes(input?: RecipesRequest): Promise<{ recipes: Recipe[] }>;
   getImpact(range?: ImpactRange): Promise<ImpactResponse>;
+  getBarcode(code: string): Promise<{ candidate: ItemCandidate }>;
+  getTips(): Promise<{ tips: Tip[] }>;
+  getShare(): Promise<{ listings: PantryListing[] }>;
+  createShare(input: CreateShareInput): Promise<{ listing: ShareListing }>;
+  updateShare(id: string, input: UpdateShareInput): Promise<{ listing: ShareListing }>;
+  deleteShare(id: string): Promise<{ listing: ShareListing }>;
+  claimShare(id: string): Promise<{ listing: ShareListing }>;
+  getFriends(): Promise<FriendsResponse>;
+  getFriendCode(): Promise<FriendCode>;
+  addFriend(input: AddFriendInput): Promise<{ friend: Friend }>;
+  acceptFriend(id: string): Promise<{ friend: Friend }>;
+  deleteFriend(id: string): Promise<void>;
+  getGroups(): Promise<{ groups: Group[] }>;
+  createGroup(input: { name: string }): Promise<{ group: Group }>;
+  joinGroup(input: { invite_code: string }): Promise<{ group: Group }>;
+  getGroup(id: string): Promise<{ group: GroupDetail }>;
+  getGroupPantry(id: string): Promise<ItemsResponse>;
+  leaveGroup(id: string): Promise<{ left: true }>;
+  getRequests(query?: RequestsQuery): Promise<{ requests: FoodRequest[] }>;
+  createRequest(input: CreateRequestInput): Promise<{ request: FoodRequest }>;
+  deleteRequest(id: string): Promise<{ request: FoodRequest }>;
+  fulfilRequest(id: string): Promise<{ request: FoodRequest }>;
+  getReachablePeople(itemId?: string): Promise<{ people: ReachablePerson[] }>;
 }
