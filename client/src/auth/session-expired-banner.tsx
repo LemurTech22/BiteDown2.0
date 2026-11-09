@@ -7,6 +7,8 @@ export function SessionExpiredBanner() {
   return (
     <View
       accessibilityRole="alert"
+      accessibilityLabel="You were signed out. Log in again to pick up where you left off."
+      testID="welcome.session.expired"
       style={{
         backgroundColor: theme.colors.urgentBg,
         borderRadius: theme.radii.control,
