@@ -1,5 +1,5 @@
 import { router, useFocusEffect } from 'expo-router';
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -11,6 +11,7 @@ import { SkeletonRows } from '@/components/ui/skeleton-rows';
 import { StateView } from '@/components/ui/state-view';
 import { groupItems } from '@/features/fridge/fridge-utils';
 import { groupIcon, ItemRow } from '@/features/fridge/item-row';
+import { MoveSheet, storageLabel } from '@/features/fridge/move-sheet';
 import { StorageSegmented } from '@/features/fridge/storage-segmented';
 import { RemoveSheet } from '@/features/remove/remove-sheet';
 import { UndoToast } from '@/features/remove/undo-toast';
@@ -29,6 +30,8 @@ export function FridgeScreen() {
   const { api } = useApi();
   const [storage, setStorage] = useState<Storage>('fridge');
   const [removing, setRemoving] = useState<Item | null>(null);
+  const [moving, setMoving] = useState<Item | null>(null);
+  const [moved, setMoved] = useState<Item | null>(null);
   const [state, setState] = useState<FridgeState>({
     status: 'loading',
     items: [],
@@ -39,6 +42,12 @@ export function FridgeScreen() {
   const mutations = useRef({ version: 0, items: new Map<string, { version: number; item: Item }>() });
   const { entries, remember, undo } = useRemovalUndo(applyItem);
   const styles = createStyles(theme);
+
+  useEffect(() => {
+    if (!moved) return;
+    const timeout = setTimeout(() => setMoved(null), 5000);
+    return () => clearTimeout(timeout);
+  }, [moved]);
 
   const load = useCallback(
     async (forceSkeleton = false) => {
@@ -100,6 +109,9 @@ export function FridgeScreen() {
         <Text accessibilityRole="header" style={styles.title}>Your food</Text>
       </View>
       <StorageSegmented value={storage} onChange={setStorage} />
+      {moved ? <FadeIn testID="fridge.move.confirmation">
+        <Text accessibilityLiveRegion="polite" style={styles.confirmation}>Moved to {storageLabel(moved.storage)}</Text>
+      </FadeIn> : null}
       <ScrollView
         accessibilityLabel={`${storage} food`}
         style={styles.content}
@@ -151,6 +163,7 @@ export function FridgeScreen() {
                     item={item}
                     last={itemIndex === section.items.length - 1}
                     onRemove={() => setRemoving(item)}
+                    onMove={() => setMoving(item)}
                   />
                 ))}
               </View>
@@ -172,6 +185,8 @@ export function FridgeScreen() {
           onRemoved={(item) => { applyItem(item); remember(item); }}
         />
       ) : null}
+      {moving ? <MoveSheet key={moving.id} item={moving} onClose={() => setMoving(null)}
+        onMoved={(item) => { applyItem(item); setMoved(item); }} /> : null}
     </SafeAreaView>
   );
 }
@@ -192,6 +207,7 @@ function createStyles(theme: AppTheme) {
     },
     header: { paddingTop: theme.spacing.lg },
     title: { ...theme.type.screenTitle, color: theme.colors.ink },
+    confirmation: { ...theme.type.body, color: theme.colors.forest },
     content: { flex: 1 },
     toasts: { flexGrow: 0, flexShrink: 1, maxHeight: '40%' },
     toastContent: { gap: theme.spacing.sm, paddingBottom: theme.spacing.sm },

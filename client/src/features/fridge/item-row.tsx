@@ -1,6 +1,7 @@
 import { StyleSheet, Text, View } from 'react-native';
 
 import type { FoodGroup, Item } from '@/api/types';
+import { AppButton } from '@/components/ui/app-button';
 import { AppIcon, type IconName } from '@/components/ui/app-icon';
 import { IconButton } from '@/components/ui/icon-button';
 import { FreshnessBadge } from '@/features/fridge/freshness-badge';
@@ -23,7 +24,9 @@ export function groupIcon(foodGroup: FoodGroup): IconName {
   return GROUP_ICONS[foodGroup];
 }
 
-export function ItemRow({ item, last, onRemove }: { item: Item; last: boolean; onRemove: () => void }) {
+export function ItemRow({ item, last, onRemove, onMove }: {
+  item: Item; last: boolean; onRemove: () => void; onMove: () => void;
+}) {
   const theme = useTheme();
   const groupColors = theme.foodGroups[item.food_group];
   const styles = createStyles(theme);
@@ -37,6 +40,8 @@ export function ItemRow({ item, last, onRemove }: { item: Item; last: boolean; o
         <Text style={styles.meta}>{quantityLabel(item)}</Text>
       </View>
       <FreshnessBadge freshness={item.freshness} itemId={item.id} />
+      <AppButton label="Move to…" accessibilityLabel={`Move ${item.name} to another storage`}
+        testID={`fridge.move.${item.id}`} onPress={onMove} variant="outline" />
       <IconButton
         icon="tray-arrow-up"
         label={`Remove ${item.name}`}

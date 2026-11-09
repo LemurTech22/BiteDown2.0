@@ -20,6 +20,7 @@ import type {
   RecipesRequest,
   RemoveBatchInput,
   RemoveItemInput,
+  UpdateItemInput,
   User,
   WasteReason,
 } from './types';
@@ -162,6 +163,19 @@ export class MockApiClient implements ApiClient {
       return copy(item);
     });
     return { items: added };
+  }
+
+  async updateItem(id: string, patch: UpdateItemInput): Promise<{ item: Item }> {
+    const user = this.requireUser();
+    const item = this.findItem(id);
+    if (item.removed_at) throw new ApiError(404, 'not_found', 'Item not found.');
+    if (item.owner_id !== user.id) throw new ApiError(403, 'forbidden', 'That item belongs to another user.');
+    Object.assign(item, patch);
+    if (patch.predicted_expiry !== undefined) item.expiry_source = 'user';
+    if (patch.quantity !== undefined || patch.unit !== undefined || patch.category !== undefined) {
+      item.est_weight_kg = 0.2 * item.quantity;
+    }
+    return { item: copy(item) };
   }
 
   async fromPhoto(input: {

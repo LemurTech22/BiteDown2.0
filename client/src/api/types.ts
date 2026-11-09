@@ -154,6 +154,9 @@ export interface ItemsQuery {
   group_by?: 'food_group';
 }
 
+export type UpdateItemInput = Partial<Pick<CreateItemInput,
+  'name' | 'quantity' | 'unit' | 'storage' | 'category' | 'predicted_expiry'>>;
+
 export interface ItemsResponse {
   items: Item[];
 }
@@ -253,6 +256,7 @@ export interface ApiClient {
   deleteMe(): Promise<void>;
   getItems(query?: ItemsQuery): Promise<ItemsResponse | ItemSectionsResponse>;
   createItems(input: { items: CreateItemInput[]; group_id?: string }): Promise<ItemsResponse>;
+  updateItem(id: string, patch: UpdateItemInput): Promise<{ item: Item }>;
   fromPhoto(input: {
     uri: string;
     fileName?: string;

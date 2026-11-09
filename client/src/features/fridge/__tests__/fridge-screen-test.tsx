@@ -1,10 +1,12 @@
-import { act, fireEvent, render } from '@testing-library/react-native';
+import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
 import { router } from 'expo-router';
 
 import { ApiError, ApiProvider, MockApiClient } from '@/api';
 import type { Item, ItemsResponse } from '@/api/types';
 import { FridgeScreen } from '@/features/fridge/fridge-screen';
 import { groupItems } from '@/features/fridge/fridge-utils';
+
+jest.mock('@/hooks/use-reduced-motion', () => ({ useReducedMotion: () => true }));
 
 jest.mock('expo-router', () => {
   const React = jest.requireActual<typeof import('react')>('react');
@@ -68,6 +70,69 @@ async function seededClient() {
 
 describe('Fridge', () => {
   beforeEach(() => jest.clearAllMocks());
+
+  test.each(['pantry', 'freezer'] as const)('moves an item to %s and removes it from the current list', async (storage) => {
+    const api = await seededClient();
+    const response = await api.getItems({ storage: 'fridge' });
+    const item = (response as ItemsResponse).items.find((item) => item.name === 'Apples')!;
+    const update = jest.spyOn(api, 'updateItem');
+    const screen = await renderFridge(api);
+    await screen.findByTestId(`fridge.item.${item.id}`);
+    await fireEvent.press(screen.getByTestId(`fridge.move.${item.id}`));
+    expect(screen.queryByTestId('fridge.move.fridge')).toBeNull();
+    expect(screen.getByTestId('fridge.move.sheet')).toHaveProp('animationType', 'fade');
+    await fireEvent.press(screen.getByTestId(`fridge.move.${storage}`));
+    await waitFor(() => expect(screen.queryByTestId(`fridge.item.${item.id}`)).toBeNull());
+    expect(update).toHaveBeenCalledTimes(1);
+    expect(update).toHaveBeenCalledWith(item.id, { storage });
+    expect(screen.getByText(storage === 'pantry' ? 'Moved to Pantry' : 'Moved to Freezer')).toBeTruthy();
+    await fireEvent.press(screen.getByTestId(`fridge.storage.${storage}`));
+    expect(await screen.findByTestId(`fridge.item.${item.id}`)).toBeTruthy();
+    // Pantry and freezer items offer a way back to the fridge.
+    await fireEvent.press(screen.getByTestId(`fridge.move.${item.id}`));
+    expect(screen.queryByTestId(`fridge.move.${storage}`)).toBeNull();
+    await fireEvent.press(screen.getByTestId('fridge.move.fridge'));
+    await waitFor(() => expect(screen.queryByTestId(`fridge.item.${item.id}`)).toBeNull());
+    expect(update).toHaveBeenLastCalledWith(item.id, { storage: 'fridge' });
+  });
+
+  test('a move error keeps the item and retries the selected destination', async () => {
+    const api = await seededClient();
+    const { items } = await api.getItems({ storage: 'fridge' }) as ItemsResponse;
+    const item = items[0];
+    const update = jest.spyOn(api, 'updateItem').mockRejectedValueOnce(new ApiError(503, 'unavailable', 'Move failed.'));
+    const screen = await renderFridge(api);
+    await screen.findByTestId(`fridge.item.${item.id}`);
+    await fireEvent.press(screen.getByTestId(`fridge.move.${item.id}`));
+    await fireEvent.press(screen.getByTestId('fridge.move.pantry'));
+    expect(await screen.findByText('Move failed.')).toBeTruthy();
+    expect(screen.queryByTestId('fridge.move.confirmation')).toBeNull();
+    expect(screen.getByTestId(`fridge.item.${item.id}`, { includeHiddenElements: true })).toBeTruthy();
+    expect((await api.getItems({ storage: 'fridge' }) as ItemsResponse).items.some((value) => value.id === item.id)).toBe(true);
+    await fireEvent.press(screen.getByTestId('fridge.move.retry'));
+    await waitFor(() => expect(screen.queryByTestId(`fridge.item.${item.id}`)).toBeNull());
+    expect(update).toHaveBeenNthCalledWith(2, item.id, { storage: 'pantry' });
+  });
+
+  test('shows a skeleton during a move, sends once, and permits cancel after failure', async () => {
+    const api = await seededClient();
+    const { items } = await api.getItems({ storage: 'fridge' }) as ItemsResponse;
+    const item = items[0];
+    let rejectMove!: (reason: Error) => void;
+    const update = jest.spyOn(api, 'updateItem').mockImplementationOnce(() => new Promise((_, reject) => { rejectMove = reject; }));
+    const screen = await renderFridge(api);
+    await screen.findByTestId(`fridge.item.${item.id}`);
+    await fireEvent.press(screen.getByTestId(`fridge.move.${item.id}`));
+    await fireEvent.press(screen.getByTestId('fridge.move.pantry'));
+    expect(screen.getByTestId('fridge.move.skeleton')).toBeTruthy();
+    await fireEvent(screen.getByTestId('fridge.move.sheet'), 'requestClose');
+    expect(screen.getByTestId('fridge.move.skeleton')).toBeTruthy();
+    expect(update).toHaveBeenCalledTimes(1);
+    await act(() => rejectMove(new ApiError(503, 'unavailable', 'Move failed.')));
+    await fireEvent.press(screen.getByTestId('fridge.move.cancel'));
+    expect(screen.getByTestId(`fridge.item.${item.id}`)).toBeTruthy();
+    expect(screen.queryByTestId('fridge.move.sheet')).toBeNull();
+  });
 
   test('loads storage-filtered items and labels every freshness state with text', async () => {
     const api = await seededClient();

@@ -9,7 +9,8 @@ jest.mock('expo-router', () => {
   const React = jest.requireActual<typeof import('react')>('react');
   return {
     Redirect: jest.fn(() => null),
-    router: { back: jest.fn(), push: jest.fn() },
+    router: { back: jest.fn(), push: jest.fn(), canGoBack: jest.fn(() => true), replace: jest.fn() },
+    useFocusEffect: (callback: () => void | (() => void)) => React.useEffect(callback, [callback]),
     Tabs: Object.assign(
       ({ children }: { children: ReactNode }) => React.createElement(React.Fragment, null, children),
       { Screen: jest.fn(() => null) },

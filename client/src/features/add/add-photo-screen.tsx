@@ -1,11 +1,11 @@
 import * as Haptics from 'expo-haptics';
 import * as ImagePicker from 'expo-image-picker';
-import { router } from 'expo-router';
-import { useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Image, Linking, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { router, useFocusEffect } from 'expo-router';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { ActivityIndicator, BackHandler, Image, Linking, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { useApi } from '@/api';
+import { isApiError, useApi } from '@/api';
 import { AppButton } from '@/components/ui/app-button';
 import { AppIcon } from '@/components/ui/app-icon';
 import { FadeIn } from '@/components/ui/fade-in';
@@ -17,8 +17,14 @@ import { type AppTheme, useTheme } from '@/theme';
 
 import { CandidateEditor, type CandidateDraft, draftError, toCreateItem } from './candidate-editor';
 import { ChoiceControl } from './choice-control';
+import { DiscardSheet } from './discard-sheet';
 
 type Photo = { asset: ImagePicker.ImagePickerAsset; mode: 'fridge' | 'single' };
+
+function closeAdd() {
+  if (router.canGoBack()) router.back();
+  else router.replace('/home');
+}
 
 export function AddPhotoScreen() {
   const theme = useTheme();
@@ -30,6 +36,26 @@ export function AddPhotoScreen() {
   const [denied, setDenied] = useState(false);
   const [lastSource, setLastSource] = useState<'camera' | 'library'>('camera');
   const pickerBusy = useRef(false);
+  const [hasCandidates, setHasCandidates] = useState(false);
+  const [discardAction, setDiscardAction] = useState<'close' | 'reset' | null>(null);
+
+  const requestClose = useCallback(() => {
+    if (hasCandidates) setDiscardAction('close');
+    else closeAdd();
+  }, [hasCandidates]);
+
+  useFocusEffect(useCallback(() => {
+    const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
+      requestClose();
+      return true;
+    });
+    return () => subscription.remove();
+  }, [requestClose]));
+
+  function reset() {
+    if (hasCandidates) setDiscardAction('reset');
+    else setPhoto(null);
+  }
 
   async function pick(source: 'camera' | 'library') {
     if (pickerBusy.current) return;
@@ -63,10 +89,11 @@ export function AddPhotoScreen() {
     <SafeAreaView style={styles.screen}>
       <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
         <View style={styles.header}>
+          <IconButton icon="close" label="Close" onPress={requestClose} testID="add.close.button" />
           <Text accessibilityRole="header" style={styles.title}>{photo ? 'Review photo' : 'Add food'}</Text>
-          <IconButton icon="close" label="Close add food" onPress={() => router.back()} testID="add.close.button" />
         </View>
-        {photo ? <PhotoReview photo={photo} onReset={() => setPhoto(null)} /> : (
+        {photo ? <PhotoReview photo={photo} onReset={reset} onCandidatesChange={setHasCandidates}
+          onSaved={() => { setPhoto(null); setHasCandidates(false); setDiscardAction(null); closeAdd(); }} /> : (
           <FadeIn style={styles.section} testID="add.empty.state">
             <View style={styles.hero}>
               <AppIcon name="camera-outline" color={theme.colors.onForest} size={theme.sizes.addHeroGlyph} />
@@ -87,11 +114,22 @@ export function AddPhotoScreen() {
           </FadeIn>
         )}
       </ScrollView>
+      {discardAction ? <DiscardSheet onCancel={() => setDiscardAction(null)} onDiscard={() => {
+        setPhoto(null);
+        setHasCandidates(false);
+        setDiscardAction(null);
+        if (discardAction === 'close') closeAdd();
+      }} /> : null}
     </SafeAreaView>
   );
 }
 
-function PhotoReview({ photo, onReset }: { photo: Photo; onReset: () => void }) {
+function PhotoReview({ photo, onReset, onCandidatesChange, onSaved }: {
+  photo: Photo;
+  onReset: () => void;
+  onCandidatesChange: (hasCandidates: boolean) => void;
+  onSaved: () => void;
+}) {
   const { api } = useApi();
   const theme = useTheme();
   const reducedMotion = useReducedMotion();
@@ -105,6 +143,8 @@ function PhotoReview({ photo, onReset }: { photo: Photo; onReset: () => void }) 
   const saveBusy = useRef(false);
   const mounted = useRef(true);
 
+  useEffect(() => { onCandidatesChange(drafts.length > 0); }, [drafts.length, onCandidatesChange]);
+
   useEffect(() => {
     mounted.current = true;
     return () => { mounted.current = false; };
@@ -117,7 +157,10 @@ function PhotoReview({ photo, onReset }: { photo: Photo; onReset: () => void }) 
       if (active) setDrafts(result.candidates.map((candidate, id) => ({ id, candidate, name: candidate.name,
         quantity: String(candidate.quantity), storage: candidate.storage, expiry: candidate.predicted_expiry })));
     }).catch((cause: unknown) => {
-      if (active) setError(cause instanceof Error ? cause.message : 'We couldn’t analyze this photo. Try again.');
+      if (active) setError(isApiError(cause) && cause.code === 'upstream_unavailable' &&
+        (cause.status === 502 || cause.status === 503)
+        ? 'The food scanner is busy right now. Try again in a minute.'
+        : cause instanceof Error ? cause.message : 'We couldn’t analyze this photo. Try again.');
     }).finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
   }, [api, attempt, photo]);
@@ -130,7 +173,7 @@ function PhotoReview({ photo, onReset }: { photo: Photo; onReset: () => void }) 
     try {
       await api.createItems({ items: drafts.map((draft) => toCreateItem(draft, photo.mode)) });
       void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
-      if (mounted.current) router.back();
+      if (mounted.current) onSaved();
     } catch (cause) {
       if (mounted.current) setSaveError(cause instanceof Error ? cause.message : 'We couldn’t save your food. Try again.');
     } finally {
@@ -180,7 +223,7 @@ function createStyles(theme: AppTheme) {
     screen: { flex: 1, backgroundColor: theme.colors.ground },
     content: { flexGrow: 1, padding: theme.spacing.gutter, gap: theme.spacing.xl },
     section: { gap: theme.spacing.lg },
-    header: { flexDirection: 'row', alignItems: 'center', gap: theme.spacing.md, justifyContent: 'space-between' },
+    header: { flexDirection: 'row', alignItems: 'center', gap: theme.spacing.md },
     title: { ...theme.type.sheetTitle, color: theme.colors.ink, flexShrink: 1 },
     body: { ...theme.type.bodySmall, color: theme.colors.muted },
     hero: { backgroundColor: theme.colors.forest, borderRadius: theme.radii.hero, padding: theme.spacing.lg, gap: theme.spacing.sm, minHeight: theme.sizes.addHero },

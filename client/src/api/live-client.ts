@@ -19,6 +19,7 @@ import type {
   RecipesRequest,
   RemoveBatchInput,
   RemoveItemInput,
+  UpdateItemInput,
 } from './types';
 
 interface LiveApiClientOptions {
@@ -87,6 +88,13 @@ export class LiveApiClient implements ApiClient {
 
   createItems(input: { items: CreateItemInput[]; group_id?: string }) {
     return this.request<ItemsResponse>('/items', { method: 'POST', body: JSON.stringify(input) });
+  }
+
+  updateItem(id: string, patch: UpdateItemInput) {
+    return this.request<{ item: import('./types').Item }>(`/items/${encodeURIComponent(id)}`, {
+      method: 'PATCH',
+      body: JSON.stringify(patch),
+    });
   }
 
   async fromPhoto(input: {

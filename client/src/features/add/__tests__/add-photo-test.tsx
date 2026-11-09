@@ -2,11 +2,18 @@ import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
 import * as Haptics from 'expo-haptics';
 import * as ImagePicker from 'expo-image-picker';
 import { router } from 'expo-router';
+import { BackHandler } from 'react-native';
 
 import { ApiError, ApiProvider, MockApiClient, type PhotoCandidatesResponse } from '@/api';
 import AddModalScreen from '@/app/add-modal';
 
-jest.mock('expo-router', () => ({ router: { back: jest.fn() } }));
+jest.mock('expo-router', () => {
+  const React = jest.requireActual<typeof import('react')>('react');
+  return {
+    router: { back: jest.fn(), canGoBack: jest.fn(() => true), replace: jest.fn() },
+    useFocusEffect: (callback: () => void | (() => void)) => React.useEffect(callback, [callback]),
+  };
+});
 jest.mock('expo-haptics', () => ({
   notificationAsync: jest.fn(() => Promise.resolve()),
   NotificationFeedbackType: { Success: 'success', Error: 'error' },
@@ -34,9 +41,97 @@ async function setup() {
 describe('add by photo', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    jest.mocked(router.canGoBack).mockReturnValue(true);
     picker.requestCameraPermissionsAsync.mockResolvedValue({ granted: true, status: 'granted', canAskAgain: true, expires: 'never' } as ImagePicker.CameraPermissionResponse);
     picker.launchCameraAsync.mockResolvedValue(photo);
     picker.launchImageLibraryAsync.mockResolvedValue(photo);
+  });
+  afterEach(() => jest.restoreAllMocks());
+
+  test('Close is accessible and goes back, with Home as the fallback', async () => {
+    const { screen } = await setup();
+    expect(screen.getByLabelText('Close')).toBe(screen.getByTestId('add.close.button'));
+    await fireEvent.press(screen.getByTestId('add.close.button'));
+    expect(router.back).toHaveBeenCalledTimes(1);
+    jest.mocked(router.canGoBack).mockReturnValue(false);
+    await fireEvent.press(screen.getByTestId('add.close.button'));
+    expect(router.replace).toHaveBeenCalledWith('/home');
+    expect(router.back).toHaveBeenCalledTimes(1);
+  });
+
+  test('Close asks before discarding candidates and Keep editing retains edits', async () => {
+    const { screen } = await setup();
+    await fireEvent.press(screen.getByTestId('add.library.button'));
+    await screen.findByDisplayValue('Mock apples');
+    await fireEvent.changeText(screen.getByTestId('add.name.0'), 'Unsaved apples');
+    await fireEvent.press(screen.getByTestId('add.close.button'));
+    expect(screen.getByTestId('add.discard.sheet')).toBeTruthy();
+    expect(router.back).not.toHaveBeenCalled();
+    await fireEvent.press(screen.getByTestId('add.discard.cancel'));
+    expect(screen.getByDisplayValue('Unsaved apples')).toBeTruthy();
+    await fireEvent.press(screen.getByTestId('add.close.button'));
+    await fireEvent.press(screen.getByTestId('add.discard.confirm'));
+    expect(router.back).toHaveBeenCalledTimes(1);
+  });
+
+  test('Android back closes an empty modal and asks before discarding candidates', async () => {
+    let back!: () => boolean | null | undefined;
+    const remove = jest.fn();
+    jest.spyOn(BackHandler, 'addEventListener').mockImplementation((_event, handler) => {
+      back = () => handler({ type: 'hardwareBackPress', timeStamp: Date.now() });
+      return { remove };
+    });
+    const { screen } = await setup();
+    await act(() => expect(back()).toBe(true));
+    expect(router.back).toHaveBeenCalledTimes(1);
+    jest.mocked(router.back).mockClear();
+    await fireEvent.press(screen.getByTestId('add.library.button'));
+    await screen.findByDisplayValue('Mock apples');
+    await act(() => expect(back()).toBe(true));
+    expect(router.back).not.toHaveBeenCalled();
+    await fireEvent(screen.getByTestId('add.discard.sheet'), 'requestClose');
+    expect(screen.getByDisplayValue('Mock apples')).toBeTruthy();
+    await act(() => back());
+    await fireEvent.press(screen.getByTestId('add.discard.confirm'));
+    expect(router.back).toHaveBeenCalledTimes(1);
+    await screen.unmount();
+    expect(remove).toHaveBeenCalled();
+  });
+
+  test('choosing another photo also confirms discarding unsaved candidates', async () => {
+    const { screen } = await setup();
+    await fireEvent.press(screen.getByTestId('add.library.button'));
+    await screen.findByDisplayValue('Mock apples');
+    await fireEvent.press(screen.getByTestId('add.reset.button'));
+    expect(screen.getByTestId('add.discard.sheet')).toBeTruthy();
+    await fireEvent.press(screen.getByTestId('add.discard.confirm'));
+    expect(screen.getByTestId('add.empty.state')).toBeTruthy();
+    expect(router.back).not.toHaveBeenCalled();
+  });
+
+  test.each([502, 503])('scanner unavailability (%s) has a friendly message and retry', async (status) => {
+    const { api, screen } = await setup();
+    jest.spyOn(api, 'fromPhoto').mockRejectedValueOnce(new ApiError(status, 'upstream_unavailable', 'Upstream failed.'));
+    await fireEvent.press(screen.getByTestId('add.library.button'));
+    expect(await screen.findByText('The food scanner is busy right now. Try again in a minute.')).toBeTruthy();
+    await fireEvent.press(screen.getByTestId('add.analysis.retry'));
+    expect(await screen.findByDisplayValue('Mock apples')).toBeTruthy();
+  });
+
+  test('status 0 keeps the connection message instead of the scanner message', async () => {
+    const { api, screen } = await setup();
+    const message = 'Can’t reach BiteDown. Check your connection and server address, then try again.';
+    jest.spyOn(api, 'fromPhoto').mockRejectedValueOnce(new ApiError(0, 'upstream_unavailable', message));
+    await fireEvent.press(screen.getByTestId('add.library.button'));
+    expect(await screen.findByText(message)).toBeTruthy();
+    expect(screen.queryByText('The food scanner is busy right now. Try again in a minute.')).toBeNull();
+  });
+
+  test('other server errors preserve their own message', async () => {
+    const { api, screen } = await setup();
+    jest.spyOn(api, 'fromPhoto').mockRejectedValueOnce(new ApiError(503, 'internal_error', 'Try a different photo.'));
+    await fireEvent.press(screen.getByTestId('add.library.button'));
+    expect(await screen.findByText('Try a different photo.')).toBeTruthy();
   });
 
   test('camera photo shows predictions and saves edited values before closing', async () => {
@@ -177,6 +272,7 @@ describe('add by photo', () => {
     await screen.findByDisplayValue('Mock apples');
     await fireEvent.press(screen.getByTestId('add.save.button'));
     await fireEvent.press(screen.getByTestId('add.close.button'));
+    await fireEvent.press(screen.getByTestId('add.discard.confirm'));
     await screen.unmount();
     await act(() => finish());
     expect(router.back).toHaveBeenCalledTimes(1);
