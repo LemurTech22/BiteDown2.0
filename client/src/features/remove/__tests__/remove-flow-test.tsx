@@ -6,6 +6,7 @@ import { ApiError, ApiProvider, MockApiClient, type Item, type ItemsResponse } f
 import { FridgeScreen } from '@/features/fridge/fridge-screen';
 import { UNDO_WINDOW_MS } from '@/features/remove/use-removal-undo';
 import { useReducedMotion } from '@/hooks/use-reduced-motion';
+import { PreferencesProvider } from '@/settings/preferences';
 
 jest.mock('@/hooks/use-reduced-motion', () => ({ useReducedMotion: jest.fn(() => true) }));
 jest.mock('expo-haptics', () => ({
@@ -27,7 +28,7 @@ async function setup() {
     { name: 'Spinach', food_group: 'veggies', storage: 'fridge', freshness: 'semi_fresh' },
     { name: 'Apples', food_group: 'fruit', storage: 'fridge', freshness: 'fresh' },
   ] });
-  const screen = await render(<ApiProvider client={api}><FridgeScreen /></ApiProvider>);
+  const screen = await render(<ApiProvider client={api}><PreferencesProvider><FridgeScreen /></PreferencesProvider></ApiProvider>);
   await screen.findByTestId(`fridge.item.${items[0].id}`);
   return { api, screen, item: items[0], secondItem: items[1] };
 }
@@ -38,6 +39,43 @@ describe('Remove and Undo', () => {
     jest.mocked(useReducedMotion).mockReturnValue(true);
   });
   afterEach(() => { jest.restoreAllMocks(); jest.useRealTimers(); });
+
+  test('Shared it waits for Done and explicitly supports someone off BiteDown', async () => {
+    const { api, screen, item } = await setup();
+    const remove = jest.spyOn(api, 'removeItem');
+    await fireEvent.press(screen.getByTestId(`fridge.remove.${item.id}`));
+    await fireEvent.press(screen.getByTestId('remove.outcome.donated'));
+    expect(remove).not.toHaveBeenCalled();
+    await fireEvent.press(screen.getByTestId('remove.recipient.button'));
+    await fireEvent.press(screen.getByTestId('remove.recipient.other'));
+    await fireEvent.press(screen.getByTestId('remove.shared.done'));
+    expect(remove).toHaveBeenCalledWith(item.id, { outcome: 'donated', recipient_id: null });
+  });
+
+  test('Given to lists reachable friends and group members and sends the selected recipient', async () => {
+    const { api, screen, item } = await setup();
+    const remove = jest.spyOn(api, 'removeItem');
+    await fireEvent.press(screen.getByTestId(`fridge.remove.${item.id}`));
+    await fireEvent.press(screen.getByTestId('remove.outcome.donated'));
+    await fireEvent.press(screen.getByTestId('remove.recipient.button'));
+    await screen.findByText('Ana Rivera');
+    expect(screen.getByText('Maya Patel')).toBeTruthy();
+    await fireEvent.press(screen.getByTestId('remove.recipient.friend-ana'));
+    await fireEvent.press(screen.getByTestId('remove.shared.done'));
+    expect(remove).toHaveBeenCalledWith(item.id, { outcome: 'donated', recipient_id: 'friend-ana' });
+  });
+
+  test('recipient list errors expose a working Try again', async () => {
+    const { api, screen, item } = await setup();
+    const people = jest.spyOn(api, 'getReachablePeople').mockRejectedValueOnce(new Error('People unavailable'));
+    await fireEvent.press(screen.getByTestId(`fridge.remove.${item.id}`));
+    await fireEvent.press(screen.getByTestId('remove.outcome.donated'));
+    await fireEvent.press(screen.getByTestId('remove.recipient.button'));
+    expect(await screen.findByText('People unavailable')).toBeTruthy();
+    await fireEvent.press(screen.getByTestId('remove.people.retry'));
+    expect(await screen.findByText('Ana Rivera')).toBeTruthy();
+    expect(people).toHaveBeenCalledTimes(2);
+  });
 
   test('thrown_out without a reason is blocked; Cancel keeps the item', async () => {
     const { api, screen, item } = await setup();
@@ -73,6 +111,7 @@ describe('Remove and Undo', () => {
     const restore = jest.spyOn(api, 'restoreItem');
     await fireEvent.press(screen.getByTestId(`fridge.remove.${item.id}`));
     await fireEvent.press(screen.getByTestId(`remove.outcome.${outcome}`));
+    if (outcome === 'donated') await fireEvent.press(screen.getByTestId('remove.shared.done'));
 
     expect(remove).toHaveBeenCalledWith(item.id, { outcome });
     expect(await screen.findByTestId(`remove.toast.${item.id}`)).toBeTruthy();
