@@ -1,8 +1,10 @@
-import { createContext, type ReactNode, useCallback, useContext, useEffect, useMemo, useState } from 'react';
+import { router } from 'expo-router';
+import { createContext, type ReactNode, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 
 import { isApiError, useApi } from '@/api';
 import type { User } from '@/api/types';
 import { tokenStore } from '@/auth/token-store';
+import { reportServerError } from '@/components/server-error';
 
 interface Credentials {
   email: string;
@@ -30,26 +32,36 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [status, setStatus] = useState<AuthContextValue['status']>('loading');
   const [user, setUser] = useState<User | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const generation = useRef(0);
+
+  useEffect(() => {
+    if (sessionExpired) router.replace('/');
+  }, [sessionExpired]);
 
   const restoreSession = useCallback(async () => {
+    const current = ++generation.current;
     setStatus('loading');
     setError(null);
     try {
       const token = await tokenStore.get();
+      if (current !== generation.current) return;
       if (!token) {
         setUser(null);
         setStatus('unauthenticated');
         return;
       }
       const response = await api.me();
+      if (current !== generation.current) return;
       setUser(response.user);
       setStatus('authenticated');
     } catch (cause) {
+      if (current !== generation.current) return;
       setUser(null);
       if (isApiError(cause) && cause.status === 401) {
         await tokenStore.set(null);
         setStatus('unauthenticated');
       } else {
+        reportServerError(cause);
         setError(cause instanceof Error ? cause.message : 'We couldn’t restore your session. Try again.');
         setStatus('error');
       }
@@ -63,6 +75,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     });
     return () => {
       active = false;
+      generation.current += 1;
     };
   }, [restoreSession]);
 
@@ -72,19 +85,28 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       user: sessionExpired ? null : user,
       error,
       login: async (input) => {
-        const response = await api.login(input);
+        generation.current += 1;
+        const response = await api.login(input).catch((cause: unknown) => {
+          reportServerError(cause);
+          throw cause;
+        });
         setUser(response.user);
         setStatus('authenticated');
         clearSessionExpired();
       },
       signup: async (input) => {
-        const response = await api.signup(input);
+        generation.current += 1;
+        const response = await api.signup(input).catch((cause: unknown) => {
+          reportServerError(cause);
+          throw cause;
+        });
         setUser(response.user);
         setStatus('authenticated');
         clearSessionExpired();
       },
       retry: restoreSession,
       signOut: async () => {
+        generation.current += 1;
         await clearApiSession();
         setUser(null);
         setStatus('unauthenticated');
