@@ -2,7 +2,7 @@
 
 _The app is **BiteDown** (owner, 2026-10-10; see `docs/DECISIONS.md`). Internal names such as `FoodWasteReducer` stay._
 
-_Last updated: 2026-11-09 (checkpoint 14, Expo Android; see below). Older text from 2026-10-11: **`food-main` (VPS) orchestrates**: it plans, rules, reviews and merges,
+_Last updated: 2026-11-09 (checkpoint 15, Expo Android Phase 3; see below). Older text from 2026-10-11: **`food-main` (VPS) orchestrates**: it plans, rules, reviews and merges,
 and owns the canvas and the orchestrator docs. **`food-main-mac` (the Mac) does all the building**: builder + QA
 sub-agents (**Sonnet**, owner preference), Xcode and simulators, Docker and every test run, plus any
 `.github/workflows` push. The owner also lets the Mac merge a PR when it judges it ready, and edit the canvas when
@@ -12,7 +12,55 @@ checkpoints. **Since checkpoint 10:** `food-modal-test` (iOS simulator test pass
 merges on the Mac; `food-main` reviews the Auth PR. All of them update this file and the affected `docs/` at
 every checkpoint (`CLAUDE.md` Rules). Rules: [`CLAUDE.md`](CLAUDE.md)._
 
-## Checkpoint 14 (2026-11-09, Windows PC): Phase C (Expo Android app) Phase 2 done. Read this first
+## Checkpoint 15 (2026-11-09, Windows PC): Expo Android Phase 3 built. Read this first
+**Where:** still `feat/expo-android`, local only (push is blocked by the read-only GitHub access; see checkpoint 14).
+Phase 3 (every remaining screen) is merged on this branch. **QA has not run on Phase 3**: checks below are the
+orchestrator's own, which don't count as a QA pass (`CLAUDE.md`). Phases 4 and 5 remain as checkpoint 14 describes.
+
+**How Phase 3 ran:** one Codex foundation run, then six parallel Codex tracks, each in its own worktree
+(`C:/bd/p3-<track>`, branch `feat/expo-p3-<track>`) with disjoint files. Claude reviewed each diff (scope check, contract
+spot checks), ran typecheck / lint / Jest, committed with `Co-Authored-By: Codex`, and merged with `--no-ff`. The worktrees
+and track branches are deleted (the empty `C:\bd` folder remains; root-level deletes are blocked for the agent).
+- `004c967` deps: expo-camera, expo-clipboard, expo-location, react-native-svg, react-native-qrcode-svg (exact pins).
+- `4c7ce14` foundation: `ApiClient` methods for barcode, receipt, tips, share, friends, groups, requests, people (live +
+  mock + tests); `src/settings/preferences.tsx` (device-only units, default storage, currency, saved pickup spots;
+  `formatWeight`, `formatMoney`); placeholder routes for every Phase 3 screen, registered in `src/app/_layout.tsx`;
+  `GlobalBanners` slot; camera and location permissions in `app.config.ts`. Response keys checked against `backend/app/routes`.
+- Merges: C `3757d56` Recipes + detail; E `e50c862` Settings, delete account, server-error banner (`reportServerError`,
+  `SectionError`), debug screen moved to `features/settings`; D1 `d71cea0` Social, Food Pantry, requests, Offer
+  confirmation, Claimed item; A `4243607` Home, Item detail (share toggle, pickup spot, Check again), Fridge Select +
+  batch Undo (also fixed the demo-path test: `PreferencesProvider` wrapper, "Hi, Demo" greeting); B `dcb039c` Add by
+  text/voice, barcode, receipt, camera-off card; D2 `04ff192` Friends & groups, friend QR + scan, Group detail.
+- `6e610bd` fix after the emulator check: one header per screen (every Phase 3 route except `debug` hides the native
+  header), choice chips wrap and size to their labels.
+- **State:** typecheck and lint clean, **278 Jest tests** pass.
+
+**Verified by hand on the emulator against the local backend:** Home (tip, Use these first, Cook tonight from Gemini),
+Social, Friends & groups (live friend code, QR, countdown), Item detail (after the fix), hardware back, Fridge Select →
+Used them → batch Undo (count 5 → 4 → 5), Profile & settings. **Not yet checked on the device:** Add by text / barcode /
+receipt, Recipes and detail, Food Pantry claim, requests, Scan, Group detail, Pickup spot sheet, server-error banner,
+delete account, large-font layouts.
+
+**Known gaps and requests:**
+- Expo Go has no speech module: "Say it" opens the typing screen with a keyboard-microphone hint. No map SDK: pickup
+  spots show text plus Open in Maps (`geo:` link), no map preview.
+- `bitedown://friend/…` and `bitedown://group/…` deep links aren't routed yet.
+- Backend requests: a food / non-food flag on `from-receipt` candidates (the client guesses non-food by name); there is
+  no unclaim endpoint.
+- Other screens don't call `reportServerError` yet (Home, Fridge, Item detail, Add, Remove, Recipes, Impact, Social).
+- Fridge rows are bulky on Android (full-width "Move to…" button and share icon per row); polish item.
+- Test side effect: two items ("lettuce (bunch)", "lettuce") on the owner's local account were marked used during the
+  first batch test (Undo expired). Re-add them if the Impact numbers matter.
+- Codex's Windows sandbox fails to spawn processes when about six runs go at once ("runner handshake task failed"), and
+  parallel `npm ci` can hit EPERM in the shared npm cache. Keep it to about four Codex runs at a time.
+- Metro ran out of memory (4 GB heap) after about 27 minutes while packages were installed under it; restart it with
+  `npx expo start --android --clear`. Typed routes (`.expo/types/router.d.ts`) only regenerate while Metro runs, so a
+  fresh worktree's `tsc` won't catch bad route strings.
+
+**Next:** QA pass on Phase 3 (device check of the screens listed above, record it in `docs/qa/`), wire
+`reportServerError` into the other screens, then Phase 4 (Google Sign-In) and Phase 5 (CI, APK, README).
+
+## Checkpoint 14 (2026-11-09, Windows PC): Phase C (Expo Android app) Phase 2 done
 **Where:** branch `feat/expo-android` (local only, **not pushed**: GitHub account `FrankinstyLe` has read-only access
 to `LemurTech22/BiteDown2.0`, so pushing returns 403 until the owner grants Write or we push to a fork). Repo remote is now
 `https://github.com/LemurTech22/BiteDown2.0`. App lives in `client/` (Expo SDK 58, RN 0.88.1, React 19.3, expo-router, TS 6;
