@@ -1,3 +1,4 @@
+import { File } from 'expo-file-system';
 import { Platform } from 'react-native';
 
 import { normalizeBaseUrl } from './config';
@@ -96,16 +97,7 @@ export class LiveApiClient implements ApiClient {
     enrich?: ('expiry' | 'nutrition')[];
   }): Promise<PhotoCandidatesResponse> {
     const form = new FormData();
-    if (Platform.OS === 'web') {
-      const blob = await (await this.fetcher(input.uri)).blob();
-      form.append('image', blob, input.fileName ?? 'photo.jpg');
-    } else {
-      form.append('image', {
-        uri: input.uri,
-        name: input.fileName ?? 'photo.jpg',
-        type: input.mimeType ?? 'image/jpeg',
-      } as unknown as Blob);
-    }
+    await this.appendImage(form, input, 'photo.jpg');
     form.append('mode', input.mode);
     if (input.enrich?.length) form.append('enrich', input.enrich.join(','));
     return this.request<PhotoCandidatesResponse>('/items/from-photo', {
@@ -152,16 +144,7 @@ export class LiveApiClient implements ApiClient {
 
   async fromReceipt(input: { uri: string; fileName?: string; mimeType?: string }): Promise<ReceiptCandidatesResponse> {
     const form = new FormData();
-    if (Platform.OS === 'web') {
-      const blob = await (await this.fetcher(input.uri)).blob();
-      form.append('image', blob, input.fileName ?? 'receipt.jpg');
-    } else {
-      form.append('image', {
-        uri: input.uri,
-        name: input.fileName ?? 'receipt.jpg',
-        type: input.mimeType ?? 'image/jpeg',
-      } as unknown as Blob);
-    }
+    await this.appendImage(form, input, 'receipt.jpg');
     return this.request<ReceiptCandidatesResponse>('/items/from-receipt', {
       method: 'POST',
       body: form,
@@ -179,6 +162,27 @@ export class LiveApiClient implements ApiClient {
 
   getImpact(range: ImpactRange = 'all') {
     return this.request<ImpactResponse>(`/impact?range=${range}`);
+  }
+
+  // Expo's fetch (SDK 52+) rejects React Native's { uri, name, type } parts, so native
+  // uploads send the file's bytes. The part's name and type set the multipart headers.
+  private async appendImage(
+    form: FormData,
+    input: { uri: string; fileName?: string; mimeType?: string },
+    fallbackName: string,
+  ): Promise<void> {
+    const name = input.fileName ?? fallbackName;
+    if (Platform.OS === 'web') {
+      const blob = await (await this.fetcher(input.uri)).blob();
+      form.append('image', blob, name);
+      return;
+    }
+    const file = new File(input.uri);
+    form.append('image', {
+      name,
+      type: input.mimeType ?? 'image/jpeg',
+      bytes: () => file.bytes(),
+    } as unknown as Blob);
   }
 
   private async request<T>(path: string, options: RequestOptions = {}): Promise<T> {
@@ -211,6 +215,7 @@ export class LiveApiClient implements ApiClient {
       return payload as T;
     } catch (error) {
       if (error instanceof ApiError) throw error;
+      if (__DEV__) console.warn(`[api] ${options.method ?? 'GET'} ${path} failed:`, error);
       throw new ApiError(
         0,
         'upstream_unavailable',
