@@ -2,7 +2,7 @@ import * as Haptics from 'expo-haptics';
 import * as ImagePicker from 'expo-image-picker';
 import { router, useFocusEffect } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, BackHandler, Image, Linking, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, BackHandler, Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { isApiError, useApi } from '@/api';
@@ -16,6 +16,8 @@ import { useReducedMotion } from '@/hooks/use-reduced-motion';
 import { type AppTheme, useTheme } from '@/theme';
 
 import { CandidateEditor, type CandidateDraft, draftError, toCreateItem } from './candidate-editor';
+import { AddMethods } from './add-methods';
+import { CameraDeniedCard } from './camera-denied-card';
 import { ChoiceControl } from './choice-control';
 import { DiscardSheet } from './discard-sheet';
 
@@ -95,22 +97,26 @@ export function AddPhotoScreen() {
         {photo ? <PhotoReview photo={photo} onReset={reset} onCandidatesChange={setHasCandidates}
           onSaved={() => { setPhoto(null); setHasCandidates(false); setDiscardAction(null); closeAdd(); }} /> : (
           <FadeIn style={styles.section} testID="add.empty.state">
-            <View style={styles.hero}>
-              <AppIcon name="camera-outline" color={theme.colors.onForest} size={theme.sizes.addHeroGlyph} />
-              <Text style={styles.heroTitle}>Snap a photo</Text>
-              <Text style={styles.heroText}>Your whole fridge, or just one item</Text>
-            </View>
+            <Pressable style={styles.hero} accessibilityRole="button" accessibilityLabel="Snap a photo"
+              testID="add.hero.button" disabled={picking} onPress={() => void pick('camera')}>
+              <View style={styles.heroIcon}><AppIcon name="camera-outline" color={theme.colors.onLime} size={theme.sizes.addHeroGlyph} /></View>
+              <View style={styles.heroCopy}>
+                <Text style={styles.heroTitle}>Snap a photo</Text>
+                <Text style={styles.heroText}>Your whole fridge, or just one item</Text>
+                {denied ? <Text style={styles.heroText}>Off</Text> : null}
+              </View>
+            </Pressable>
+            <AddMethods />
             <ChoiceControl label="Photo mode" value={mode} onChange={setMode} disabled={picking}
               options={[{ value: 'fridge', label: 'Whole fridge' }, { value: 'single', label: 'One item' }]} testID="add.mode" />
             <AppButton label="Take a photo" testID="add.camera.button" onPress={() => void pick('camera')} disabled={picking} />
             <AppButton label="Choose from library" testID="add.library.button" onPress={() => void pick('library')}
               variant="outline" disabled={picking} />
             {picking ? <SkeletonRows testID="add.picker.skeleton" /> : null}
-            {error ? <StateView icon="camera-off" title={denied ? 'Camera access is off' : 'Couldn’t open photo'}
+            {error && !denied ? <StateView icon="camera-off" title="Couldn’t open photo"
               message={error} testID="add.picker.error" actionLabel="Try again" actionTestID="add.picker.retry"
               onAction={() => void pick(lastSource)} /> : null}
-            {denied ? <AppButton label="Open Settings" testID="add.settings.button" variant="outline"
-              onPress={() => void Linking.openSettings().catch(() => setError('Open your device Settings to allow camera access.'))} /> : null}
+            {denied ? <CameraDeniedCard screen="add" onRetry={() => void pick('camera')} /> : null}
           </FadeIn>
         )}
       </ScrollView>
@@ -226,7 +232,11 @@ function createStyles(theme: AppTheme) {
     header: { flexDirection: 'row', alignItems: 'center', gap: theme.spacing.md },
     title: { ...theme.type.sheetTitle, color: theme.colors.ink, flexShrink: 1 },
     body: { ...theme.type.bodySmall, color: theme.colors.muted },
-    hero: { backgroundColor: theme.colors.forest, borderRadius: theme.radii.hero, padding: theme.spacing.lg, gap: theme.spacing.sm, minHeight: theme.sizes.addHero },
+    hero: { backgroundColor: theme.colors.forest, borderRadius: theme.radii.hero, padding: theme.spacing.lg,
+      flexDirection: 'row', alignItems: 'center', gap: theme.spacing.lg, minHeight: theme.sizes.addHero },
+    heroIcon: { backgroundColor: theme.colors.lime, borderRadius: theme.radii.row, width: theme.sizes.addHeroIcon,
+      height: theme.sizes.addHeroIcon, alignItems: 'center', justifyContent: 'center' },
+    heroCopy: { flex: 1, gap: theme.spacing.xs },
     heroTitle: { ...theme.type.sectionHeading, color: theme.colors.onForest },
     heroText: { ...theme.type.bodySmall, color: theme.colors.onForestMuted },
     preview: { width: '100%', borderRadius: theme.radii.row, backgroundColor: theme.colors.track },
