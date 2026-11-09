@@ -14,6 +14,7 @@ import SocialRoute from '@/app/(tabs)/social';
 import AddModalRoute from '@/app/add-modal';
 import LoginRoute from '@/app/login';
 import { AuthProvider } from '@/auth/auth-provider';
+import { PreferencesProvider } from '@/settings/preferences';
 
 jest.mock('expo-haptics', () => ({
   notificationAsync: jest.fn(() => Promise.resolve()),
@@ -62,6 +63,7 @@ describe('merge-gate demo path', () => {
     function DemoLayout() {
       return <SafeAreaProvider>
         <ApiProvider client={api}>
+          <PreferencesProvider>
           <AuthProvider>
             <Stack screenOptions={{ headerShown: false, animation: 'none' }}>
               <Stack.Screen name="login" />
@@ -69,6 +71,7 @@ describe('merge-gate demo path', () => {
               <Stack.Screen name="add-modal" options={{ presentation: 'modal' }} />
             </Stack>
           </AuthProvider>
+          </PreferencesProvider>
         </ApiProvider>
       </SafeAreaProvider>;
     }
@@ -91,7 +94,7 @@ describe('merge-gate demo path', () => {
     await waitFor(() => expect(view.getPathname()).toBe('/home'));
     expect(login).toHaveBeenCalledTimes(1);
     expect(login).toHaveBeenCalledWith(credentials);
-    expect(await screen.findByText('Welcome, Demo.')).toBeTruthy();
+    expect(await screen.findByText('Hi, Demo')).toBeTruthy();
 
     await fireEvent.press(screen.getByTestId('tabs.impact.button'));
     const earlierValue = (await screen.findByTestId('impact.saved.value')).props.children;

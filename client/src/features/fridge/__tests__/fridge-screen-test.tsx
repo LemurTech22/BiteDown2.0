@@ -5,6 +5,7 @@ import { ApiError, ApiProvider, MockApiClient } from '@/api';
 import type { Item, ItemsResponse } from '@/api/types';
 import { FridgeScreen } from '@/features/fridge/fridge-screen';
 import { groupItems } from '@/features/fridge/fridge-utils';
+import { PreferencesProvider } from '@/settings/preferences';
 
 jest.mock('@/hooks/use-reduced-motion', () => ({ useReducedMotion: () => true }));
 
@@ -21,7 +22,7 @@ jest.mock('expo-router', () => {
 async function renderFridge(api: MockApiClient) {
   return render(
     <ApiProvider client={api}>
-      <FridgeScreen />
+      <PreferencesProvider><FridgeScreen /></PreferencesProvider>
     </ApiProvider>,
   );
 }
@@ -70,6 +71,112 @@ async function seededClient() {
 
 describe('Fridge', () => {
   beforeEach(() => jest.clearAllMocks());
+  afterEach(() => { jest.restoreAllMocks(); jest.useRealTimers(); });
+
+  test('row taps open item detail and Search filters the list', async () => {
+    const api = await seededClient();
+    const { items } = await api.getItems({ storage: 'fridge' }) as ItemsResponse;
+    const item = items.find((entry) => entry.name === 'Apples')!;
+    const screen = await renderFridge(api);
+    await screen.findByTestId(`fridge.item.${item.id}`);
+    await fireEvent.press(screen.getByTestId(`fridge.open.${item.id}`));
+    expect(router.push).toHaveBeenCalledWith(`/item/${item.id}`);
+    await fireEvent.changeText(screen.getByTestId('fridge.search.input'), 'apple');
+    expect(screen.getByText('Apples')).toBeTruthy();
+    expect(screen.queryByText('Bananas')).toBeNull();
+  });
+
+  test.each(['used', 'donated'] as const)('selects food, marks the batch %s and Undo restores impact exactly', async (outcome) => {
+    const api = await seededClient();
+    const { items } = await api.getItems({ storage: 'fridge' }) as ItemsResponse;
+    const before = await api.getImpact('month');
+    const remove = jest.spyOn(api, 'removeBatch');
+    const restore = jest.spyOn(api, 'restoreBatch');
+    const screen = await renderFridge(api);
+    await screen.findByText('Apples');
+    await fireEvent.press(screen.getByTestId('fridge.selection.start'));
+    expect(screen.getByTestId('fridge.batch.used')).toBeDisabled();
+    expect(screen.getByTestId('fridge.selection.modal')).toHaveProp('animationType', 'fade');
+    for (const item of items.slice(0, 2)) await fireEvent.press(screen.getByTestId(`fridge.select.${item.id}`));
+    expect(screen.getByText('2 selected')).toBeTruthy();
+    expect(screen.getByTestId(`fridge.select.${items[0].id}`)).toHaveProp('accessibilityState', expect.objectContaining({ checked: true }));
+    await fireEvent.press(screen.getByTestId(`fridge.batch.${outcome}`));
+    expect(remove).toHaveBeenCalledWith({ item_ids: items.slice(0, 2).map((item) => item.id), outcome });
+    expect(await screen.findByText(`2 items marked ${outcome === 'used' ? 'used' : 'shared'}`)).toBeTruthy();
+    expect(screen.queryByTestId('fridge.selection.modal')).toBeNull();
+    expect(screen.queryByTestId(`fridge.item.${items[0].id}`)).toBeNull();
+    await fireEvent.press(screen.getByTestId('fridge.batchUndo.1'));
+    expect(restore).toHaveBeenCalledWith(items.slice(0, 2).map((item) => item.id));
+    expect(await screen.findByTestId(`fridge.item.${items[0].id}`)).toBeTruthy();
+    expect(await api.getImpact('month')).toEqual(before);
+  });
+
+  test('batch removal errors preserve selection and retry the chosen outcome', async () => {
+    const api = await seededClient();
+    const { items: [item] } = await api.getItems({ storage: 'fridge' }) as ItemsResponse;
+    const remove = jest.spyOn(api, 'removeBatch').mockRejectedValueOnce(new Error('Batch failed'));
+    const screen = await renderFridge(api);
+    await screen.findByText('Apples');
+    await fireEvent.press(screen.getByTestId('fridge.selection.start'));
+    await fireEvent.press(screen.getByTestId(`fridge.select.${item.id}`));
+    await fireEvent.press(screen.getByTestId('fridge.batch.donated'));
+    expect(await screen.findByText('Batch failed')).toBeTruthy();
+    expect(screen.getByText('1 selected')).toBeTruthy();
+    expect(screen.getByTestId(`fridge.item.${item.id}`)).toBeTruthy();
+    await fireEvent.press(screen.getByTestId('fridge.batch.retry'));
+    expect(await screen.findByText('1 items marked shared')).toBeTruthy();
+    expect(remove).toHaveBeenLastCalledWith({ item_ids: [item.id], outcome: 'donated' });
+  });
+
+  test('batch Undo errors stay available for Try again', async () => {
+    const api = await seededClient();
+    const { items: [item] } = await api.getItems({ storage: 'fridge' }) as ItemsResponse;
+    const restore = jest.spyOn(api, 'restoreBatch').mockRejectedValueOnce(new Error('Undo failed'));
+    const screen = await renderFridge(api);
+    await screen.findByText('Apples');
+    await fireEvent.press(screen.getByTestId('fridge.selection.start'));
+    await fireEvent.press(screen.getByTestId(`fridge.select.${item.id}`));
+    await fireEvent.press(screen.getByTestId('fridge.batch.used'));
+    await fireEvent.press(screen.getByTestId('fridge.batchUndo.1'));
+    expect(await screen.findByText('Undo failed')).toBeTruthy();
+    await fireEvent.press(screen.getByTestId('fridge.batchUndo.1'));
+    expect(await screen.findByTestId(`fridge.item.${item.id}`)).toBeTruthy();
+    expect(restore).toHaveBeenCalledTimes(2);
+  });
+
+  test('pending batch blocks duplicate removals and Android back; Done cancels selection', async () => {
+    const api = await seededClient();
+    const { items: [item] } = await api.getItems({ storage: 'fridge' }) as ItemsResponse;
+    let reject!: (error: Error) => void;
+    const remove = jest.spyOn(api, 'removeBatch').mockImplementationOnce(() => new Promise((_, fail) => { reject = fail; }));
+    const screen = await renderFridge(api);
+    await screen.findByText('Apples');
+    await fireEvent.press(screen.getByTestId('fridge.selection.start'));
+    await fireEvent.press(screen.getByTestId(`fridge.select.${item.id}`));
+    await fireEvent.press(screen.getByTestId('fridge.batch.used'));
+    expect(screen.getByTestId('fridge.batch.loading')).toBeTruthy();
+    await fireEvent.press(screen.getByTestId('fridge.batch.used'));
+    await fireEvent(screen.getByTestId('fridge.selection.modal'), 'requestClose');
+    expect(remove).toHaveBeenCalledTimes(1);
+    expect(screen.getByTestId('fridge.selection.modal')).toBeTruthy();
+    await act(() => reject(new Error('Offline')));
+    await fireEvent.press(screen.getByTestId('fridge.selection.done'));
+    expect(screen.queryByTestId('fridge.selection.modal')).toBeNull();
+    expect(screen.getByTestId(`fridge.item.${item.id}`)).toBeTruthy();
+  });
+
+  test('switching storage clears selections and never removes hidden storage items', async () => {
+    const api = await seededClient();
+    const { items: [item] } = await api.getItems({ storage: 'fridge' }) as ItemsResponse;
+    const screen = await renderFridge(api);
+    await screen.findByText('Apples');
+    await fireEvent.press(screen.getByTestId('fridge.selection.start'));
+    await fireEvent.press(screen.getByTestId(`fridge.select.${item.id}`));
+    await fireEvent.press(screen.getByTestId('fridge.storage.pantry'));
+    await screen.findByText('Rice');
+    expect(screen.getByText('0 selected')).toBeTruthy();
+    expect(screen.getByTestId('fridge.batch.used')).toBeDisabled();
+  });
 
   test.each(['pantry', 'freezer'] as const)('moves an item to %s and removes it from the current list', async (storage) => {
     const api = await seededClient();
@@ -134,14 +241,14 @@ describe('Fridge', () => {
     expect(screen.queryByTestId('fridge.move.sheet')).toBeNull();
   });
 
-  test('loads storage-filtered items and labels every freshness state with text', async () => {
+  test('loads storage-filtered items and gives each row one expiry or freshness status', async () => {
     const api = await seededClient();
     const screen = await renderFridge(api);
 
     expect(await screen.findByText('Apples')).toBeTruthy();
-    expect(screen.getByText('Fresh')).toBeTruthy();
+    expect(screen.queryByText('Fresh')).toBeNull();
     expect(screen.getByText('Use soon')).toBeTruthy();
-    expect(screen.getByText('Spoiled')).toBeTruthy();
+    expect(screen.getByText('Looks off')).toBeTruthy();
     expect(screen.queryByText('Rice')).toBeNull();
 
     await fireEvent.press(screen.getByTestId('fridge.storage.pantry'));
