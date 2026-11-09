@@ -24,7 +24,7 @@ interface ApiContextValue {
 
 const ApiContext = createContext<ApiContextValue | null>(null);
 
-export function ApiProvider({ children }: { children: ReactNode }) {
+export function ApiProvider({ children, client }: { children: ReactNode; client?: ApiClient }) {
   const [baseUrl, setBaseUrlState] = useState(DEFAULT_API_BASE_URL);
   const [demoMode, setDemoModeState] = useState(DEFAULT_DEMO_MODE);
   const [sessionExpired, setSessionExpired] = useState(false);
@@ -44,6 +44,7 @@ export function ApiProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const api = useMemo<ApiClient>(() => {
+    if (client) return client;
     if (demoMode) return new MockApiClient();
     return new LiveApiClient({
       getBaseUrl: () => baseUrl,
@@ -51,7 +52,7 @@ export function ApiProvider({ children }: { children: ReactNode }) {
       setToken: tokenStore.set,
       onSessionExpired: () => setSessionExpired(true),
     });
-  }, [baseUrl, demoMode]);
+  }, [baseUrl, client, demoMode]);
 
   const value = useMemo<ApiContextValue>(
     () => ({

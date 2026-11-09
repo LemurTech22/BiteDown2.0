@@ -145,6 +145,18 @@ export const sizes = {
   friendQr: 116,
   groupQr: 136,
   progressStrip: 3,
+  iconSmall: 16,
+  icon: 20,
+  iconLarge: 24,
+  brandMark: 80,
+  brandGlyph: 44,
+  emptyIcon: 72,
+  emptyGlyph: 36,
+  itemRow: 68,
+  skeletonRow: 64,
+  skeletonBadge: 56,
+  tabBar: 64,
+  errorShake: 6,
 } as const;
 
 export const motion = {

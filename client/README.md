@@ -77,5 +77,6 @@ are development-only. The backend and PostgreSQL/TimescaleDB database are not bu
 ```powershell
 npx tsc --noEmit
 npx expo lint
+npm test
 npx expo-doctor
 ```
