@@ -27,20 +27,20 @@ function RootStack() {
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
         <Stack.Screen name="add-modal" options={{ headerShown: false, presentation: 'modal' }} />
         <Stack.Screen name="debug" options={{ title: 'Debug settings' }} />
-        <Stack.Screen name="item/[id]" options={{ title: "Item detail" }} />
-        <Stack.Screen name="add-text" options={{ title: "Type or say it", presentation: 'modal' }} />
-        <Stack.Screen name="add-barcode" options={{ title: "Scan a barcode", presentation: 'modal' }} />
-        <Stack.Screen name="add-receipt" options={{ title: "Receipt review", presentation: 'modal' }} />
-        <Stack.Screen name="recipes/index" options={{ title: "Recipes" }} />
-        <Stack.Screen name="recipes/[id]" options={{ title: "Recipe detail" }} />
-        <Stack.Screen name="settings" options={{ title: "Profile & settings" }} />
-        <Stack.Screen name="social/pantry" options={{ title: "Food Pantry" }} />
-        <Stack.Screen name="social/request-new" options={{ title: "Ask for something", presentation: 'modal' }} />
-        <Stack.Screen name="social/my-requests" options={{ title: "Your requests" }} />
-        <Stack.Screen name="social/claimed/[id]" options={{ title: "Claimed item" }} />
-        <Stack.Screen name="social/connect" options={{ title: "Friends & groups" }} />
+        <Stack.Screen name="item/[id]" options={{ title: "Item detail", headerShown: false }} />
+        <Stack.Screen name="add-text" options={{ title: "Type or say it", presentation: 'modal', headerShown: false }} />
+        <Stack.Screen name="add-barcode" options={{ title: "Scan a barcode", presentation: 'modal', headerShown: false }} />
+        <Stack.Screen name="add-receipt" options={{ title: "Receipt review", presentation: 'modal', headerShown: false }} />
+        <Stack.Screen name="recipes/index" options={{ title: "Recipes", headerShown: false }} />
+        <Stack.Screen name="recipes/[id]" options={{ title: "Recipe detail", headerShown: false }} />
+        <Stack.Screen name="settings" options={{ title: "Profile & settings", headerShown: false }} />
+        <Stack.Screen name="social/pantry" options={{ title: "Food Pantry", headerShown: false }} />
+        <Stack.Screen name="social/request-new" options={{ title: "Ask for something", presentation: 'modal', headerShown: false }} />
+        <Stack.Screen name="social/my-requests" options={{ title: "Your requests", headerShown: false }} />
+        <Stack.Screen name="social/claimed/[id]" options={{ title: "Claimed item", headerShown: false }} />
+        <Stack.Screen name="social/connect" options={{ title: "Friends & groups", headerShown: false }} />
         <Stack.Screen name="social/scan" options={{ title: "Scan a friend's code", presentation: 'modal', headerShown: false }} />
-        <Stack.Screen name="social/group/[id]" options={{ title: "Group" }} />
+        <Stack.Screen name="social/group/[id]" options={{ title: "Group", headerShown: false }} />
       </Stack>
       <StatusBar style={theme.scheme === 'dark' ? 'light' : 'dark'} />
     </>

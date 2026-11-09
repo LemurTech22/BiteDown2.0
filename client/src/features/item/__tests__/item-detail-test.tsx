@@ -6,6 +6,7 @@ import { Linking } from 'react-native';
 import { ApiProvider, MockApiClient, type Item, type ItemsResponse } from '@/api';
 import { ItemDetailScreen } from '@/features/item/item-detail-screen';
 import { PreferencesProvider } from '@/settings/preferences';
+import { FOOD_GROUPS } from '@/features/fridge/fridge-utils';
 
 let mockId = '';
 jest.mock('expo-router', () => ({ useLocalSearchParams: () => ({ id: mockId }), router: { back: jest.fn(), canGoBack: jest.fn(() => true), replace: jest.fn() } }));
@@ -35,6 +36,17 @@ beforeEach(() => {
   jest.mocked(ImagePicker.requestCameraPermissionsAsync).mockResolvedValue({ granted: true } as ImagePicker.CameraPermissionResponse);
 });
 afterEach(() => jest.restoreAllMocks());
+
+test('keeps one top-safe Item detail header and all food group and storage choices', async () => {
+  const { api } = await seed();
+  const screen = await show(api);
+  await screen.findByDisplayValue('Baby spinach');
+  expect(screen.getByTestId('item.screen.root')).toHaveProp('edges', expect.objectContaining({ top: 'additive' }));
+  expect(screen.getAllByText('Item detail')).toHaveLength(1);
+  for (const { label } of FOOD_GROUPS) expect(screen.getByLabelText(`Food group: ${label}`)).toBeTruthy();
+  expect(screen.getByText('Stored in')).toBeTruthy();
+  for (const label of ['Fridge', 'Pantry', 'Freezer']) expect(screen.getByLabelText(`Storage: ${label}`)).toBeTruthy();
+});
 
 test('edits fields, labels estimates, and saves user expiry', async () => {
   const { api, item } = await seed();

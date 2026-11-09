@@ -60,6 +60,8 @@ export function RecipesScreen() {
     <SafeAreaView edges={['top']} style={styles.screen} testID="recipes.screen.root">
       <ScrollView accessibilityLabel="Recipes" contentContainerStyle={styles.content}>
         <View style={styles.header}>
+          <IconButton icon="chevron-left" label="Back" testID="recipes.back.button"
+            onPress={() => { if (router.canGoBack()) router.back(); else router.replace('/home'); }} />
           <Text accessibilityRole="header" style={styles.title} testID="recipes.title.text">Recipes</Text>
           <IconButton icon="refresh" label="New suggestions" testID="recipes.refresh.button" onPress={() => void load()} />
         </View>
@@ -135,7 +137,7 @@ function createStyles(theme: AppTheme) {
   return StyleSheet.create({
     screen: { flex: 1, backgroundColor: theme.colors.ground },
     content: { flexGrow: 1, gap: theme.spacing.lg, padding: theme.spacing.gutter, paddingBottom: theme.spacing.xxl },
-    header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: theme.spacing.md },
+    header: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: theme.spacing.md },
     title: { ...theme.type.screenTitle, color: theme.colors.ink, flexShrink: 1 },
     filters: { flexDirection: 'row', flexWrap: 'wrap', columnGap: theme.spacing.sm },
     chipTarget: { minHeight: theme.sizes.touchTarget, justifyContent: 'center', maxWidth: '100%' },

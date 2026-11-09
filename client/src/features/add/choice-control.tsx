@@ -12,14 +12,14 @@ export function ChoiceControl<T extends string>({ label, options, value, onChang
 }) {
   const styles = createStyles(useTheme());
   return (
-    <View style={styles.group} accessibilityLabel={label}>
+    <View style={styles.group} accessibilityLabel={label} testID={testID}>
       {options.map((option) => (
         <Pressable key={option.value} accessibilityRole="radio"
           accessibilityLabel={`${label}: ${option.label}`}
           accessibilityState={{ checked: value === option.value, disabled }} disabled={disabled}
           onPress={() => onChange(option.value)} testID={`${testID}.${option.value}`}
           style={[styles.option, value === option.value && styles.selected]}>
-          <Text style={[styles.label, value === option.value && styles.selectedLabel]}>{option.label}</Text>
+          <Text numberOfLines={1} style={[styles.label, value === option.value && styles.selectedLabel]}>{option.label}</Text>
         </Pressable>
       ))}
     </View>
@@ -28,8 +28,8 @@ export function ChoiceControl<T extends string>({ label, options, value, onChang
 
 function createStyles(theme: AppTheme) {
   return StyleSheet.create({
-    group: { flexDirection: 'row', flexWrap: 'wrap', gap: theme.spacing.xs },
-    option: { flexGrow: 1, flexBasis: 0, minWidth: theme.sizes.touchTarget,
+    group: { flexDirection: 'row', flexWrap: 'wrap', gap: theme.spacing.xs, flexShrink: 0 },
+    option: { minWidth: theme.sizes.touchTarget,
       minHeight: theme.sizes.touchTarget, justifyContent: 'center', padding: theme.spacing.sm,
       backgroundColor: theme.colors.surface, borderRadius: theme.radii.control,
       borderWidth: theme.sizes.borderHairline, borderColor: theme.colors.border },

@@ -10,6 +10,7 @@ import { useAuth } from '@/auth/auth-provider';
 import { SectionError, useServerErrorReporter } from '@/components/server-error';
 import { AppButton } from '@/components/ui/app-button';
 import { AppIcon } from '@/components/ui/app-icon';
+import { IconButton } from '@/components/ui/icon-button';
 import { SkeletonRows } from '@/components/ui/skeleton-rows';
 import { StateView } from '@/components/ui/state-view';
 import { useReducedMotion } from '@/hooks/use-reduced-motion';
@@ -111,9 +112,13 @@ export function SettingsScreen() {
   ) : null;
 
   return (
-    <SafeAreaView edges={['bottom']} style={styles.screen}>
+    <SafeAreaView edges={['top', 'bottom']} style={styles.screen} testID="settings.screen.root">
       <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled" testID="settings.screen.content">
-        <Text accessibilityRole="header" style={styles.title}>Profile</Text>
+        <View style={styles.header}>
+          <IconButton icon="chevron-left" label="Back" testID="settings.back.button"
+            onPress={() => { if (router.canGoBack()) router.back(); else router.replace('/home'); }} />
+          <Text accessibilityRole="header" style={styles.title}>Profile</Text>
+        </View>
         {loading ? <SkeletonRows testID="settings.profile.loading" /> : loadError ? (
           <SectionError title="Couldn’t load your profile" message={loadError} onRetry={() => void load()} testID="settings.profile.error" />
         ) : profile?.user ? (
@@ -220,6 +225,7 @@ function createStyles(theme: AppTheme) {
   return StyleSheet.create({
     screen: { flex: 1, backgroundColor: theme.colors.ground },
     content: { flexGrow: 1, gap: theme.spacing.lg, padding: theme.spacing.gutter },
+    header: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: theme.spacing.md },
     title: { ...theme.type.screenTitle, color: theme.colors.ink },
     profile: { flexDirection: 'row', alignItems: 'center', gap: theme.spacing.tileInner, padding: theme.spacing.lg, borderRadius: theme.radii.card, backgroundColor: theme.colors.surface },
     avatar: { width: theme.sizes.primaryButton, minHeight: theme.sizes.primaryButton, backgroundColor: theme.colors.forest, borderRadius: theme.radii.round, alignItems: 'center', justifyContent: 'center' },

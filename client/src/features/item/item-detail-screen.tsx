@@ -139,7 +139,7 @@ export function ItemDetailScreen() {
   const share = item?.share?.status === 'open' ? item.share : null;
   const claimer = share?.claimed_by;
   const pickup = share?.pickup;
-  return <SafeAreaView style={styles.screen} edges={['top']}>
+  return <SafeAreaView style={styles.screen} edges={['top']} testID="item.screen.root">
     <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.content}>
       <View style={styles.header}><AppButton label="Back" variant="outline" testID="item.back.button" onPress={() => { if (router.canGoBack()) router.back(); else router.replace('/fridge'); }} />
         <Text accessibilityRole="header" style={styles.title}>Item detail</Text>
@@ -154,13 +154,22 @@ export function ItemDetailScreen() {
           <ItemField label="Food name" testID="item.name.input" value={draft.name} maxLength={200} editable={!pending} onChangeText={(name) => change({ name })} />
           <ItemField label="Quantity" testID="item.quantity.input" value={draft.quantity} maxLength={12} keyboardType="decimal-pad" editable={!pending} onChangeText={(quantity) => change({ quantity })} />
           <ItemField label="Unit" testID="item.unit.input" value={draft.unit} maxLength={32} editable={!pending} onChangeText={(unit) => change({ unit })} />
-          <Text style={styles.label}>Food group</Text><ChoiceControl label="Food group" options={FOOD_GROUPS} value={draft.foodGroup} onChange={(foodGroup) => change({ foodGroup })} testID="item.group" disabled={pending} />
-          <Text style={styles.label}>Stored in</Text><ChoiceControl label="Storage" options={STORAGE_OPTIONS} value={draft.storage} onChange={(storage) => change({ storage })} testID="item.storage" disabled={pending} />
+          <View style={styles.section}>
+            <Text style={styles.label}>Food group</Text>
+            <ChoiceControl label="Food group" options={FOOD_GROUPS} value={draft.foodGroup} onChange={(foodGroup) => change({ foodGroup })} testID="item.group" disabled={pending} />
+          </View>
+          <View style={styles.section}>
+            <Text style={styles.label}>Stored in</Text>
+            <ChoiceControl label="Storage" options={STORAGE_OPTIONS} value={draft.storage} onChange={(storage) => change({ storage })} testID="item.storage" disabled={pending} />
+          </View>
           <ItemField label="Use by (YYYY-MM-DD)" testID="item.expiry.input" value={draft.expiry} maxLength={10} editable={!pending} onChangeText={(expiry) => change({ expiry })} />
           {item.expiry_source !== 'user' ? <Text style={styles.chip} testID="item.expiry.estimated">estimated</Text> : null}
-          <Text style={styles.label}>Freshness</Text><ChoiceControl label="Freshness" options={[
-            { value: 'fresh', label: 'Fresh' }, { value: 'semi_fresh', label: 'Use soon' }, { value: 'spoiled', label: 'Looks off' }, { value: 'unknown', label: 'Not checked' },
-          ]} value={draft.freshness} onChange={(freshness) => change({ freshness })} testID="item.freshness" disabled={pending} />
+          <View style={styles.section}>
+            <Text style={styles.label}>Freshness</Text>
+            <ChoiceControl label="Freshness" options={[
+              { value: 'fresh', label: 'Fresh' }, { value: 'semi_fresh', label: 'Use soon' }, { value: 'spoiled', label: 'Looks off' }, { value: 'unknown', label: 'Not checked' },
+            ]} value={draft.freshness} onChange={(freshness) => change({ freshness })} testID="item.freshness" disabled={pending} />
+          </View>
           <ExpiryBadge item={item} testID="item.status.badge" />
           {item.est_weight_kg !== null ? <Text style={styles.meta}>Estimated weight: {formatWeight(item.est_weight_kg, units)}</Text> : null}
           {item.est_price !== null ? <Text style={styles.meta}>Estimated value: {formatMoney(item.est_price, currency)}</Text> : null}

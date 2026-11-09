@@ -8,7 +8,7 @@ import { getRecipe } from '@/features/recipes/recipe-store';
 jest.mock('@/hooks/use-reduced-motion', () => ({ useReducedMotion: () => true }));
 jest.mock('expo-router', () => {
   const React = jest.requireActual<typeof import('react')>('react');
-  return { router: { push: jest.fn() }, useFocusEffect: (callback: () => void | (() => void)) => React.useEffect(callback, [callback]) };
+  return { router: { push: jest.fn(), back: jest.fn(), canGoBack: jest.fn(() => true), replace: jest.fn() }, useFocusEffect: (callback: () => void | (() => void)) => React.useEffect(callback, [callback]) };
 });
 
 const base: Recipe = {
@@ -27,6 +27,18 @@ async function client(recipes: Recipe[] = [base]) {
 async function show(api: MockApiClient) { return render(<ApiProvider client={api}><RecipesScreen /></ApiProvider>); }
 
 beforeEach(() => jest.clearAllMocks());
+
+test('keeps one top-safe Recipes header with back navigation and a direct-entry fallback', async () => {
+  const screen = await show(await client());
+  await screen.findByText('Spinach omelette');
+  expect(screen.getByTestId('recipes.screen.root')).toHaveProp('edges', expect.objectContaining({ top: 'additive' }));
+  expect(screen.getAllByText('Recipes')).toHaveLength(1);
+  await fireEvent.press(screen.getByTestId('recipes.back.button'));
+  expect(router.back).toHaveBeenCalledTimes(1);
+  jest.mocked(router.canGoBack).mockReturnValueOnce(false);
+  await fireEvent.press(screen.getByTestId('recipes.back.button'));
+  expect(router.replace).toHaveBeenCalledWith('/home');
+});
 
 test('requests ten suggestions, filters missing ingredients by default, shows macros and stores the route payload', async () => {
   const api = await client([base, { ...base, title: 'Needs tomatoes', missing_items: ['Tomatoes'] }, { ...base, title: 'Rice bowl' }]);

@@ -8,7 +8,7 @@ import { clearServerError } from '@/components/server-error';
 import { SettingsScreen } from '@/features/settings/settings-screen';
 import { PreferencesProvider } from '@/settings/preferences';
 
-jest.mock('expo-router', () => ({ router: { push: jest.fn(), replace: jest.fn() } }));
+jest.mock('expo-router', () => ({ router: { push: jest.fn(), replace: jest.fn(), back: jest.fn(), canGoBack: jest.fn(() => true) } }));
 jest.mock('@/hooks/use-reduced-motion', () => ({ useReducedMotion: () => true }));
 jest.mock('@/auth/token-store', () => ({ tokenStore: { get: jest.fn(async () => null), set: jest.fn(async () => {}) } }));
 
@@ -27,6 +27,18 @@ async function setup() {
 }
 
 beforeEach(() => { jest.clearAllMocks(); clearServerError(); });
+
+test('keeps the Profile header top-safe and supports back navigation and direct entry', async () => {
+  const { screen } = await setup();
+  await screen.findByText('Priya Raman');
+  expect(screen.getByTestId('settings.screen.root')).toHaveProp('edges', expect.objectContaining({ top: 'additive', bottom: 'additive' }));
+  expect(screen.getAllByText('Profile')).toHaveLength(1);
+  await fireEvent.press(screen.getByTestId('settings.back.button'));
+  expect(router.back).toHaveBeenCalledTimes(1);
+  jest.mocked(router.canGoBack).mockReturnValueOnce(false);
+  await fireEvent.press(screen.getByTestId('settings.back.button'));
+  expect(router.replace).toHaveBeenCalledWith('/home');
+});
 
 test('loads the profile, saves each preference and opens the server address', async () => {
   const { screen, preferences } = await setup();
