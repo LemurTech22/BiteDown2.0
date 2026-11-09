@@ -22,6 +22,7 @@ function RootStack() {
         <Stack.Screen name="login" options={{ headerShown: false }} />
         <Stack.Screen name="signup" options={{ headerShown: false }} />
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+        <Stack.Screen name="add-modal" options={{ headerShown: false, presentation: 'modal' }} />
         <Stack.Screen name="debug" options={{ title: 'Debug settings' }} />
       </Stack>
       <StatusBar style={theme.scheme === 'dark' ? 'light' : 'dark'} />

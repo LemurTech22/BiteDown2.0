@@ -157,6 +157,9 @@ export const sizes = {
   skeletonBadge: 56,
   tabBar: 64,
   errorShake: 6,
+  addHero: 88,
+  addHeroIcon: 56,
+  addHeroGlyph: 28,
 } as const;
 
 export const motion = {

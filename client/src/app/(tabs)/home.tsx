@@ -1,3 +1,4 @@
+import { router } from 'expo-router';
 import { StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -14,6 +15,12 @@ export default function HomeScreen() {
       <View style={styles.content} testID="home.empty.state">
         <Text style={styles.title}>Home</Text>
         <Text style={styles.message}>Welcome{user?.display_name ? `, ${user.display_name}` : ''}.</Text>
+        <AppButton
+          label="Debug settings"
+          onPress={() => router.push('/debug')}
+          testID="home.debug.button"
+          variant="outline"
+        />
         <AppButton label="Sign out" onPress={() => void signOut()} testID="home.signout.button" variant="outline" />
       </View>
     </SafeAreaView>
