@@ -1,12 +1,14 @@
-import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
+import { act, fireEvent, render, waitFor, within } from '@testing-library/react-native';
 import { useCameraPermissions } from 'expo-camera';
 import * as ImagePicker from 'expo-image-picker';
 import { router, useLocalSearchParams } from 'expo-router';
 import type { ReactElement } from 'react';
 import { Linking } from 'react-native';
+import { SafeAreaInsetsContext } from 'react-native-safe-area-context';
 
 import { ApiError, ApiProvider, MockApiClient, type ReceiptCandidatesResponse } from '@/api';
 import { PreferencesProvider } from '@/settings/preferences';
+import { createTheme } from '@/theme';
 
 import { AddBarcodeScreen } from '../add-barcode-screen';
 import { AddMethods } from '../add-methods';
@@ -39,7 +41,9 @@ async function setup(element: ReactElement, currency = 'USD') {
   const api = new MockApiClient();
   await api.signup({ email: 'add@example.com', password: 'password-for-demo', display_name: 'Contributor' });
   const store = { get: async () => JSON.stringify({ currency }), set: async () => {}, delete: async () => {} };
-  const screen = await render(<ApiProvider client={api}><PreferencesProvider store={store}>{element}</PreferencesProvider></ApiProvider>);
+  const screen = await render(<ApiProvider client={api}><PreferencesProvider store={store}>{element}</PreferencesProvider></ApiProvider>, {
+    wrapper: ({ children }) => <SafeAreaInsetsContext.Provider value={{ top: 0, left: 0, right: 0, bottom: 34 }}>{children}</SafeAreaInsetsContext.Provider>,
+  });
   return { api, screen };
 }
 
@@ -79,6 +83,26 @@ describe('text and keyboard dictation', () => {
     await fireEvent.changeText(screen.getByTestId('addText.input.text'), 'A bag of apples');
     await fireEvent.press(screen.getByTestId('addText.parse.button'));
   }
+
+  test('keeps the four-item save action outside the candidate scroll area', async () => {
+    const { api, screen } = await setup(<AddTextScreen />);
+    const result = await api.parseText({ text: 'Apples' });
+    jest.spyOn(api, 'parseText').mockResolvedValue({ candidates: Array.from({ length: 4 }, () => result.candidates[0]) });
+    await parse(screen);
+    expect(await screen.findByLabelText('Add 4 items')).toBeTruthy();
+    const theme = createTheme('light');
+    const footer = screen.getByTestId('addReview.footer');
+    expect(within(footer).getByTestId('addText.save.button')).toBeTruthy();
+    expect(footer).toHaveStyle({ paddingBottom: 34, backgroundColor: theme.colors.surface,
+      borderTopColor: theme.colors.hairline, borderTopWidth: theme.sizes.borderHairline });
+    const scroll = within(screen.getByTestId('addReview.scroll'));
+    expect(scroll.getByText('We understood 4 items')).toBeTruthy();
+    expect(scroll.queryByTestId('addText.save.button')).toBeNull();
+    await fireEvent.press(screen.getByTestId('addText.select.3'));
+    expect(screen.getByLabelText('Add 3 items')).toBeTruthy();
+    await fireEvent.changeText(screen.getByTestId('addText.input.text'), 'Something else');
+    expect(screen.queryByTestId('addText.save.button')).toBeNull();
+  });
 
   test('parses, edits, and saves to the fridge', async () => {
     const { api, screen } = await setup(<AddTextScreen />);
@@ -230,6 +254,10 @@ describe('receipt', () => {
     expect(screen.getByTestId('addReceipt.select.1').props.accessibilityState.checked).toBe(false);
     expect(screen.queryByTestId('addReceipt.expiryBadge.1')).toBeNull();
     expect(screen.getByText('Receipt total · €5.50')).toBeTruthy();
+    const scroll = within(screen.getByTestId('addReview.scroll'));
+    expect(scroll.getByText('MOCK FOOD 2.50')).toBeTruthy();
+    expect(scroll.queryByTestId('addReceipt.total.label')).toBeNull();
+    expect(scroll.queryByTestId('addReceipt.save.button')).toBeNull();
     await fireEvent.press(screen.getByTestId('addReceipt.save.button'));
     await waitFor(() => expect(router.dismissTo).toHaveBeenCalledWith('/fridge'));
     expect(create).toHaveBeenCalledWith({ items: [expect.objectContaining({ name: 'Mock receipt item', source: 'receipt', est_price: 2.5 })] });
