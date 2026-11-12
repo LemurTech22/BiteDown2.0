@@ -54,10 +54,6 @@ export function ItemRow({ item, last, onRemove, onMove, selecting = false, selec
           testID={`fridge.move.${item.id}`} disabled={disabled} onPress={move} style={styles.action}>
           <AppIcon name="swap-horizontal" color={theme.colors.forest} size={theme.sizes.icon} />
         </Pressable>
-        <Pressable accessibilityRole="button" accessibilityLabel={`Remove ${item.name}`}
-          testID={`fridge.remove.${item.id}`} disabled={disabled} onPress={remove} style={styles.action}>
-          <AppIcon name="tray-arrow-up" color={theme.colors.forest} size={theme.sizes.icon} />
-        </Pressable>
       </View> : null}
       <View style={[styles.foreground, selected && styles.selected, !selecting && actionsOpen && styles.revealed]}>
       {selecting ? <Pressable accessibilityRole="checkbox" accessibilityLabel={`Select ${item.name}`} accessibilityState={{ checked: selected, disabled }}
@@ -65,7 +61,7 @@ export function ItemRow({ item, last, onRemove, onMove, selecting = false, selec
         <View style={[styles.checkbox, selected && styles.checked]}>{selected ? <AppIcon name="check" color={theme.colors.onForest} size={theme.sizes.iconSmall} /> : null}</View>
       </Pressable> : null}
       <Pressable accessibilityRole="button" accessibilityLabel={label} disabled={disabled} testID={`fridge.open.${item.id}`}
-        accessibilityHint={selecting ? undefined : 'Swipe left for Move and Remove actions.'}
+        accessibilityHint={selecting ? undefined : 'Swipe left for Move.'}
         accessibilityActions={selecting || disabled ? undefined : [{ name: 'move', label: `Move ${item.name} to another storage` }, { name: 'remove', label: `Remove ${item.name}` }]}
         onAccessibilityAction={({ nativeEvent }) => {
           if (selecting || disabled) return;
@@ -83,6 +79,10 @@ export function ItemRow({ item, last, onRemove, onMove, selecting = false, selec
       </View>
       </Pressable>
       </View>
+      {!selecting ? <Pressable accessibilityRole="button" accessibilityLabel={`Remove ${item.name}`}
+        testID={`fridge.remove.${item.id}`} disabled={disabled} onPress={remove} style={styles.action}>
+        <AppIcon name="tray-arrow-up" color={theme.colors.forest} size={theme.sizes.icon} />
+      </Pressable> : null}
     </View>
   );
 }
@@ -90,21 +90,25 @@ export function ItemRow({ item, last, onRemove, onMove, selecting = false, selec
 function createStyles(theme: AppTheme) {
   return StyleSheet.create({
     row: {
+      alignItems: 'center',
       backgroundColor: theme.colors.surface,
+      flexDirection: 'row',
       overflow: 'hidden',
     },
     foreground: {
       alignItems: 'center',
       backgroundColor: theme.colors.surface,
       flexDirection: 'row',
+      flex: 1,
       gap: theme.spacing.md,
       minHeight: theme.sizes.itemRow,
+      minWidth: 0,
       paddingHorizontal: theme.spacing.lg,
       paddingVertical: theme.spacing.md,
     },
-    actions: { position: 'absolute', right: 0, top: 0, bottom: 0, flexDirection: 'row', alignItems: 'center' },
+    actions: { position: 'absolute', right: theme.sizes.touchTarget, top: 0, bottom: 0, flexDirection: 'row', alignItems: 'center' },
     action: { width: theme.sizes.touchTarget, minHeight: theme.sizes.touchTarget, alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
-    revealed: { transform: [{ translateX: -theme.sizes.touchTarget * 2 }] },
+    revealed: { transform: [{ translateX: -theme.sizes.touchTarget }] },
     divider: { borderBottomColor: theme.colors.hairline, borderBottomWidth: theme.sizes.borderHairline },
     main: { flexDirection: 'row', alignItems: 'center', flex: 1, minWidth: 0, gap: theme.spacing.md, minHeight: theme.sizes.touchTarget },
     selected: { backgroundColor: theme.colors.limeTint },
