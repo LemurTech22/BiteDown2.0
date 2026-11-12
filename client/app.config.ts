@@ -17,7 +17,7 @@ const config: ExpoConfig = {
   ios: {
     bundleIdentifier: 'com.coderedorion.bitedown',
     deploymentTarget: '18.0',
-    icon: './assets/expo.icon',
+    icon: './assets/images/icon.png',
     config: {
       usesNonExemptEncryption: false,
     },
@@ -26,7 +26,7 @@ const config: ExpoConfig = {
     permissions: ['android.permission.CAMERA', 'android.permission.ACCESS_COARSE_LOCATION', 'android.permission.ACCESS_FINE_LOCATION'],
     package: 'com.coderedorion.bitedown',
     adaptiveIcon: {
-      backgroundColor: '#F4F8E8',
+      backgroundColor: '#1F4D2B',
       foregroundImage: './assets/images/android-icon-foreground.png',
       backgroundImage: './assets/images/android-icon-background.png',
       monochromeImage: './assets/images/android-icon-monochrome.png',
@@ -70,7 +70,7 @@ const config: ExpoConfig = {
       {
         backgroundColor: '#F4F8E8',
         image: './assets/images/splash-icon.png',
-        imageWidth: 76,
+        imageWidth: 112,
       },
     ],
     [
