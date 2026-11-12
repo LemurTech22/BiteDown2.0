@@ -33,7 +33,7 @@ function Get-FunnelUrl {
   $out = (Receive-Job $job) -join "`n"; Stop-Job $job -ErrorAction SilentlyContinue; Remove-Job $job -Force
   if ($out -match 'not enabled') { Write-Host 'Tailscale Funnel is not enabled for this tailnet; using Cloudflare.'; return $null }
   $status = (& $tailscale funnel status 2>&1) -join "`n"
-  if ($status -match '(https://[a-z0-9.-]+\.ts\.net)[^\n]*\(Funnel on\)') { return $Matches[1] }
+  if ($status -match '(https://[a-z0-9.-]+\.ts\.net)[^\n]*\(Funnel on\)') { $script:funnelOn = $true; return $Matches[1] }
   return $null
 }
 
@@ -94,7 +94,7 @@ if (-not $url) {
   if (-not (Wait-Public $url)) { Write-Warning "$url/health did not answer within 90 s (new hostnames can take a minute)." }
 }
 Publish-ApiUrl $url
-Write-Host "`nBackend:  $url`nWeb app:  $Hosting`nLeave this window open. Ctrl-C stops the tunnel.`n"
+Write-Host "`nBackend:  $url`nWeb app:  $Hosting`nLeave this window open. Stop with Ctrl-C (closing the window skips the cleanup).`n"
 
 $failures = 0
 try {
@@ -112,4 +112,6 @@ try {
   }
 } finally {
   if ($tunnel) { Stop-Process -Id $tunnel.Process.Id -Force -ErrorAction SilentlyContinue }
+  # `funnel --bg` lives on in the Tailscale daemon; turn it off so the API is public only while this script runs.
+  if ($script:funnelOn) { & $tailscale funnel --https=443 off 2>&1 | Out-Null; Write-Host 'Tailscale Funnel turned off.' }
 }
