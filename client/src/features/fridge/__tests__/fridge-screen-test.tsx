@@ -1,10 +1,12 @@
 import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
 import { router } from 'expo-router';
+import { PanResponder } from 'react-native';
 
 import { ApiError, ApiProvider, MockApiClient } from '@/api';
 import type { Item, ItemsResponse } from '@/api/types';
 import { FridgeScreen } from '@/features/fridge/fridge-screen';
 import { groupItems } from '@/features/fridge/fridge-utils';
+import { ItemRow } from '@/features/fridge/item-row';
 import { PreferencesProvider } from '@/settings/preferences';
 
 jest.mock('@/hooks/use-reduced-motion', () => ({ useReducedMotion: () => true }));
@@ -72,6 +74,80 @@ async function seededClient() {
 describe('Fridge', () => {
   beforeEach(() => jest.clearAllMocks());
   afterEach(() => { jest.restoreAllMocks(); jest.useRealTimers(); });
+
+  test('Remove stays at the row edge while a left swipe reveals one Move target', async () => {
+    const api = await seededClient();
+    const { items } = await api.getItems({ storage: 'fridge' }) as ItemsResponse;
+    const item = items.find((entry) => entry.name === 'Apples')!;
+    const responder = jest.spyOn(PanResponder, 'create');
+    const onRemove = jest.fn();
+    const onMove = jest.fn();
+    const screen = await render(<ItemRow item={item} last onRemove={onRemove} onMove={onMove} />);
+    const row = screen.getByTestId(`fridge.item.${item.id}`);
+    const open = screen.getByTestId(`fridge.open.${item.id}`);
+    const foreground = open.parent!;
+    const remove = screen.getByTestId(`fridge.remove.${item.id}`);
+    const move = screen.getByTestId(`fridge.move.${item.id}`);
+
+    expect(remove).toBeVisible();
+    expect(remove).toHaveProp('accessibilityLabel', `Remove ${item.name}`);
+    expect(remove).toHaveStyle({ width: 44, minHeight: 44, flexShrink: 0 });
+    expect(remove.parent).toBe(row);
+    expect(row.children[row.children.length - 1]).toBe(remove);
+    expect(move.parent!.children).toHaveLength(1);
+    expect(move.parent!).toHaveStyle({ right: 44 });
+    expect(open).toHaveProp('accessibilityHint', 'Swipe left for Move.');
+    expect(open).toHaveProp('accessibilityLabel', 'View Apples, 1 left, expiry 2026-11-20, freshness Fresh');
+    expect(foreground).toHaveStyle({ flex: 1, minWidth: 0 });
+    expect(open).toHaveStyle({ flex: 1, minWidth: 0 });
+
+    const swipe = (dx: number) => act(() => {
+      const release = responder.mock.calls[responder.mock.calls.length - 1][0].onPanResponderRelease!;
+      release({} as Parameters<typeof release>[0], { dx, dy: 0 } as Parameters<typeof release>[1]);
+    });
+    await swipe(-60);
+    expect(foreground).toHaveStyle({ transform: [{ translateX: -44 }] });
+    expect(remove).toBeVisible();
+    expect(remove).not.toHaveStyle({ transform: [{ translateX: -44 }] });
+    await fireEvent.press(move);
+    expect(onMove).toHaveBeenCalledTimes(1);
+    expect(onRemove).not.toHaveBeenCalled();
+    expect(foreground).not.toHaveStyle({ transform: [{ translateX: -44 }] });
+
+    await swipe(-60);
+    await swipe(60);
+    expect(foreground).not.toHaveStyle({ transform: [{ translateX: -44 }] });
+    await fireEvent.press(remove);
+    expect(onRemove).toHaveBeenCalledTimes(1);
+    expect(router.push).not.toHaveBeenCalled();
+  });
+
+  test('keeps Move accessible and hides row actions only during selection', async () => {
+    const api = await seededClient();
+    const { items: [item] } = await api.getItems({ storage: 'fridge' }) as ItemsResponse;
+    const onRemove = jest.fn();
+    const onMove = jest.fn();
+    const props = { item, last: true, onRemove, onMove };
+    const screen = await render(<ItemRow {...props} />);
+    const open = screen.getByTestId(`fridge.open.${item.id}`);
+    expect(open).toHaveProp('accessibilityActions', expect.arrayContaining([
+      { name: 'move', label: `Move ${item.name} to another storage` },
+    ]));
+    await fireEvent(open, 'accessibilityAction', { nativeEvent: { actionName: 'move' } });
+    expect(onMove).toHaveBeenCalledTimes(1);
+
+    await screen.rerender(<ItemRow {...props} disabled />);
+    expect(screen.getByTestId(`fridge.remove.${item.id}`)).toBeVisible();
+    expect(screen.getByTestId(`fridge.remove.${item.id}`)).toBeDisabled();
+    await fireEvent.press(screen.getByTestId(`fridge.remove.${item.id}`));
+    expect(onRemove).not.toHaveBeenCalled();
+
+    await screen.rerender(<ItemRow {...props} selecting />);
+    expect(screen.queryByTestId(`fridge.remove.${item.id}`)).toBeNull();
+    expect(screen.queryByTestId(`fridge.move.${item.id}`)).toBeNull();
+    expect(screen.getByTestId(`fridge.select.${item.id}`)).toBeVisible();
+    expect(screen.getByTestId(`fridge.open.${item.id}`).props.accessibilityActions).toBeUndefined();
+  });
 
   test('row taps open item detail and Search filters the list', async () => {
     const api = await seededClient();

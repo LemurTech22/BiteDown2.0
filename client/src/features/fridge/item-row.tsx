@@ -1,10 +1,9 @@
 import { router } from 'expo-router';
+import { useState } from 'react';
 import { PanResponder, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import type { FoodGroup, Item } from '@/api/types';
-import { AppButton } from '@/components/ui/app-button';
 import { AppIcon, type IconName } from '@/components/ui/app-icon';
-import { IconButton } from '@/components/ui/icon-button';
 import { ExpiryBadge } from '@/features/fridge/expiry-badge';
 import { quantityLabel } from '@/features/fridge/fridge-utils';
 import { type AppTheme, useTheme } from '@/theme';
@@ -32,38 +31,58 @@ export function ItemRow({ item, last, onRemove, onMove, selecting = false, selec
   units?: Units; onOpen?: () => void;
 }) {
   const theme = useTheme();
+  const [actionsOpen, setActionsOpen] = useState(false);
   const groupColors = theme.foodGroups[item.food_group];
   const styles = createStyles(theme);
+  const freshness = item.freshness === 'fresh' ? 'Fresh' : item.freshness === 'semi_fresh' ? 'Use soon' : item.freshness === 'spoiled' ? 'Looks off' : 'Not checked';
+  const label = `View ${item.name}, ${quantityLabel(item, units)}, expiry ${item.predicted_expiry ?? 'unknown'}, freshness ${freshness}`;
+  function move() { setActionsOpen(false); onMove(); }
+  function remove() { setActionsOpen(false); onRemove(); }
   const swipe = PanResponder.create({
-    onMoveShouldSetPanResponder: (_event, gesture) => !selecting && !disabled && gesture.dx < -theme.sizes.touchTarget && Math.abs(gesture.dx) > Math.abs(gesture.dy),
-    onPanResponderRelease: (_event, gesture) => { if (!selecting && !disabled && gesture.dx < -theme.sizes.touchTarget) onRemove(); },
+    onMoveShouldSetPanResponder: (_event, gesture) => !selecting && !disabled && Math.abs(gesture.dx) > theme.sizes.touchTarget && Math.abs(gesture.dx) > Math.abs(gesture.dy),
+    onPanResponderRelease: (_event, gesture) => {
+      if (!selecting && !disabled && Math.abs(gesture.dx) > Math.abs(gesture.dy)) {
+        if (gesture.dx < -theme.sizes.touchTarget) setActionsOpen(true);
+        else if (gesture.dx > theme.sizes.touchTarget) setActionsOpen(false);
+      }
+    },
   });
   return (
-    <View {...swipe.panHandlers} style={[styles.row, !last && styles.divider, selected && styles.selected]} testID={`fridge.item.${item.id}`}>
+    <View {...swipe.panHandlers} style={[styles.row, !last && styles.divider]} testID={`fridge.item.${item.id}`}>
+      {!selecting ? <View style={styles.actions}>
+        <Pressable accessibilityRole="button" accessibilityLabel={`Move ${item.name} to another storage`}
+          testID={`fridge.move.${item.id}`} disabled={disabled} onPress={move} style={styles.action}>
+          <AppIcon name="swap-horizontal" color={theme.colors.forest} size={theme.sizes.icon} />
+        </Pressable>
+      </View> : null}
+      <View style={[styles.foreground, selected && styles.selected, !selecting && actionsOpen && styles.revealed]}>
       {selecting ? <Pressable accessibilityRole="checkbox" accessibilityLabel={`Select ${item.name}`} accessibilityState={{ checked: selected, disabled }}
         disabled={disabled} testID={`fridge.select.${item.id}`} onPress={onSelect} style={styles.checkTarget}>
         <View style={[styles.checkbox, selected && styles.checked]}>{selected ? <AppIcon name="check" color={theme.colors.onForest} size={theme.sizes.iconSmall} /> : null}</View>
       </Pressable> : null}
-      <Pressable accessibilityRole="button" accessibilityLabel={`View ${item.name}`} disabled={disabled} testID={`fridge.open.${item.id}`}
-        onPress={() => { if (onOpen) onOpen(); else router.push(`/item/${item.id}`); }} style={styles.main}>
+      <Pressable accessibilityRole="button" accessibilityLabel={label} disabled={disabled} testID={`fridge.open.${item.id}`}
+        accessibilityHint={selecting ? undefined : 'Swipe left for Move.'}
+        accessibilityActions={selecting || disabled ? undefined : [{ name: 'move', label: `Move ${item.name} to another storage` }, { name: 'remove', label: `Remove ${item.name}` }]}
+        onAccessibilityAction={({ nativeEvent }) => {
+          if (selecting || disabled) return;
+          if (nativeEvent.actionName === 'move') move();
+          else if (nativeEvent.actionName === 'remove') remove();
+        }}
+        onPress={() => { setActionsOpen(false); if (onOpen) onOpen(); else router.push(`/item/${item.id}`); }} style={styles.main}>
       <View style={[styles.iconTile, { backgroundColor: groupColors.tile }]}>
         <AppIcon name={groupIcon(item.food_group)} color={groupColors.stroke} size={theme.sizes.icon} />
       </View>
       <View style={styles.copy}>
         <Text style={styles.name}>{item.name}</Text>
         <Text style={styles.meta}>{quantityLabel(item, units)}</Text>
+        <View style={styles.status}><ExpiryBadge item={item} testID={`fridge.status.${item.id}`} /></View>
       </View>
-      <ExpiryBadge item={item} testID={`fridge.status.${item.id}`} />
       </Pressable>
-      {!selecting ? <><AppButton label="Move to…" accessibilityLabel={`Move ${item.name} to another storage`}
-        testID={`fridge.move.${item.id}`} onPress={onMove} variant="outline" />
-      <IconButton
-        icon="tray-arrow-up"
-        label={`Remove ${item.name}`}
-        testID={`fridge.remove.${item.id}`}
-        onPress={onRemove}
-      />
-      </> : null}
+      </View>
+      {!selecting ? <Pressable accessibilityRole="button" accessibilityLabel={`Remove ${item.name}`}
+        testID={`fridge.remove.${item.id}`} disabled={disabled} onPress={remove} style={styles.action}>
+        <AppIcon name="tray-arrow-up" color={theme.colors.forest} size={theme.sizes.icon} />
+      </Pressable> : null}
     </View>
   );
 }
@@ -74,14 +93,24 @@ function createStyles(theme: AppTheme) {
       alignItems: 'center',
       backgroundColor: theme.colors.surface,
       flexDirection: 'row',
-      flexWrap: 'wrap',
+      overflow: 'hidden',
+    },
+    foreground: {
+      alignItems: 'center',
+      backgroundColor: theme.colors.surface,
+      flexDirection: 'row',
+      flex: 1,
       gap: theme.spacing.md,
       minHeight: theme.sizes.itemRow,
+      minWidth: 0,
       paddingHorizontal: theme.spacing.lg,
       paddingVertical: theme.spacing.md,
     },
+    actions: { position: 'absolute', right: theme.sizes.touchTarget, top: 0, bottom: 0, flexDirection: 'row', alignItems: 'center' },
+    action: { width: theme.sizes.touchTarget, minHeight: theme.sizes.touchTarget, alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
+    revealed: { transform: [{ translateX: -theme.sizes.touchTarget }] },
     divider: { borderBottomColor: theme.colors.hairline, borderBottomWidth: theme.sizes.borderHairline },
-    main: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', flexGrow: 1, flexShrink: 1, flexBasis: '70%', gap: theme.spacing.md, minHeight: theme.sizes.touchTarget },
+    main: { flexDirection: 'row', alignItems: 'center', flex: 1, minWidth: 0, gap: theme.spacing.md, minHeight: theme.sizes.touchTarget },
     selected: { backgroundColor: theme.colors.limeTint },
     checkTarget: { minHeight: theme.sizes.touchTarget, minWidth: theme.sizes.touchTarget, alignItems: 'center', justifyContent: 'center' },
     checkbox: { width: theme.sizes.iconLarge, height: theme.sizes.iconLarge, borderRadius: theme.radii.round, borderWidth: theme.sizes.focusRing, borderColor: theme.colors.muted, alignItems: 'center', justifyContent: 'center' },
@@ -92,8 +121,10 @@ function createStyles(theme: AppTheme) {
       height: theme.sizes.itemIcon,
       justifyContent: 'center',
       width: theme.sizes.itemIcon,
+      flexShrink: 0,
     },
-    copy: { flexGrow: 1, flexShrink: 1, gap: theme.spacing.xxs, minWidth: '50%' },
+    copy: { flex: 1, gap: theme.spacing.xxs, minWidth: 0 },
+    status: { alignSelf: 'flex-start', maxWidth: '100%' },
     name: { ...theme.type.rowTitle, color: theme.colors.ink },
     meta: { ...theme.type.meta, color: theme.colors.muted },
   });
