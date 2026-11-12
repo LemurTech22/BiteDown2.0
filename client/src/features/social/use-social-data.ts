@@ -1,6 +1,8 @@
 import { useFocusEffect } from 'expo-router';
 import { useCallback, useRef, useState } from 'react';
 
+import { reportServerError } from '@/components/server-error';
+
 export function useSocialData<T>(fetchData: () => Promise<T>) {
   const [state, setState] = useState<{ status: 'loading' | 'ready' | 'error'; data: T | null; error: string }>({
     status: 'loading', data: null, error: '',
@@ -13,6 +15,7 @@ export function useSocialData<T>(fetchData: () => Promise<T>) {
       const data = await fetchData();
       if (request === sequence.current) setState({ status: 'ready', data, error: '' });
     } catch (cause) {
+      reportServerError(cause);
       if (request === sequence.current) setState({ status: 'error', data: null, error: errorMessage(cause) });
     }
   }, [fetchData]);

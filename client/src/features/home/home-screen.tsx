@@ -5,6 +5,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { useApi, type Item, type Recipe, type Tip } from '@/api';
 import { useAuth } from '@/auth/auth-provider';
+import { reportServerError } from '@/components/server-error';
 import { AppButton } from '@/components/ui/app-button';
 import { AppIcon } from '@/components/ui/app-icon';
 import { IconButton } from '@/components/ui/icon-button';
@@ -46,6 +47,7 @@ export function HomeScreen() {
       items.sort((a, b) => (a.predicted_expiry ?? '9999').localeCompare(b.predicted_expiry ?? '9999'));
       setData({ items, saved: impact.saved.kg, recipe: recipes.recipes[0] ?? null, tips: tips.tips, dismissed: keys });
     } catch (cause) {
+      reportServerError(cause);
       if (request === sequence.current) setError(cause instanceof Error ? cause.message : 'Couldn’t load Home. Try again.');
     } finally { if (request === sequence.current) setLoading(false); }
   }, [api, storeKey]);
@@ -58,7 +60,7 @@ export function HomeScreen() {
     try {
       await deviceStore.set(storeKey, JSON.stringify(dismissed));
       setData((current) => current ? { ...current, dismissed } : current); setTipError('');
-    } catch { setTipError('Couldn’t dismiss this tip. Try again.'); }
+    } catch (cause) { reportServerError(cause); setTipError('Couldn’t dismiss this tip. Try again.'); }
   }
 
   return <SafeAreaView style={styles.screen} edges={['top']}>

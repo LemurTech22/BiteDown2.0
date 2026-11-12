@@ -4,6 +4,7 @@ import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { useApi } from '@/api';
+import { reportServerError } from '@/components/server-error';
 import { AppIcon } from '@/components/ui/app-icon';
 import { FadeIn } from '@/components/ui/fade-in';
 import { IconButton } from '@/components/ui/icon-button';
@@ -37,6 +38,7 @@ export function RecipesScreen() {
       if (request !== requestSequence.current) return;
       setState({ status: 'success', entries: rememberRecipes(api, response.recipes), error: null });
     } catch (cause) {
+      reportServerError(cause);
       if (request !== requestSequence.current) return;
       setState({ status: 'error', entries: [], error: cause instanceof Error ? cause.message : 'Couldn’t load recipes. Try again.' });
     }

@@ -5,6 +5,7 @@ import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { type Item, type Recipe, useApi } from '@/api';
+import { reportServerError } from '@/components/server-error';
 import { AppButton } from '@/components/ui/app-button';
 import { IconButton } from '@/components/ui/icon-button';
 import { SkeletonRows } from '@/components/ui/skeleton-rows';
@@ -61,6 +62,7 @@ function RecipeDetail({ recipe }: { recipe: Recipe }) {
       if (request !== sequence.current) return;
       setInventory({ status: 'success', items: 'items' in response ? response.items : response.sections.flatMap((section) => section.items), error: null });
     } catch (cause) {
+      reportServerError(cause);
       if (request !== sequence.current) return;
       setInventory({ status: 'error', items: [], error: cause instanceof Error ? cause.message : 'Couldn’t load serving size. Try again.' });
     }
@@ -94,6 +96,7 @@ function RecipeDetail({ recipe }: { recipe: Recipe }) {
         completed.add(item.item_id);
         setUsedIds(new Set(completed));
       } catch (cause) {
+        reportServerError(cause);
         failures.push(item.name + ': ' + (cause instanceof Error ? cause.message : 'Couldn’t mark as used.'));
       }
     }

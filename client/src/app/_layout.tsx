@@ -24,6 +24,8 @@ function RootStack() {
         <Stack.Screen name="index" options={{ headerShown: false }} />
         <Stack.Screen name="login" options={{ headerShown: false }} />
         <Stack.Screen name="signup" options={{ headerShown: false }} />
+        <Stack.Screen name="friend/[code]" options={{ headerShown: false }} />
+        <Stack.Screen name="group/[code]" options={{ headerShown: false }} />
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
         <Stack.Screen name="add-modal" options={{ headerShown: false, presentation: 'modal' }} />
         <Stack.Screen name="debug" options={{ title: 'Debug settings' }} />

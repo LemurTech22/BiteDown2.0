@@ -3,6 +3,7 @@ import { useCallback, useRef, useState } from 'react';
 import { KeyboardAvoidingView, Platform, Pressable, Text, TextInput, View } from 'react-native';
 
 import { useApi } from '@/api';
+import { reportServerError } from '@/components/server-error';
 import { AppIcon } from '@/components/ui/app-icon';
 import { SkeletonRows } from '@/components/ui/skeleton-rows';
 import { StateView } from '@/components/ui/state-view';
@@ -36,6 +37,7 @@ export function RequestComposerScreen() {
       void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
       backToSocial();
     } catch (cause) {
+      reportServerError(cause);
       setError(errorMessage(cause));
       void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error).catch(() => {});
     } finally {

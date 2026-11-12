@@ -1,10 +1,11 @@
 import * as Haptics from 'expo-haptics';
-import { router, useFocusEffect } from 'expo-router';
-import { useCallback, useRef, useState } from 'react';
+import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Pressable, ScrollView, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { isApiError, useApi, type FriendsResponse, type Group } from '@/api';
+import { reportServerError } from '@/components/server-error';
 import { AppButton } from '@/components/ui/app-button';
 import { AppIcon } from '@/components/ui/app-icon';
 import { FormField } from '@/components/ui/form-field';
@@ -16,6 +17,7 @@ import { FriendCodeCard } from '@/features/connect/friend-code-card';
 import { useTheme } from '@/theme';
 
 export function ConnectScreen() {
+  const params = useLocalSearchParams<{ invite?: string | string[] }>();
   const { api } = useApi();
   const theme = useTheme();
   const styles = connectStyles(theme);
@@ -33,6 +35,15 @@ export function ConnectScreen() {
   const submitting = useRef(false);
   const retry = useRef<(() => Promise<void>) | null>(null);
   const sequence = useRef(0);
+  const invitePrefilled = useRef(false);
+
+  useEffect(() => {
+    const code = Array.isArray(params.invite) ? params.invite[0] : params.invite;
+    if (invitePrefilled.current || !code) return;
+    invitePrefilled.current = true;
+    setInvite(code);
+    setJoinOpen(true);
+  }, [params.invite]);
 
   const load = useCallback(async () => {
     const request = ++sequence.current;
@@ -42,6 +53,7 @@ export function ConnectScreen() {
       const [friends, { groups }] = await Promise.all([api.getFriends(), api.getGroups()]);
       if (request === sequence.current) setData({ friends, groups });
     } catch (cause) {
+      reportServerError(cause);
       if (request === sequence.current) setLoadError(cause instanceof Error ? cause.message : 'Please try again.');
     } finally {
       if (request === sequence.current) setLoading(false);
@@ -63,6 +75,7 @@ export function ConnectScreen() {
       await action();
       void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
     } catch (cause) {
+      reportServerError(cause);
       setError({ key, message: key === 'email' && isApiError(cause) && cause.status === 404
         ? 'No BiteDown account uses that email.' : cause instanceof Error ? cause.message : 'Please try again.' });
       void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error).catch(() => {});
@@ -85,7 +98,7 @@ export function ConnectScreen() {
   }
 
   return <SafeAreaView style={styles.screen}>
-    <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.content}>
+    <ScrollView keyboardShouldPersistTaps="handled" automaticallyAdjustKeyboardInsets contentContainerStyle={styles.content}>
       <View style={styles.header}>
         <Text accessibilityRole="header" style={styles.title}>Friends and groups</Text>
         <IconButton icon="close" label="Close" testID="connect.close.button" onPress={() => router.back()} />
