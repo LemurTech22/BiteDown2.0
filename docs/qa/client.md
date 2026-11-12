@@ -22,7 +22,12 @@ review covered the whole night's diff. Device checks ran on the Android emulator
   Undo toast; Impact shows 1.3 lb saved; Recipes (with "needs a few things"); Social, Food Pantry, Your requests,
   Settings load with their empty states.
 - Web (Chrome): welcome, sign up through CORS, Home.
-- Checks: `tsc` and `expo lint` clean; Jest 29 suites / 328 tests; backend `test_cors.py` + health + auth 16 passed.
+- Checks: `tsc` and `expo lint` clean; Jest 29 suites / 369 tests; backend full suite (not slow) 2968 passed, 4 skipped,
+  7 xfailed, with `test_be22_peak_memory_…` deselected: it imports the Unix-only `resource` module, so it can only run on
+  Linux/macOS (pre-existing, not a regression).
+- OpenCode review of the whole diff: CORS, redirects, secrets, fetch binding clean; 4 defects found and fixed
+  (Funnel left on after Ctrl-C; deep-link code lost at sign-in, now an allowlisted `next`; Move invisible on web;
+  unescaped `geo:` label). Pinned Add button on review screens verified on the emulator.
 
 **Not verified**: iPhone Safari on a real device; barcode and receipt camera flows on a device; Food Pantry claim and
 Group detail with a second account; delete account; fontScale 2.0 on a device. Receipts need the ML service or Gemini

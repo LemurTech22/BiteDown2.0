@@ -19,8 +19,10 @@ Checks and what was verified by hand: `docs/qa/client.md` (orchestrator checks +
 review; not a formal QA PASS).
 
 **How people get the app**
-- **Android:** APK from EAS Build, project `@bitedown/bitedown` (Expo account `frankinstyle96`, org `bitedown`).
-  `cd client; npx eas-cli build:list -p android` shows the builds and install links.
+- **Android:** APK from EAS Build `2e0f6f0e-0d47-426f-85ef-e1aec6ceacbe` (profile `preview`), project `@bitedown/bitedown`
+  (Expo account `frankinstyle96`, org `bitedown`).
+  APK: https://expo.dev/artifacts/eas/tcEY5Ay7_5-E2KRE1byRZmME4hjfo0ctJsSj_LyK6nA.apk (open on the phone, allow
+  "install unknown apps"). `cd client; npx eas-cli build:list -p android` lists builds.
 - **iPhone:** the web build at `https://bitedown.expo.app` in Safari, then Share, Add to Home Screen. Expo Go can't open
   shared projects on iOS; a native iOS build needs a paid Apple account.
 - **Backend:** this PC (docker compose, now `restart: unless-stopped`), put online by `scripts\serve_public.ps1`.
@@ -35,7 +37,9 @@ review; not a formal QA PASS).
    (https://login.tailscale.com/f/funnel?node=nYD94JSEKw11CNTRL), or move this PC to your own tailnet.
 3. Test: open `https://bitedown.expo.app` on a phone; install the APK on an Android phone.
 
-**What landed (merged into `feat/expo-android`, each reviewed by Claude; tsc + lint clean, Jest 29 suites / 329 tests):**
+**What landed (merged into `feat/expo-android`, each reviewed by Claude; tsc + lint clean, Jest 29 suites / 369 tests;
+an independent OpenCode review found 4 issues, all fixed: Funnel left on after Ctrl-C, deep-link code lost at sign-in,
+Move invisible on web, unescaped `geo:` label):**
 CORS allowlist `CORS_ORIGINS` (`backend/app/cors.py`, 9 tests); web launch crash and web fetch fix; platform map links;
 keyboard avoidance; deep links `bitedown://friend|group/<code>`; `reportServerError` app-wide; remote API config
 (`EXPO_PUBLIC_API_CONFIG_URL`, Debug settings shows the source); web phone-width column + PWA manifest/icons; compact
