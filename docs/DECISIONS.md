@@ -2,6 +2,23 @@
 
 Newest first. Each entry: date, decision, why, alternatives considered.
 
+## 2026-11-12 — Showcase distribution for the Expo app (owner)
+- **Android:** an installable APK from EAS Build (`client/eas.json` profile `preview`), project `@bitedown/bitedown`.
+- **iPhone:** the same app's **web build** in Safari (Add to Home Screen), hosted on Expo Hosting
+  (`https://bitedown.expo.app`). *Why:* Expo Go on iOS can't open shared projects (Expo FAQ: shared URLs open in
+  "Expo Go for Android"), a standalone iOS build needs a paid Apple account, and the SwiftUI app on `main` installs
+  only by cable from a Mac with 7-day free signing. The SwiftUI app stays usable for demos from the Mac.
+- **Google Sign-In deferred** for the Expo app (email + password only); it needs a native build and an OAuth client.
+- **Backend:** the owner's PC (docker compose, `restart: unless-stopped`) behind **Tailscale Funnel** (stable
+  `https://laptop-64ms4pd7.tail41bac8.ts.net`) or, until Funnel is approved on the tailnet, a **Cloudflare quick tunnel**.
+  `scripts/serve_public.ps1` picks one, watches it, and publishes its address.
+- **The app finds the backend through `api-config.json`** on Expo Hosting (`EXPO_PUBLIC_API_CONFIG_URL`), fetched at
+  start and on resume, cached, overridable in Debug settings. *Why:* the tunnel address can change without rebuilding
+  or reinstalling the APK. Alternatives: bake the URL (breaks on every tunnel change), AWS EC2 (owner has only an AWS
+  Builder ID, which is not an AWS account).
+- **CORS:** the API sends CORS headers only to exact origins in `CORS_ORIGINS` (`backend/app/cors.py`); bearer auth,
+  no credentials header.
+
 ## 2026-10-19 — Deadline mode ends: short CI with smoke UI tests (owner)
 - **iOS PRs** run the `Smoke` XCTest plan (`ios/TestPlans/Smoke.xctestplan`): every unit test plus a smoke set of UI tests. The smoke set covers launch, auth, the tab shell, Fridge, removal and Undo, and the Home Impact pill. It also includes `DemoPathUITests`, the merge-gate demo path (photo add → expiry → remove → Impact). The target is under 12 min.
 - **Full plan runs:** `main` pushes, a nightly schedule and manual dispatch run the `Full` plan, which is every unit and UI test.
@@ -325,4 +342,4 @@ A UI/UX QA pass checked every comment. The owner made the product calls, and the
 - **Ports bind to `127.0.0.1`** (API 5055, DB 5433).
 
 ## Open — to decide and record here
-- **Demo connectivity:** how the phone reaches the API (same Wi-Fi as a laptop, a tunnel, or a hosted backend).
+- ~~**Demo connectivity**~~: decided 2026-11-12 (tunnel from the owner's PC + `api-config.json`; see the top entry).

@@ -27,6 +27,13 @@ String caps (over-limit -> `400 validation_error`): item `name` 200, item `unit`
 
 Group pantry items: editing (`PATCH`), removing and restoring them (single and batch) needs CURRENT group membership, including for the user who added them. Ex-member: single endpoints `403 forbidden`; batch endpoints `404 not_found` (whole batch, no existence leak). An ex-member's old group items are also excluded from `POST /recipes/suggest` (an `item_ids` entry naming one -> `404 not_found`, like an unknown id) and from `GET /tips` (expiry observations); `GET /people/reachable?item_id=` for such an item -> `404 not_found`. `GET /impact` is unchanged: it counts the user's own past food events.
 
+**CORS (web build):** when the request's `Origin` exactly matches an entry in `CORS_ORIGINS` (comma-separated, set in
+`.env`; empty = off), every response, errors included, carries `Access-Control-Allow-Origin: <origin>`,
+`Access-Control-Allow-Headers: Authorization, Content-Type`, `Access-Control-Allow-Methods: GET, POST, PATCH, PUT, DELETE,
+OPTIONS` and `Access-Control-Max-Age: 600`; a preflight (`OPTIONS` + `Access-Control-Request-Method`) from such an origin
+returns `204`. No `Access-Control-Allow-Credentials` (bearer auth). Other origins get no CORS headers. All responses
+`Vary: Origin`.
+
 ## Health
 - ✅ `GET /health` → `200 {"status": "ok"}`
 

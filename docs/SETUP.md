@@ -142,6 +142,21 @@ The script uses the `http2` tunnel protocol because QUIC (UDP 7844) is blocked o
 `TUNNEL_PROTOCOL=quic` to try it. Ctrl-C stops the tunnel. Anyone with the URL can reach the API while it runs,
 so stop it after the demo.
 
+### Showcase: phones over the internet (Windows PC, Expo app)
+The Expo app (`client/`) reaches the backend through `https://bitedown.expo.app/api-config.json`, so the backend's public
+address can change without reinstalling the app (`docs/DECISIONS.md`, 2026-11-12).
+1. Docker Desktop running; `.env` has `CORS_ORIGINS=https://bitedown.expo.app,http://localhost:8081`
+   (after editing: `docker compose up -d --force-recreate api`).
+2. Once: `npx eas-cli login` (account that owns `@bitedown/bitedown`). Optional, for a stable address: a tailnet admin
+   approves Tailscale Funnel for this PC (`tailscale funnel --bg 5055` prints the approval link).
+3. Run `powershell -ExecutionPolicy Bypass -File scripts\serve_public.ps1` from the repo root and leave the window open.
+   It starts Tailscale Funnel or a Cloudflare quick tunnel, waits for `/health`, rebuilds the web app with that address,
+   writes `api-config.json` and deploys to Expo Hosting (`eas deploy --prod`). It restarts a dead Cloudflare tunnel and
+   republishes the new address. Anyone with the address can reach the API while it runs.
+4. Android: install the APK from the EAS build page (`npx eas-cli build:list -p android`). iPhone: open
+   `https://bitedown.expo.app` in Safari, Share, Add to Home Screen.
+5. New APK after code changes: `cd client; npx eas-cli build -p android --profile preview`.
+
 ## 5. ML (off-box)
 **Dataset credentials** go in `.env` where datasets are prepared, and as Colab secrets:
 - `ROBOFLOW_API_KEY` is the **private** key. The `rf_` publishable key returns 401.

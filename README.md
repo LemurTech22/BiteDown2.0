@@ -143,6 +143,14 @@ Xcode 26 toolchain and a compatible simulator. The phone demo uses a free Person
 device signing and demo tunnel instructions are in the
 [setup guide](docs/SETUP.md#4-ios).
 
+### Expo app (Android and iPhone)
+
+`client/` is a universal Expo app (Expo SDK 58). Android installs an APK built by EAS; iPhones use the same app's web
+build at `https://bitedown.expo.app` (Safari, Add to Home Screen). Development: `cd client; npm ci; npx expo start`
+(Expo Go or the web). To put the backend online for phones, run `scripts\serve_public.ps1` on the host PC
+([setup guide](docs/SETUP.md#showcase-phones-over-the-internet-windows-pc-expo-app)); details in
+[`client/README.md`](client/README.md).
+
 ### Development and verification
 
 Host-side Python development uses Python 3.12 and the repository `.venv`. Backend tests need
