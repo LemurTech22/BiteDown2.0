@@ -6,6 +6,7 @@ import type { ExpoConfig } from 'expo/config';
 const config: ExpoConfig = {
   name: 'BiteDown',
   slug: 'bitedown',
+  owner: 'bitedown',
   version: '1.0.0',
   orientation: 'portrait',
   icon: './assets/images/icon.png',
@@ -94,6 +95,11 @@ const config: ExpoConfig = {
       },
     ],
   ],
+  extra: {
+    eas: {
+      projectId: 'd8f7689c-5ada-4580-b610-f9ecee68093b',
+    },
+  },
   experiments: {
     typedRoutes: true,
     reactCompiler: true,
