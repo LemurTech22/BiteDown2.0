@@ -1,5 +1,6 @@
 import { type PropsWithChildren, useEffect } from 'react';
-import { Animated, type StyleProp, useAnimatedValue, type ViewStyle } from 'react-native';
+import { Animated, type StyleProp, type ViewStyle } from 'react-native';
+import { useAnimatedValue } from '@/hooks/use-animated-value';
 
 import { useTheme } from '@/theme';
 

@@ -1,5 +1,6 @@
 import { useEffect } from 'react';
-import { Animated, StyleSheet, useAnimatedValue, View } from 'react-native';
+import { Animated, StyleSheet, View } from 'react-native';
+import { useAnimatedValue } from '@/hooks/use-animated-value';
 
 import { useReducedMotion } from '@/hooks/use-reduced-motion';
 import { type AppTheme, useTheme } from '@/theme';

@@ -6,11 +6,11 @@ import {
   Text,
   TextInput,
   type KeyboardTypeOptions,
-  useAnimatedValue,
   View,
 } from 'react-native';
 
 import { AppIcon } from '@/components/ui/app-icon';
+import { useAnimatedValue } from '@/hooks/use-animated-value';
 import { useReducedMotion } from '@/hooks/use-reduced-motion';
 import { type AppTheme, useTheme } from '@/theme';
 
