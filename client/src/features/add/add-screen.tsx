@@ -1,6 +1,6 @@
 import { router } from 'expo-router';
 import type { ReactNode } from 'react';
-import { KeyboardAvoidingView, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { IconButton } from '@/components/ui/icon-button';
@@ -9,7 +9,7 @@ import { type AppTheme, useTheme } from '@/theme';
 export function AddScreen({ title, screen, children }: { title: string; screen: string; children: ReactNode }) {
   const styles = addStyles(useTheme());
   return <SafeAreaView style={styles.screen}>
-    <KeyboardAvoidingView style={styles.screen} behavior="padding">
+    <KeyboardAvoidingView style={styles.screen} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
         <View style={styles.header}>
           <IconButton icon="arrow-left" label="Back" testID={`${screen}.back.button`}

@@ -2,7 +2,7 @@ import * as Haptics from 'expo-haptics';
 import * as ImagePicker from 'expo-image-picker';
 import { router, useFocusEffect } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, BackHandler, Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, BackHandler, Image, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { isApiError, useApi } from '@/api';
@@ -89,37 +89,39 @@ export function AddPhotoScreen() {
 
   return (
     <SafeAreaView style={styles.screen}>
-      <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
-        <View style={styles.header}>
-          <IconButton icon="close" label="Close" onPress={requestClose} testID="add.close.button" />
-          <Text accessibilityRole="header" style={styles.title}>{photo ? 'Review photo' : 'Add food'}</Text>
-        </View>
-        {photo ? <PhotoReview photo={photo} onReset={reset} onCandidatesChange={setHasCandidates}
-          onSaved={() => { setPhoto(null); setHasCandidates(false); setDiscardAction(null); closeAdd(); }} /> : (
-          <FadeIn style={styles.section} testID="add.empty.state">
-            <Pressable style={styles.hero} accessibilityRole="button" accessibilityLabel="Snap a photo"
-              testID="add.hero.button" disabled={picking} onPress={() => void pick('camera')}>
-              <View style={styles.heroIcon}><AppIcon name="camera-outline" color={theme.colors.onLime} size={theme.sizes.addHeroGlyph} /></View>
-              <View style={styles.heroCopy}>
-                <Text style={styles.heroTitle}>Snap a photo</Text>
-                <Text style={styles.heroText}>Your whole fridge, or just one item</Text>
-                {denied ? <Text style={styles.heroText}>Off</Text> : null}
-              </View>
-            </Pressable>
-            <AddMethods />
-            <ChoiceControl label="Photo mode" value={mode} onChange={setMode} disabled={picking}
-              options={[{ value: 'fridge', label: 'Whole fridge' }, { value: 'single', label: 'One item' }]} testID="add.mode" />
-            <AppButton label="Take a photo" testID="add.camera.button" onPress={() => void pick('camera')} disabled={picking} />
-            <AppButton label="Choose from library" testID="add.library.button" onPress={() => void pick('library')}
-              variant="outline" disabled={picking} />
-            {picking ? <SkeletonRows testID="add.picker.skeleton" /> : null}
-            {error && !denied ? <StateView icon="camera-off" title="Couldn’t open photo"
-              message={error} testID="add.picker.error" actionLabel="Try again" actionTestID="add.picker.retry"
-              onAction={() => void pick(lastSource)} /> : null}
-            {denied ? <CameraDeniedCard screen="add" onRetry={() => void pick('camera')} /> : null}
-          </FadeIn>
-        )}
-      </ScrollView>
+      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }}>
+        <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+          <View style={styles.header}>
+            <IconButton icon="close" label="Close" onPress={requestClose} testID="add.close.button" />
+            <Text accessibilityRole="header" style={styles.title}>{photo ? 'Review photo' : 'Add food'}</Text>
+          </View>
+          {photo ? <PhotoReview photo={photo} onReset={reset} onCandidatesChange={setHasCandidates}
+            onSaved={() => { setPhoto(null); setHasCandidates(false); setDiscardAction(null); closeAdd(); }} /> : (
+            <FadeIn style={styles.section} testID="add.empty.state">
+              <Pressable style={styles.hero} accessibilityRole="button" accessibilityLabel="Snap a photo"
+                testID="add.hero.button" disabled={picking} onPress={() => void pick('camera')}>
+                <View style={styles.heroIcon}><AppIcon name="camera-outline" color={theme.colors.onLime} size={theme.sizes.addHeroGlyph} /></View>
+                <View style={styles.heroCopy}>
+                  <Text style={styles.heroTitle}>Snap a photo</Text>
+                  <Text style={styles.heroText}>Your whole fridge, or just one item</Text>
+                  {denied ? <Text style={styles.heroText}>Off</Text> : null}
+                </View>
+              </Pressable>
+              <AddMethods />
+              <ChoiceControl label="Photo mode" value={mode} onChange={setMode} disabled={picking}
+                options={[{ value: 'fridge', label: 'Whole fridge' }, { value: 'single', label: 'One item' }]} testID="add.mode" />
+              <AppButton label="Take a photo" testID="add.camera.button" onPress={() => void pick('camera')} disabled={picking} />
+              <AppButton label="Choose from library" testID="add.library.button" onPress={() => void pick('library')}
+                variant="outline" disabled={picking} />
+              {picking ? <SkeletonRows testID="add.picker.skeleton" /> : null}
+              {error && !denied ? <StateView icon="camera-off" title="Couldn’t open photo"
+                message={error} testID="add.picker.error" actionLabel="Try again" actionTestID="add.picker.retry"
+                onAction={() => void pick(lastSource)} /> : null}
+              {denied ? <CameraDeniedCard screen="add" onRetry={() => void pick('camera')} /> : null}
+            </FadeIn>
+          )}
+        </ScrollView>
+      </KeyboardAvoidingView>
       {discardAction ? <DiscardSheet onCancel={() => setDiscardAction(null)} onDiscard={() => {
         setPhoto(null);
         setHasCandidates(false);

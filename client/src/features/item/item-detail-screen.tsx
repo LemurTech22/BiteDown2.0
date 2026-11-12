@@ -16,6 +16,7 @@ import { FOOD_GROUPS, STORAGE_OPTIONS } from '@/features/fridge/fridge-utils';
 import { RemoveSheet } from '@/features/remove/remove-sheet';
 import { UndoToast } from '@/features/remove/undo-toast';
 import { useRemovalUndo } from '@/features/remove/use-removal-undo';
+import { mapsUrl } from '@/features/social/maps-url';
 import { formatMoney, formatWeight, usePreferences } from '@/settings/preferences';
 import { type AppTheme, useTheme } from '@/theme';
 
@@ -140,7 +141,7 @@ export function ItemDetailScreen() {
   const claimer = share?.claimed_by;
   const pickup = share?.pickup;
   return <SafeAreaView style={styles.screen} edges={['top']} testID="item.screen.root">
-    <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.content}>
+    <ScrollView keyboardShouldPersistTaps="handled" automaticallyAdjustKeyboardInsets contentContainerStyle={styles.content}>
       <View style={styles.header}><AppButton label="Back" variant="outline" testID="item.back.button" onPress={() => { if (router.canGoBack()) router.back(); else router.replace('/fridge'); }} />
         <Text accessibilityRole="header" style={styles.title}>Item detail</Text>
         {item && !item.removed_at ? <AppButton label="Save" testID="item.save.button" disabled={pending || !draft || Boolean(validation(draft))} onPress={() => void perform(save)} /> : null}</View>
@@ -196,7 +197,8 @@ export function ItemDetailScreen() {
               {pickup.place_name ? <Text style={styles.label}>{pickup.place_name}</Text> : null}{pickup.note ? <Text style={styles.body}>{pickup.note}</Text> : null}
               <AppButton label="Edit" accessibilityLabel="Edit pickup spot" testID="item.pickup.edit" variant="outline" disabled={pending} onPress={() => setPickupOpen(true)} />
               {pickup.lat !== null && pickup.lng !== null ? <AppButton label="Open in Maps" testID="item.pickup.maps" variant="outline" onPress={() => void perform(async () => {
-                await Linking.openURL(`geo:${pickup.lat},${pickup.lng}?q=${pickup.lat},${pickup.lng}(${encodeURIComponent(pickup.place_name || 'Pickup spot')})`);
+                if (pickup.lat === null || pickup.lng === null) return;
+                await Linking.openURL(mapsUrl({ lat: pickup.lat, lng: pickup.lng, label: pickup.place_name || 'Pickup spot' }));
               })} /> : null}
             </> : <AppButton label="Add a pickup spot" testID="item.pickup.add" variant="outline" disabled={pending} onPress={() => setPickupOpen(true)} />}
           </> : null}

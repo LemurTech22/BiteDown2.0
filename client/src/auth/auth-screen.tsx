@@ -65,6 +65,7 @@ export function AuthScreen({ mode }: AuthScreenProps) {
       <ScrollView
         contentContainerStyle={styles.content}
         keyboardShouldPersistTaps="handled"
+        automaticallyAdjustKeyboardInsets
         showsVerticalScrollIndicator={false}>
         <IconButton icon="arrow-left" label="Back" onPress={() => router.back()} testID={`${mode}.back.button`} />
         <View style={styles.header}>
