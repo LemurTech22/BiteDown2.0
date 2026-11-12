@@ -1,8 +1,9 @@
-import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
+import { act, fireEvent, render, waitFor, within } from '@testing-library/react-native';
 import * as Haptics from 'expo-haptics';
 import * as ImagePicker from 'expo-image-picker';
 import { router } from 'expo-router';
 import { BackHandler } from 'react-native';
+import { SafeAreaInsetsContext } from 'react-native-safe-area-context';
 
 import { ApiError, ApiProvider, MockApiClient, type PhotoCandidatesResponse } from '@/api';
 import AddModalScreen from '@/app/add-modal';
@@ -34,7 +35,9 @@ const photo: ImagePicker.ImagePickerResult = {
 async function setup() {
   const api = new MockApiClient();
   await api.signup({ email: 'photo@example.com', password: 'photo-password', display_name: 'Contributor' });
-  const screen = await render(<ApiProvider client={api}><AddModalScreen /></ApiProvider>);
+  const screen = await render(<ApiProvider client={api}><AddModalScreen /></ApiProvider>, {
+    wrapper: ({ children }) => <SafeAreaInsetsContext.Provider value={{ top: 0, left: 0, right: 0, bottom: 34 }}>{children}</SafeAreaInsetsContext.Provider>,
+  });
   return { api, screen };
 }
 
@@ -143,6 +146,9 @@ describe('add by photo', () => {
     expect(await screen.findByDisplayValue('Mock apple')).toBeTruthy();
     expect(fromPhoto).toHaveBeenCalledWith({ uri: 'file:///food.jpg', fileName: 'food.jpg', mimeType: 'image/jpeg', mode: 'single', enrich: ['expiry'] });
     expect(screen.getByText(/Predicted expiry:/)).toBeTruthy();
+    const scroll = within(screen.getByTestId('addReview.scroll'));
+    expect(scroll.getByDisplayValue('Mock apple')).toBeTruthy();
+    expect(scroll.queryByTestId('add.save.button')).toBeNull();
     await fireEvent.changeText(screen.getByTestId('add.name.0'), 'Green apples');
     await fireEvent.changeText(screen.getByTestId('add.quantity.0'), '2.5');
     await fireEvent.press(screen.getByTestId('add.storage0.freezer'));

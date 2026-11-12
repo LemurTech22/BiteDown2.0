@@ -1,24 +1,26 @@
 import { router } from 'expo-router';
 import type { ReactNode } from 'react';
-import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { IconButton } from '@/components/ui/icon-button';
 import { type AppTheme, useTheme } from '@/theme';
 
-export function AddScreen({ title, screen, children }: { title: string; screen: string; children: ReactNode }) {
+import { AddReviewLayout } from './add-review-layout';
+
+export function AddScreen({ title, screen, children, footer }: {
+  title: string; screen: string; children: ReactNode; footer?: ReactNode;
+}) {
   const styles = addStyles(useTheme());
-  return <SafeAreaView style={styles.screen}>
-    <KeyboardAvoidingView style={styles.screen} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-      <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
-        <View style={styles.header}>
-          <IconButton icon="arrow-left" label="Back" testID={`${screen}.back.button`}
-            onPress={() => { if (router.canGoBack()) router.back(); else router.replace('/home'); }} />
-          <Text accessibilityRole="header" style={styles.title}>{title}</Text>
-        </View>
-        {children}
-      </ScrollView>
-    </KeyboardAvoidingView>
+  return <SafeAreaView style={styles.screen} edges={['top', 'left', 'right']}>
+    <AddReviewLayout footer={footer}>
+      <View style={styles.header}>
+        <IconButton icon="arrow-left" label="Back" testID={`${screen}.back.button`}
+          onPress={() => { if (router.canGoBack()) router.back(); else router.replace('/home'); }} />
+        <Text accessibilityRole="header" style={styles.title}>{title}</Text>
+      </View>
+      {children}
+    </AddReviewLayout>
   </SafeAreaView>;
 }
 

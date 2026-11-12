@@ -1,8 +1,8 @@
 import * as Haptics from 'expo-haptics';
 import * as ImagePicker from 'expo-image-picker';
 import { router, useFocusEffect } from 'expo-router';
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, BackHandler, Image, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { type ReactNode, useCallback, useEffect, useRef, useState } from 'react';
+import { ActivityIndicator, BackHandler, Image, Pressable, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { isApiError, useApi } from '@/api';
@@ -17,6 +17,7 @@ import { type AppTheme, useTheme } from '@/theme';
 
 import { CandidateEditor, type CandidateDraft, draftError, toCreateItem } from './candidate-editor';
 import { AddMethods } from './add-methods';
+import { AddReviewLayout } from './add-review-layout';
 import { CameraDeniedCard } from './camera-denied-card';
 import { ChoiceControl } from './choice-control';
 import { DiscardSheet } from './discard-sheet';
@@ -87,41 +88,41 @@ export function AddPhotoScreen() {
     }
   }
 
+  const header = <View style={styles.header}>
+    <IconButton icon="close" label="Close" onPress={requestClose} testID="add.close.button" />
+    <Text accessibilityRole="header" style={styles.title}>{photo ? 'Review photo' : 'Add food'}</Text>
+  </View>;
+
   return (
-    <SafeAreaView style={styles.screen}>
-      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }}>
-        <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
-          <View style={styles.header}>
-            <IconButton icon="close" label="Close" onPress={requestClose} testID="add.close.button" />
-            <Text accessibilityRole="header" style={styles.title}>{photo ? 'Review photo' : 'Add food'}</Text>
-          </View>
-          {photo ? <PhotoReview photo={photo} onReset={reset} onCandidatesChange={setHasCandidates}
-            onSaved={() => { setPhoto(null); setHasCandidates(false); setDiscardAction(null); closeAdd(); }} /> : (
-            <FadeIn style={styles.section} testID="add.empty.state">
-              <Pressable style={styles.hero} accessibilityRole="button" accessibilityLabel="Snap a photo"
-                testID="add.hero.button" disabled={picking} onPress={() => void pick('camera')}>
-                <View style={styles.heroIcon}><AppIcon name="camera-outline" color={theme.colors.onLime} size={theme.sizes.addHeroGlyph} /></View>
-                <View style={styles.heroCopy}>
-                  <Text style={styles.heroTitle}>Snap a photo</Text>
-                  <Text style={styles.heroText}>Your whole fridge, or just one item</Text>
-                  {denied ? <Text style={styles.heroText}>Off</Text> : null}
-                </View>
-              </Pressable>
-              <AddMethods />
-              <ChoiceControl label="Photo mode" value={mode} onChange={setMode} disabled={picking}
-                options={[{ value: 'fridge', label: 'Whole fridge' }, { value: 'single', label: 'One item' }]} testID="add.mode" />
-              <AppButton label="Take a photo" testID="add.camera.button" onPress={() => void pick('camera')} disabled={picking} />
-              <AppButton label="Choose from library" testID="add.library.button" onPress={() => void pick('library')}
-                variant="outline" disabled={picking} />
-              {picking ? <SkeletonRows testID="add.picker.skeleton" /> : null}
-              {error && !denied ? <StateView icon="camera-off" title="Couldn’t open photo"
-                message={error} testID="add.picker.error" actionLabel="Try again" actionTestID="add.picker.retry"
-                onAction={() => void pick(lastSource)} /> : null}
-              {denied ? <CameraDeniedCard screen="add" onRetry={() => void pick('camera')} /> : null}
-            </FadeIn>
-          )}
-        </ScrollView>
-      </KeyboardAvoidingView>
+    <SafeAreaView style={styles.screen} edges={['top', 'left', 'right']}>
+      {photo ? <PhotoReview photo={photo} header={header} onReset={reset} onCandidatesChange={setHasCandidates}
+        onSaved={() => { setPhoto(null); setHasCandidates(false); setDiscardAction(null); closeAdd(); }} /> : (
+        <AddReviewLayout contentContainerStyle={styles.content}>
+          {header}
+          <FadeIn style={styles.section} testID="add.empty.state">
+            <Pressable style={styles.hero} accessibilityRole="button" accessibilityLabel="Snap a photo"
+              testID="add.hero.button" disabled={picking} onPress={() => void pick('camera')}>
+              <View style={styles.heroIcon}><AppIcon name="camera-outline" color={theme.colors.onLime} size={theme.sizes.addHeroGlyph} /></View>
+              <View style={styles.heroCopy}>
+                <Text style={styles.heroTitle}>Snap a photo</Text>
+                <Text style={styles.heroText}>Your whole fridge, or just one item</Text>
+                {denied ? <Text style={styles.heroText}>Off</Text> : null}
+              </View>
+            </Pressable>
+            <AddMethods />
+            <ChoiceControl label="Photo mode" value={mode} onChange={setMode} disabled={picking}
+              options={[{ value: 'fridge', label: 'Whole fridge' }, { value: 'single', label: 'One item' }]} testID="add.mode" />
+            <AppButton label="Take a photo" testID="add.camera.button" onPress={() => void pick('camera')} disabled={picking} />
+            <AppButton label="Choose from library" testID="add.library.button" onPress={() => void pick('library')}
+              variant="outline" disabled={picking} />
+            {picking ? <SkeletonRows testID="add.picker.skeleton" /> : null}
+            {error && !denied ? <StateView icon="camera-off" title="Couldn’t open photo"
+              message={error} testID="add.picker.error" actionLabel="Try again" actionTestID="add.picker.retry"
+              onAction={() => void pick(lastSource)} /> : null}
+            {denied ? <CameraDeniedCard screen="add" onRetry={() => void pick('camera')} /> : null}
+          </FadeIn>
+        </AddReviewLayout>
+      )}
       {discardAction ? <DiscardSheet onCancel={() => setDiscardAction(null)} onDiscard={() => {
         setPhoto(null);
         setHasCandidates(false);
@@ -132,8 +133,9 @@ export function AddPhotoScreen() {
   );
 }
 
-function PhotoReview({ photo, onReset, onCandidatesChange, onSaved }: {
+function PhotoReview({ photo, header, onReset, onCandidatesChange, onSaved }: {
   photo: Photo;
+  header: ReactNode;
   onReset: () => void;
   onCandidatesChange: (hasCandidates: boolean) => void;
   onSaved: () => void;
@@ -191,38 +193,41 @@ function PhotoReview({ photo, onReset, onCandidatesChange, onSaved }: {
   }
 
   return (
-    <View style={styles.section}>
-      <Image source={{ uri: photo.asset.uri }} accessibilityLabel="Your food photo" accessible
-        style={[styles.preview, { aspectRatio: photo.asset.width > 0 && photo.asset.height > 0 ? photo.asset.width / photo.asset.height : 1 }]}
-        resizeMode="contain" testID="add.photo.preview" />
-      {loading ? <FadeIn style={styles.section} testID="add.loading.state">
-        <ActivityIndicator color={theme.colors.forest} accessibilityLabel="Analyzing photo"
-          animating={!reducedMotion} hidesWhenStopped={false} />
-        <Text accessibilityLiveRegion="polite" style={styles.body}>Finding your food and predicting expiry… This can take up to 75 seconds.</Text>
-        <SkeletonRows testID="add.loading.skeleton" />
-      </FadeIn> : error ? <StateView icon="alert-circle-outline" title="Couldn’t analyze photo" message={error}
-        testID="add.analysis.error" actionLabel="Try again" actionTestID="add.analysis.retry"
-        onAction={() => { setLoading(true); setError(''); setAttempt((value) => value + 1); }} /> :
-        !drafts.length ? <StateView icon="food-apple-outline" title="No food to add"
-          message="Try a closer, brighter photo. You can also choose another photo." testID="add.review.empty"
-          actionLabel="Choose another photo" actionTestID="add.empty.retry" onAction={onReset} /> : (
-          <>
-            <Text accessibilityRole="header" style={styles.title}>We found {drafts.length} {drafts.length === 1 ? 'item' : 'items'}</Text>
-            <Text style={styles.body}>Check each item before adding. Expiry dates are estimates.</Text>
-            {drafts.map((draft, index) => <FadeIn key={draft.id} delay={reducedMotion ? 0 : Math.min(index, theme.motion.maxStaggerItems - 1) * theme.motion.staggerMs}>
-              <CandidateEditor draft={draft} disabled={saving}
-                onChange={(patch) => { setSaveError(''); setDrafts((current) => current.map((item) => item.id === draft.id ? { ...item, ...patch } : item)); }}
-                onDrop={() => { setSaveError(''); setDrafts((current) => current.filter((item) => item.id !== draft.id)); }} />
-            </FadeIn>)}
-            {saveError ? <StateView icon="alert-circle-outline" title="Couldn’t save food" message={saveError}
-              testID="add.save.error" actionLabel="Try again" actionTestID="add.save.retry" onAction={() => void save()} /> : null}
-            <AppButton label={`Add ${drafts.length} ${drafts.length === 1 ? 'item' : 'items'}`} testID="add.save.button"
-              loading={saving} disabled={drafts.some((draft) => Boolean(draftError(draft)))} onPress={() => void save()} />
-          </>
-        )}
-      <AppButton label={loading ? 'Cancel analysis' : 'Choose another photo'} variant="outline"
-        testID="add.reset.button" onPress={onReset} disabled={saving} />
-    </View>
+    <AddReviewLayout contentContainerStyle={styles.content} footer={!loading && !error && drafts.length > 0 ?
+      <AppButton label={`Add ${drafts.length} ${drafts.length === 1 ? 'item' : 'items'}`} testID="add.save.button"
+        loading={saving} disabled={drafts.some((draft) => Boolean(draftError(draft)))} onPress={() => void save()} /> : null}>
+      {header}
+      <View style={styles.section}>
+        <Image source={{ uri: photo.asset.uri }} accessibilityLabel="Your food photo" accessible
+          style={[styles.preview, { aspectRatio: photo.asset.width > 0 && photo.asset.height > 0 ? photo.asset.width / photo.asset.height : 1 }]}
+          resizeMode="contain" testID="add.photo.preview" />
+        {loading ? <FadeIn style={styles.section} testID="add.loading.state">
+          <ActivityIndicator color={theme.colors.forest} accessibilityLabel="Analyzing photo"
+            animating={!reducedMotion} hidesWhenStopped={false} />
+          <Text accessibilityLiveRegion="polite" style={styles.body}>Finding your food and predicting expiry… This can take up to 75 seconds.</Text>
+          <SkeletonRows testID="add.loading.skeleton" />
+        </FadeIn> : error ? <StateView icon="alert-circle-outline" title="Couldn’t analyze photo" message={error}
+          testID="add.analysis.error" actionLabel="Try again" actionTestID="add.analysis.retry"
+          onAction={() => { setLoading(true); setError(''); setAttempt((value) => value + 1); }} /> :
+          !drafts.length ? <StateView icon="food-apple-outline" title="No food to add"
+            message="Try a closer, brighter photo. You can also choose another photo." testID="add.review.empty"
+            actionLabel="Choose another photo" actionTestID="add.empty.retry" onAction={onReset} /> : (
+            <>
+              <Text accessibilityRole="header" style={styles.title}>We found {drafts.length} {drafts.length === 1 ? 'item' : 'items'}</Text>
+              <Text style={styles.body}>Check each item before adding. Expiry dates are estimates.</Text>
+              {drafts.map((draft, index) => <FadeIn key={draft.id} delay={reducedMotion ? 0 : Math.min(index, theme.motion.maxStaggerItems - 1) * theme.motion.staggerMs}>
+                <CandidateEditor draft={draft} disabled={saving}
+                  onChange={(patch) => { setSaveError(''); setDrafts((current) => current.map((item) => item.id === draft.id ? { ...item, ...patch } : item)); }}
+                  onDrop={() => { setSaveError(''); setDrafts((current) => current.filter((item) => item.id !== draft.id)); }} />
+              </FadeIn>)}
+              {saveError ? <StateView icon="alert-circle-outline" title="Couldn’t save food" message={saveError}
+                testID="add.save.error" actionLabel="Try again" actionTestID="add.save.retry" onAction={() => void save()} /> : null}
+            </>
+          )}
+        <AppButton label={loading ? 'Cancel analysis' : 'Choose another photo'} variant="outline"
+          testID="add.reset.button" onPress={onReset} disabled={saving} />
+      </View>
+    </AddReviewLayout>
   );
 }
 

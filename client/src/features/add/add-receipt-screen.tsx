@@ -73,7 +73,11 @@ export function AddReceiptScreen() {
     request.current += 1; setPhoto(null); setDrafts(null); setTotal(null); setLoading(false); setError(''); setSaveError('');
   }
 
-  return <AddScreen title="Receipt review" screen="addReceipt">
+  return <AddScreen title="Receipt review" screen="addReceipt" footer={drafts && drafts.length > 0 ? <>
+    {total != null ? <Text style={styles.body} testID="addReceipt.total.label">Receipt total · {formatMoney(total, currency)}</Text> : null}
+    <AppButton label={`Add ${selected.length} ${selected.length === 1 ? 'item' : 'items'}`} testID="addReceipt.save.button"
+      loading={saving} disabled={!selected.length || selected.some((draft) => Boolean(draftError(draft)))} onPress={() => void save(selected)} />
+  </> : null}>
     {!photo ? <View style={styles.section} testID="addReceipt.picker.empty">
       <Text style={styles.body}>Add a whole shop</Text>
       {denied ? <CameraDeniedCard screen="addReceipt" onRetry={() => void pick('camera')} /> : null}
@@ -97,11 +101,8 @@ export function AddReceiptScreen() {
       <CandidateReview drafts={drafts} screen="addReceipt" receipt disabled={saving} onChange={(id, patch) => {
         setSaveError(''); setDrafts((current) => current?.map((draft) => draft.id === id ? { ...draft, ...patch } : draft) ?? null);
       }} />
-      {total != null ? <Text style={styles.body} testID="addReceipt.total.label">Receipt total · {formatMoney(total, currency)}</Text> : null}
       {saveError ? <StateView icon="alert-circle-outline" title="Couldn’t save food" message={saveError} testID="addReceipt.save.error"
         actionLabel="Try again" actionTestID="addReceipt.save.retry" onAction={() => void save(selected)} /> : null}
-      <AppButton label={`Add ${selected.length} ${selected.length === 1 ? 'item' : 'items'}`} testID="addReceipt.save.button"
-        loading={saving} disabled={!selected.length || selected.some((draft) => Boolean(draftError(draft)))} onPress={() => void save(selected)} />
     </> : null}
     {photo && !loading ? <AppButton label="Choose another photo" testID="addReceipt.reset.button" variant="outline" disabled={saving} onPress={reset} /> : null}
   </AddScreen>;

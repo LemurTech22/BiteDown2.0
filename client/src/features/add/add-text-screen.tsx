@@ -45,7 +45,9 @@ export function AddTextScreen() {
     }
   }
 
-  return <AddScreen title="Type or say it" screen="addText">
+  return <AddScreen title="Type or say it" screen="addText" footer={drafts && drafts.length > 0 ?
+    <AppButton label={`Add ${selected.length} ${selected.length === 1 ? 'item' : 'items'}`} testID="addText.save.button" loading={saving}
+      disabled={!selected.length || selected.some((draft) => Boolean(draftError(draft)))} onPress={() => void save(selected)} /> : null}>
     <View style={styles.section}>
       <Text style={styles.label}>What did you get?</Text>
       <TextInput ref={input} multiline accessibilityLabel="What did you get?" testID="addText.input.text"
@@ -68,8 +70,6 @@ export function AddTextScreen() {
       }} />
       {saveError ? <StateView icon="alert-circle-outline" title="Couldn’t save food" message={saveError} testID="addText.save.error"
         actionLabel="Try again" actionTestID="addText.save.retry" onAction={() => void save(selected)} /> : null}
-      <AppButton label={`Add ${selected.length} ${selected.length === 1 ? 'item' : 'items'}`} testID="addText.save.button" loading={saving}
-        disabled={!selected.length || selected.some((draft) => Boolean(draftError(draft)))} onPress={() => void save(selected)} />
     </> : null}
   </AddScreen>;
 }
