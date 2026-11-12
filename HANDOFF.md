@@ -2,7 +2,7 @@
 
 _The app is **BiteDown** (owner, 2026-10-10; see `docs/DECISIONS.md`). Internal names such as `FoodWasteReducer` stay._
 
-_Last updated: 2026-11-09 (checkpoint 15, Expo Android Phase 3; see below). Older text from 2026-10-11: **`food-main` (VPS) orchestrates**: it plans, rules, reviews and merges,
+_Last updated: 2026-11-12 (checkpoint 16, showcase build; see below). Older text from 2026-10-11: **`food-main` (VPS) orchestrates**: it plans, rules, reviews and merges,
 and owns the canvas and the orchestrator docs. **`food-main-mac` (the Mac) does all the building**: builder + QA
 sub-agents (**Sonnet**, owner preference), Xcode and simulators, Docker and every test run, plus any
 `.github/workflows` push. The owner also lets the Mac merge a PR when it judges it ready, and edit the canvas when
@@ -12,7 +12,43 @@ checkpoints. **Since checkpoint 10:** `food-modal-test` (iOS simulator test pass
 merges on the Mac; `food-main` reviews the Auth PR. All of them update this file and the affected `docs/` at
 every checkpoint (`CLAUDE.md` Rules). Rules: [`CLAUDE.md`](CLAUDE.md)._
 
-## Checkpoint 15 (2026-11-09, Windows PC): Expo Android Phase 3 built. Read this first
+## Checkpoint 16 (2026-11-12, Windows PC): showcase build for Android + iPhone. Read this first
+**Owner's goal:** a finished app other people can try on Android and iPhone by 2026-11-13 09:00.
+**Branch:** `feat/expo-android` (pushed; the owner now has write access). Rulings: `docs/DECISIONS.md` 2026-11-12.
+Checks and what was verified by hand: `docs/qa/client.md` (orchestrator checks + independent Codex/OpenCode audits and a
+review; not a formal QA PASS).
+
+**How people get the app**
+- **Android:** APK from EAS Build, project `@bitedown/bitedown` (Expo account `frankinstyle96`, org `bitedown`).
+  `cd client; npx eas-cli build:list -p android` shows the builds and install links.
+- **iPhone:** the web build at `https://bitedown.expo.app` in Safari, then Share, Add to Home Screen. Expo Go can't open
+  shared projects on iOS; a native iOS build needs a paid Apple account.
+- **Backend:** this PC (docker compose, now `restart: unless-stopped`), put online by `scripts\serve_public.ps1`.
+  The apps read the backend address from `https://bitedown.expo.app/api-config.json`, so a new tunnel address needs no
+  rebuild or reinstall.
+
+**Owner steps to go live (the agent's permission classifier blocks opening tunnels and publishing):**
+1. Start Docker Desktop. Then double-click `scriptsstart_showcase.cmd` (or run, from the repo root, in a window you leave open):
+   `powershell -ExecutionPolicy Bypass -File scripts\serve_public.ps1`
+   It uses Tailscale Funnel if approved, else a Cloudflare quick tunnel, then runs `expo export` + `eas deploy --prod`.
+2. Optional, for a fixed address: the tailnet admin (`joseconde101jc`) approves Funnel for `laptop-64ms4pd7`
+   (https://login.tailscale.com/f/funnel?node=nYD94JSEKw11CNTRL), or move this PC to your own tailnet.
+3. Test: open `https://bitedown.expo.app` on a phone; install the APK on an Android phone.
+
+**What landed (merged into `feat/expo-android`, each reviewed by Claude; tsc + lint clean, Jest 29 suites / 329 tests):**
+CORS allowlist `CORS_ORIGINS` (`backend/app/cors.py`, 9 tests); web launch crash and web fetch fix; platform map links;
+keyboard avoidance; deep links `bitedown://friend|group/<code>`; `reportServerError` app-wide; remote API config
+(`EXPO_PUBLIC_API_CONFIG_URL`, Debug settings shows the source); web phone-width column + PWA manifest/icons; compact
+Fridge rows (Remove visible, Move on swipe-left); pinned Add button on review screens; BiteDown icons, splash and favicon
+(from the SwiftUI app icon); `client/eas.json` (`preview` = APK); `scripts/serve_public.ps1`; docs (SETUP, API, README,
+DECISIONS).
+
+**Known gaps:** iPhone Safari not tried on a real device; barcode/receipt camera flows and Pantry claim with a second
+account not re-checked; Google Sign-In deferred for the Expo app; receipts need the ML service or the Gemini fallback.
+Expo Go dev sessions were signed out once because adding `owner`/`projectId` changed Expo Go's storage scope (dev only).
+Local test account for the dev DB: `scratchpad/test-account.txt` of the 2026-11-12 session (not in git).
+
+## Checkpoint 15 (2026-11-09, Windows PC): Expo Android Phase 3 built
 **Where:** still `feat/expo-android`, local only (push is blocked by the read-only GitHub access; see checkpoint 14).
 Phase 3 (every remaining screen) is merged on this branch. **QA has not run on Phase 3**: checks below are the
 orchestrator's own, which don't count as a QA pass (`CLAUDE.md`). Phases 4 and 5 remain as checkpoint 14 describes.
