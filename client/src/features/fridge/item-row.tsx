@@ -1,6 +1,6 @@
 import { router } from 'expo-router';
 import { useState } from 'react';
-import { PanResponder, Pressable, StyleSheet, Text, View } from 'react-native';
+import { PanResponder, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import type { FoodGroup, Item } from '@/api/types';
 import { AppIcon, type IconName } from '@/components/ui/app-icon';
@@ -31,6 +31,7 @@ export function ItemRow({ item, last, onRemove, onMove, selecting = false, selec
   units?: Units; onOpen?: () => void;
 }) {
   const theme = useTheme();
+  const web = Platform.OS === 'web';
   const [actionsOpen, setActionsOpen] = useState(false);
   const groupColors = theme.foodGroups[item.food_group];
   const styles = createStyles(theme);
@@ -39,9 +40,9 @@ export function ItemRow({ item, last, onRemove, onMove, selecting = false, selec
   function move() { setActionsOpen(false); onMove(); }
   function remove() { setActionsOpen(false); onRemove(); }
   const swipe = PanResponder.create({
-    onMoveShouldSetPanResponder: (_event, gesture) => !selecting && !disabled && Math.abs(gesture.dx) > theme.sizes.touchTarget && Math.abs(gesture.dx) > Math.abs(gesture.dy),
+    onMoveShouldSetPanResponder: (_event, gesture) => !web && !selecting && !disabled && Math.abs(gesture.dx) > theme.sizes.touchTarget && Math.abs(gesture.dx) > Math.abs(gesture.dy),
     onPanResponderRelease: (_event, gesture) => {
-      if (!selecting && !disabled && Math.abs(gesture.dx) > Math.abs(gesture.dy)) {
+      if (!web && !selecting && !disabled && Math.abs(gesture.dx) > Math.abs(gesture.dy)) {
         if (gesture.dx < -theme.sizes.touchTarget) setActionsOpen(true);
         else if (gesture.dx > theme.sizes.touchTarget) setActionsOpen(false);
       }
@@ -49,7 +50,7 @@ export function ItemRow({ item, last, onRemove, onMove, selecting = false, selec
   });
   return (
     <View {...swipe.panHandlers} style={[styles.row, !last && styles.divider]} testID={`fridge.item.${item.id}`}>
-      {!selecting ? <View style={styles.actions}>
+      {!selecting && !web ? <View style={styles.actions}>
         <Pressable accessibilityRole="button" accessibilityLabel={`Move ${item.name} to another storage`}
           testID={`fridge.move.${item.id}`} disabled={disabled} onPress={move} style={styles.action}>
           <AppIcon name="swap-horizontal" color={theme.colors.forest} size={theme.sizes.icon} />
@@ -61,8 +62,8 @@ export function ItemRow({ item, last, onRemove, onMove, selecting = false, selec
         <View style={[styles.checkbox, selected && styles.checked]}>{selected ? <AppIcon name="check" color={theme.colors.onForest} size={theme.sizes.iconSmall} /> : null}</View>
       </Pressable> : null}
       <Pressable accessibilityRole="button" accessibilityLabel={label} disabled={disabled} testID={`fridge.open.${item.id}`}
-        accessibilityHint={selecting ? undefined : 'Swipe left for Move.'}
-        accessibilityActions={selecting || disabled ? undefined : [{ name: 'move', label: `Move ${item.name} to another storage` }, { name: 'remove', label: `Remove ${item.name}` }]}
+        accessibilityHint={selecting || web ? undefined : 'Swipe left for Move.'}
+        accessibilityActions={selecting || disabled || web ? undefined : [{ name: 'move', label: `Move ${item.name} to another storage` }, { name: 'remove', label: `Remove ${item.name}` }]}
         onAccessibilityAction={({ nativeEvent }) => {
           if (selecting || disabled) return;
           if (nativeEvent.actionName === 'move') move();
@@ -79,6 +80,10 @@ export function ItemRow({ item, last, onRemove, onMove, selecting = false, selec
       </View>
       </Pressable>
       </View>
+      {!selecting && web ? <Pressable accessibilityRole="button" accessibilityLabel={`Move ${item.name} to another storage`}
+        testID={`fridge.move.${item.id}`} disabled={disabled} onPress={move} style={styles.action}>
+        <AppIcon name="swap-horizontal" color={theme.colors.forest} size={theme.sizes.icon} />
+      </Pressable> : null}
       {!selecting ? <Pressable accessibilityRole="button" accessibilityLabel={`Remove ${item.name}`}
         testID={`fridge.remove.${item.id}`} disabled={disabled} onPress={remove} style={styles.action}>
         <AppIcon name="tray-arrow-up" color={theme.colors.forest} size={theme.sizes.icon} />
