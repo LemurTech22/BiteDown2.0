@@ -7,6 +7,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import Svg, { Path } from 'react-native-svg';
 
 import { isApiError, useApi, type Friend, type FriendsResponse } from '@/api';
+import { reportServerError } from '@/components/server-error';
 import { AppButton } from '@/components/ui/app-button';
 import { AppIcon } from '@/components/ui/app-icon';
 import { IconButton } from '@/components/ui/icon-button';
@@ -49,7 +50,7 @@ export function ScanScreen() {
 
   useFocusEffect(useCallback(() => {
     setActive(AppState.currentState === 'active');
-    friends.current = api.getFriends().catch(() => null);
+    friends.current = api.getFriends().catch((cause: unknown) => { reportServerError(cause); return null; });
     const subscription = AppState.addEventListener('change', (state) => {
       setActive(state === 'active');
       if (state === 'active') void getPermission().then((next) => {
@@ -90,6 +91,7 @@ export function ScanScreen() {
       friends.current = Promise.resolve({ friends: [...(before?.friends ?? []).filter((entry) => entry.user_id !== friend.user_id), friend], incoming: [], outgoing: [] });
       void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
     } catch (cause) {
+      reportServerError(cause);
       setError(isApiError(cause) && cause.status === 400 && cause.code === 'validation_error' ? OWN_CODE : EXPIRED);
       void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error).catch(() => {});
     } finally {

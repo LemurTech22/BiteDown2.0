@@ -4,6 +4,7 @@ import { Modal, ScrollView, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { useApi, type FoodRequest } from '@/api';
+import { reportServerError } from '@/components/server-error';
 import { AppButton } from '@/components/ui/app-button';
 import { AppIcon, type IconName } from '@/components/ui/app-icon';
 import { SkeletonRows } from '@/components/ui/skeleton-rows';
@@ -35,6 +36,7 @@ export function OfferSheet({ request, onClose, onFulfilled }: {
       onFulfilled(result.request);
       onClose();
     } catch (cause) {
+      reportServerError(cause);
       setError(errorMessage(cause));
       void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error).catch(() => {});
     } finally {

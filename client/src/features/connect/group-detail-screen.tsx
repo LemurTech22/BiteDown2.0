@@ -6,6 +6,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { useApi, type FoodRequest, type GroupDetail, type Item } from '@/api';
 import { useAuth } from '@/auth/auth-provider';
+import { reportServerError } from '@/components/server-error';
 import { AppButton } from '@/components/ui/app-button';
 import { IconButton } from '@/components/ui/icon-button';
 import { SkeletonRows } from '@/components/ui/skeleton-rows';
@@ -40,6 +41,7 @@ export function GroupDetailScreen() {
       const [{ group }, { items }] = await Promise.all([api.getGroup(id), api.getGroupPantry(id)]);
       if (request === sequence.current) setData({ group, items });
     } catch (cause) {
+      reportServerError(cause);
       if (request === sequence.current) setError(cause instanceof Error ? cause.message : 'Please try again.');
     } finally {
       if (request === sequence.current) setLoading(false);
@@ -58,6 +60,7 @@ export function GroupDetailScreen() {
       const result = await api.getRequests();
       setRequests(result.requests.filter((request) => request.audiences.groups.some((group) => group.id === id)));
     } catch (cause) {
+      reportServerError(cause);
       setRequestsError(cause instanceof Error ? cause.message : 'Please try again.');
     }
   }
@@ -81,6 +84,7 @@ export function GroupDetailScreen() {
       void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
       router.dismissTo('/social/connect');
     } catch (cause) {
+      reportServerError(cause);
       setActionError({ action: 'leave', message: cause instanceof Error ? cause.message : 'Couldn’t leave the group. Try again.' });
       void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error).catch(() => {});
     } finally {

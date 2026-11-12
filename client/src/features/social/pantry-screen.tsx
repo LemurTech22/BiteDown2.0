@@ -4,6 +4,7 @@ import { useCallback, useRef, useState } from 'react';
 import { Pressable, Text, View } from 'react-native';
 
 import { useApi } from '@/api';
+import { reportServerError } from '@/components/server-error';
 import { AppIcon } from '@/components/ui/app-icon';
 import { SkeletonRows } from '@/components/ui/skeleton-rows';
 import { StateView } from '@/components/ui/state-view';
@@ -38,6 +39,7 @@ export function PantryScreen() {
       } : entry));
       void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
     } catch (cause) {
+      reportServerError(cause);
       setFailed({ id, message: errorMessage(cause) });
       void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error).catch(() => {});
     } finally {

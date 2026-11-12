@@ -6,6 +6,7 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { AppState, Linking, Share } from 'react-native';
 
 import { ApiError, ApiProvider, MockApiClient, type FriendsResponse } from '@/api';
+import { clearServerError, getServerErrorRevision } from '@/components/server-error/store';
 import { ConnectScreen } from '@/features/connect/connect-screen';
 import { FriendCodeCard } from '@/features/connect/friend-code-card';
 import { GroupDetailScreen } from '@/features/connect/group-detail-screen';
@@ -56,6 +57,7 @@ async function client() {
 
 beforeEach(() => {
   jest.clearAllMocks();
+  clearServerError();
   AppState.currentState = 'active';
   jest.mocked(useLocalSearchParams).mockReturnValue({ id: 'group-flat' });
   jest.mocked(useCameraPermissions).mockReturnValue([granted, requestPermission, getPermission]);
@@ -65,6 +67,38 @@ beforeEach(() => {
 afterEach(() => { jest.restoreAllMocks(); jest.useRealTimers(); });
 
 describe('Friends and groups', () => {
+  test('prefills an invite once and waits for Join, preserving edits on rerender', async () => {
+    const api = await client();
+    const join = jest.spyOn(api, 'joinGroup');
+    jest.mocked(useLocalSearchParams).mockReturnValue({ invite: 'F4AT8BCD' });
+    const screen = await render(<ApiProvider client={api}><ConnectScreen /></ApiProvider>);
+    expect(await screen.findByTestId('connect.join.input')).toHaveProp('value', 'F4AT8BCD');
+    expect(join).not.toHaveBeenCalled();
+    await fireEvent.changeText(screen.getByTestId('connect.join.input'), 'EditedCode');
+    jest.mocked(useLocalSearchParams).mockReturnValue({ invite: 'AnotherCode' });
+    await screen.rerender(<ApiProvider client={api}><ConnectScreen /></ApiProvider>);
+    expect(screen.getByTestId('connect.join.input')).toHaveProp('value', 'EditedCode');
+    expect(join).not.toHaveBeenCalled();
+    await fireEvent.press(screen.getByTestId('connect.join.submit'));
+    expect(join).toHaveBeenCalledWith({ invite_code: 'EditedCode' });
+  });
+
+  test('reports server load failures, keeps inline errors, and leaves validation errors local', async () => {
+    const api = await client();
+    jest.spyOn(api, 'getFriends').mockRejectedValueOnce(new ApiError(503, 'offline', 'Please reconnect.'));
+    const revision = getServerErrorRevision();
+    const screen = await render(<ApiProvider client={api}><ConnectScreen /></ApiProvider>);
+    expect(await screen.findByText('Please reconnect.')).toBeTruthy();
+    expect(getServerErrorRevision()).toBe(revision + 1);
+    await fireEvent.press(screen.getByTestId('connect.error.retry'));
+    await screen.findByTestId('connect.email.toggle');
+    await fireEvent.press(screen.getByTestId('connect.email.toggle'));
+    await fireEvent.changeText(screen.getByTestId('connect.email.input'), 'missing@example.com');
+    await fireEvent.press(screen.getByTestId('connect.email.send'));
+    expect(await screen.findByText('No BiteDown account uses that email.')).toBeTruthy();
+    expect(getServerErrorRevision()).toBe(revision + 1);
+  });
+
   test('accepts an incoming request and moves it into Friends', async () => {
     const api = await client();
     const screen = await render(<ApiProvider client={api}><ConnectScreen /></ApiProvider>);

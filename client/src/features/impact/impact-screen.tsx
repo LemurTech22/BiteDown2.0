@@ -4,6 +4,7 @@ import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { type ImpactRange, type ImpactResponse, type ImpactTotals, useApi, type WasteReason } from '@/api';
+import { reportServerError } from '@/components/server-error';
 import { FadeIn } from '@/components/ui/fade-in';
 import { SkeletonRows } from '@/components/ui/skeleton-rows';
 import { StateView } from '@/components/ui/state-view';
@@ -48,7 +49,7 @@ function ImpactRangeContent({ range, onRetry }: { range: ImpactRange; onRetry: (
     void api.getImpact(range).then((response) => {
       if (active) { setError(''); setResult(response); }
     })
-      .catch((cause: unknown) => { if (active) setError(cause instanceof Error ? cause.message : 'We couldn’t load your impact. Try again.'); });
+      .catch((cause: unknown) => { reportServerError(cause); if (active) setError(cause instanceof Error ? cause.message : 'We couldn’t load your impact. Try again.'); });
     return () => { active = false; };
   }, [api, range]));
 

@@ -4,6 +4,7 @@ import { useCallback, useRef, useState } from 'react';
 import { Text, View } from 'react-native';
 
 import { useApi, type FoodRequest } from '@/api';
+import { reportServerError } from '@/components/server-error';
 import { AppIcon } from '@/components/ui/app-icon';
 import { SkeletonRows } from '@/components/ui/skeleton-rows';
 import { StateView } from '@/components/ui/state-view';
@@ -31,6 +32,7 @@ export function MyRequestsScreen() {
       const { request } = await api.deleteRequest(id);
       updateData((notes) => notes.map((note) => note.id === id ? request : note));
     } catch (cause) {
+      reportServerError(cause);
       setFailed({ id, message: errorMessage(cause) });
       void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error).catch(() => {});
     } finally {

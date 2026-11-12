@@ -5,6 +5,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { AppState, Pressable, Text, View } from 'react-native';
 
 import { useApi, type FriendCode } from '@/api';
+import { reportServerError } from '@/components/server-error';
 import { AppButton } from '@/components/ui/app-button';
 import { SkeletonRows } from '@/components/ui/skeleton-rows';
 import { CodeQr, connectStyles } from '@/features/connect/connect-ui';
@@ -37,7 +38,8 @@ export function FriendCodeCard() {
       setCode(next);
       setNow(Date.now());
       expiredCode.current = null;
-    } catch {
+    } catch (cause) {
+      reportServerError(cause);
       if (request === sequence.current) setError('Couldn’t refresh your code.');
     } finally {
       if (request === sequence.current) setLoading(false);
