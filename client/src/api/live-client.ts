@@ -57,7 +57,8 @@ export class LiveApiClient implements ApiClient {
   private readonly fetcher: typeof fetch;
 
   constructor(private readonly options: LiveApiClientOptions) {
-    this.fetcher = options.fetcher ?? fetch;
+    // Wrap the global fetch: browsers throw "Illegal invocation" when it is called as a method of this client.
+    this.fetcher = options.fetcher ?? ((input, init) => fetch(input, init));
   }
 
   health() {
