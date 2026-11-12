@@ -24,6 +24,8 @@ def create_app(config: dict | None = None) -> Flask:
     # Comma-separated Google OAuth iOS client ids accepted as the ID-token `aud` (POST /auth/oauth/google).
     app.config["GOOGLE_IOS_CLIENT_IDS"] = os.environ.get("GOOGLE_IOS_CLIENT_IDS", "")
     app.config["MAX_CONTENT_LENGTH"] = 10 * 1024 * 1024
+    # Exact web origins allowed to call the API from a browser (app/cors.py). Empty = CORS off.
+    app.config["CORS_ORIGINS"] = os.environ.get("CORS_ORIGINS", "")
     if config:
         app.config.update(config)
 
@@ -34,7 +36,10 @@ def create_app(config: dict | None = None) -> Flask:
     from .errors import register_error_handlers
     from .routes import auth, friends, groups, health, insights, items, people, requests, share
 
+    from .cors import register_cors
+
     register_error_handlers(app)
+    register_cors(app)
     for mod in (health, auth, items, share, insights, friends, groups, requests, people):
         app.register_blueprint(mod.bp)
     return app
