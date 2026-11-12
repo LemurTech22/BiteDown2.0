@@ -2,6 +2,7 @@ import { Outfit_500Medium, Outfit_600SemiBold } from '@expo-google-fonts/outfit'
 import { useFonts } from 'expo-font';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
+import { Platform, View } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { ApiProvider } from '@/api';
@@ -12,7 +13,7 @@ import { useTheme } from '@/theme';
 
 function RootStack() {
   const theme = useTheme();
-  return (
+  const content = (
     <>
       <GlobalBanners />
       <Stack
@@ -46,6 +47,15 @@ function RootStack() {
       </Stack>
       <StatusBar style={theme.scheme === 'dark' ? 'light' : 'dark'} />
     </>
+  );
+
+  if (Platform.OS !== 'web') return content;
+  return (
+    <View style={{ flex: 1, height: '100%', alignItems: 'center', backgroundColor: theme.colors.surface }}>
+      <View style={{ flex: 1, width: '100%', maxWidth: theme.sizes.webMaxContentWidth, backgroundColor: theme.colors.ground }}>
+        {content}
+      </View>
+    </View>
   );
 }
 

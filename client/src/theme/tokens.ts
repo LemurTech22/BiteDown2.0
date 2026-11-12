@@ -132,6 +132,7 @@ export const typeScale = {
 } as const;
 
 export const sizes = {
+  webMaxContentWidth: 520,
   borderHairline: 1,
   focusRing: 2,
   touchTarget: 44,
