@@ -6,7 +6,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <title>BiteDown</title>
     <meta name="theme-color" content="#F4F8E8" media="(prefers-color-scheme: light)" />
-    <meta name="theme-color" content="#12180F" media="(prefers-color-scheme: dark)" />
+    <meta name="theme-color" content="#0F1A12" media="(prefers-color-scheme: dark)" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-title" content="BiteDown" />
     <meta name="apple-mobile-web-app-status-bar-style" content="default" />
@@ -22,6 +22,12 @@
       }
       body {
         overflow: hidden;
+      }
+      @media (prefers-color-scheme: dark) {
+        html,
+        body {
+          background: #0F1A12;
+        }
       }
       #root {
         display: flex;
