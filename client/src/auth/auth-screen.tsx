@@ -5,6 +5,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { isApiError } from '@/api';
 import { useAuth } from '@/auth/auth-provider';
+import { socialNext } from '@/auth/social-next';
 import { AppButton } from '@/components/ui/app-button';
 import { FormField } from '@/components/ui/form-field';
 import { IconButton } from '@/components/ui/icon-button';
@@ -12,6 +13,7 @@ import { type AppTheme, useTheme } from '@/theme';
 
 interface AuthScreenProps {
   mode: 'login' | 'signup';
+  next?: string | string[];
 }
 
 interface FieldErrors {
@@ -20,7 +22,8 @@ interface FieldErrors {
   password?: string;
 }
 
-export function AuthScreen({ mode }: AuthScreenProps) {
+export function AuthScreen({ mode, next: nextParam }: AuthScreenProps) {
+  const next = socialNext(nextParam);
   const theme = useTheme();
   const { login, signup } = useAuth();
   const [name, setName] = useState('');
@@ -45,7 +48,7 @@ export function AuthScreen({ mode }: AuthScreenProps) {
       } else {
         await login({ email: email.trim(), password });
       }
-      router.replace('/home');
+      router.replace(next ?? '/home');
     } catch (cause) {
       const message = cause instanceof Error ? cause.message : 'We couldn’t sign you in. Try again.';
       if (isApiError(cause) && cause.code === 'invalid_credentials') {
@@ -130,7 +133,10 @@ export function AuthScreen({ mode }: AuthScreenProps) {
           <Pressable
             accessibilityRole="link"
             accessibilityLabel={signingUp ? 'Log in' : 'Create an account'}
-            onPress={() => router.replace(signingUp ? '/login' : '/signup')}
+            onPress={() => {
+              const pathname = signingUp ? '/login' : '/signup';
+              router.replace(next ? { pathname, params: { next } } : pathname);
+            }}
             style={({ pressed }) => [styles.switchButton, pressed && styles.pressed]}
             testID={signingUp ? 'signup.login.link' : 'login.signup.link'}>
             <Text style={styles.switchLink}>{signingUp ? 'Log in' : 'Create an account'}</Text>

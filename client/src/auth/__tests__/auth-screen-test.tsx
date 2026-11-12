@@ -24,11 +24,11 @@ jest.mock('@/auth/token-store', () => ({
 const mockedTokenStore = jest.mocked(tokenStore);
 const mockReplace = jest.mocked(router.replace);
 
-async function renderAuth(api: MockApiClient, mode: 'login' | 'signup') {
+async function renderAuth(api: MockApiClient, mode: 'login' | 'signup', next?: string) {
   return render(
     <ApiProvider client={api}>
       <AuthProvider>
-        <AuthScreen mode={mode} />
+        <AuthScreen mode={mode} next={next} />
       </AuthProvider>
     </ApiProvider>,
   );
@@ -98,5 +98,34 @@ describe('email authentication', () => {
 
     expect(await screen.findByText('demo@example.com')).toBeTruthy();
     expect(me).toHaveBeenCalledTimes(1);
+  });
+
+  describe.each(['login', 'signup'] as const)('%s next target', (mode) => {
+    test.each([
+      ['/social/scan?code=ABC', '/social/scan?code=ABC'],
+      ['/social/connect?invite=XYZ', '/social/connect?invite=XYZ'],
+      ['https://evil.example', '/home'],
+      ['//evil', '/home'],
+      ['/social/../home', '/home'],
+    ])('after successful auth, handles %s', async (next, destination) => {
+      const api = new MockApiClient();
+      if (mode === 'login') {
+        await api.signup({ email: 'demo@example.com', password: 'password-for-demo', display_name: 'Demo User' });
+      }
+      const screen = await renderAuth(api, mode, next);
+      if (mode === 'signup') await fireEvent.changeText(screen.getByTestId('signup.name.input'), 'Demo User');
+      await fireEvent.changeText(screen.getByTestId(`${mode}.email.input`), 'demo@example.com');
+      await fireEvent.changeText(screen.getByTestId(`${mode}.password.input`), 'password-for-demo');
+      await fireEvent.press(screen.getByTestId(`${mode}.submit.button`));
+      await waitFor(() => expect(mockReplace).toHaveBeenLastCalledWith(destination));
+    });
+
+    test('carries next when switching auth screens', async () => {
+      const next = '/social/scan?code=ABC';
+      const screen = await renderAuth(new MockApiClient(), mode, next);
+      const destination = mode === 'login' ? 'signup' : 'login';
+      await fireEvent.press(screen.getByTestId(`${mode}.${destination}.link`));
+      expect(mockReplace).toHaveBeenLastCalledWith({ pathname: `/${destination}`, params: { next } });
+    });
   });
 });

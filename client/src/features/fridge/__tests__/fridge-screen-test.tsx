@@ -1,6 +1,6 @@
 import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
 import { router } from 'expo-router';
-import { PanResponder } from 'react-native';
+import { PanResponder, Platform } from 'react-native';
 
 import { ApiError, ApiProvider, MockApiClient } from '@/api';
 import type { Item, ItemsResponse } from '@/api/types';
@@ -74,6 +74,36 @@ async function seededClient() {
 describe('Fridge', () => {
   beforeEach(() => jest.clearAllMocks());
   afterEach(() => { jest.restoreAllMocks(); jest.useRealTimers(); });
+
+  test('web shows one 44 pt Move button next to Remove and respects disabled and selection modes', async () => {
+    jest.replaceProperty(Platform, 'OS', 'web');
+    const api = await seededClient();
+    const { items: [item] } = await api.getItems({ storage: 'fridge' }) as ItemsResponse;
+    const onMove = jest.fn();
+    const onRemove = jest.fn();
+    const props = { item, last: true, onMove, onRemove };
+    const screen = await render(<ItemRow {...props} />);
+    const row = screen.getByTestId(`fridge.item.${item.id}`);
+    const move = screen.getByTestId(`fridge.move.${item.id}`);
+    const remove = screen.getByTestId(`fridge.remove.${item.id}`);
+    expect(move).toBeVisible();
+    expect(move).toHaveStyle({ width: 44, minHeight: 44 });
+    expect(move.parent).toBe(row);
+    expect(row.children.slice(-2)).toEqual([move, remove]);
+    expect(screen.getByTestId(`fridge.open.${item.id}`).props.accessibilityHint).toBeUndefined();
+    expect(screen.getByTestId(`fridge.open.${item.id}`).props.accessibilityActions).toBeUndefined();
+    await fireEvent.press(move);
+    expect(onMove).toHaveBeenCalledTimes(1);
+    expect(onRemove).not.toHaveBeenCalled();
+
+    await screen.rerender(<ItemRow {...props} disabled />);
+    expect(screen.getByTestId(`fridge.move.${item.id}`)).toBeDisabled();
+    await fireEvent.press(screen.getByTestId(`fridge.move.${item.id}`));
+    expect(onMove).toHaveBeenCalledTimes(1);
+    await screen.rerender(<ItemRow {...props} selecting />);
+    expect(screen.queryByTestId(`fridge.move.${item.id}`)).toBeNull();
+    expect(screen.queryByTestId(`fridge.remove.${item.id}`)).toBeNull();
+  });
 
   test('Remove stays at the row edge while a left swipe reveals one Move target', async () => {
     const api = await seededClient();
