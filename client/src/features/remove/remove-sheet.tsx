@@ -156,7 +156,7 @@ export function RemoveSheet({ item, initialShared = false, units = 'us', onClose
               </View> : null}
               <Pressable accessibilityRole="button" accessibilityLabel={`Given to ${recipientName}${recipient === item.share?.claimed_by?.id ? ', Claimed it' : ''}`}
                 accessibilityState={{ expanded: menuOpen }} testID="remove.recipient.button" onPress={() => setMenuOpen((current) => !current)} style={styles.option}>
-                <Text style={styles.optionLabel}>Given to</Text><Text style={styles.meta}>{recipientName}</Text>
+                <Text style={styles.optionLabel}>Given to</Text><Text style={[styles.meta, styles.recipient]}>{recipientName}</Text>
                 {recipient === item.share?.claimed_by?.id ? <AppIcon name="account-check-outline" color={theme.colors.forest} /> : null}
               </Pressable>
               <AppButton label="Done" testID="remove.shared.done" onPress={() => void remove({ outcome: 'donated', ...(recipientChosen ? { recipient_id: recipient } : {}) })} />
@@ -207,6 +207,7 @@ function createStyles(theme: AppTheme) {
     copy: { flexGrow: 1, flexShrink: 1, minWidth: '50%', gap: theme.spacing.xxs },
     title: { ...theme.type.sheetTitleCompact, color: theme.colors.ink },
     meta: { ...theme.type.meta, color: theme.colors.muted },
+    recipient: { flex: 1, flexShrink: 1 },
     options: { gap: theme.spacing.tileGap },
     option: {
       flexDirection: 'row', alignItems: 'center', gap: theme.spacing.tileInner,

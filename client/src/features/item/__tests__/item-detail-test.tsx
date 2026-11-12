@@ -203,7 +203,7 @@ test('claimed owner handoff preselects Shared it and claimer; normal Remove stay
   const screen = await show(api);
   await screen.findByText('Claimed by Ana Rivera');
   await fireEvent.press(screen.getByTestId('item.pickup.maps'));
-  expect(maps).toHaveBeenCalledWith('geo:29.7,-95.3?q=29.7,-95.3(Home)');
+  expect(maps).toHaveBeenCalledWith('https://maps.apple.com/?ll=29.7,-95.3&q=Home');
   await fireEvent.press(screen.getByTestId('item.remove.button'));
   expect(screen.queryByTestId('remove.recipient.section')).toBeNull();
   await fireEvent.press(screen.getByTestId('remove.cancel.button'));

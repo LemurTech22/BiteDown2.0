@@ -113,7 +113,7 @@ export function SettingsScreen() {
 
   return (
     <SafeAreaView edges={['top', 'bottom']} style={styles.screen} testID="settings.screen.root">
-      <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled" testID="settings.screen.content">
+      <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled" automaticallyAdjustKeyboardInsets testID="settings.screen.content">
         <View style={styles.header}>
           <IconButton icon="chevron-left" label="Back" testID="settings.back.button"
             onPress={() => { if (router.canGoBack()) router.back(); else router.replace('/home'); }} />

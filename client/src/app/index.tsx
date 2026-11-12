@@ -1,5 +1,5 @@
 import { Redirect } from 'expo-router';
-import { StyleSheet } from 'react-native';
+import { ScrollView, StyleSheet } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { useAuth } from '@/auth/auth-provider';
@@ -24,15 +24,17 @@ export default function IndexRoute() {
   if (status === 'error') {
     return (
       <SafeAreaView style={styles.screen}>
-        <StateView
-          actionLabel="Try again"
-          actionTestID="auth.error.retry"
-          icon="cloud-off-outline"
-          message={error ?? 'We couldn’t restore your session. Try again.'}
-          onAction={() => void retry()}
-          testID="auth.error.state"
-          title="Can’t reach BiteDown"
-        />
+        <ScrollView contentContainerStyle={styles.errorContent}>
+          <StateView
+            actionLabel="Try again"
+            actionTestID="auth.error.retry"
+            icon="cloud-off-outline"
+            message={error ?? 'We couldn’t restore your session. Try again.'}
+            onAction={() => void retry()}
+            testID="auth.error.state"
+            title="Can’t reach BiteDown"
+          />
+        </ScrollView>
       </SafeAreaView>
     );
   }
@@ -44,5 +46,6 @@ export default function IndexRoute() {
 function createStyles(theme: AppTheme) {
   return StyleSheet.create({
     screen: { flex: 1, backgroundColor: theme.colors.ground, padding: theme.spacing.gutter },
+    errorContent: { flexGrow: 1, alignItems: 'center', justifyContent: 'center' },
   });
 }

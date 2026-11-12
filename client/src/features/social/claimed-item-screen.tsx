@@ -10,6 +10,7 @@ import { StateView } from '@/components/ui/state-view';
 import { usePreferences } from '@/settings/preferences';
 import { useTheme } from '@/theme';
 
+import { mapsUrl } from './maps-url';
 import { ExpiryBadge, FoodTile, SocialError, SocialPage, socialStyles } from './social-ui';
 import { listingQuantity } from './social-utils';
 import { errorMessage, useSocialData } from './use-social-data';
@@ -35,9 +36,7 @@ export function ClaimedItemScreen() {
     setOpening(true);
     setMapError('');
     try {
-      const coordinates = `${pickup.lat},${pickup.lng}`;
-      const name = pickup.place_name ? `(${encodeURIComponent(pickup.place_name)})` : '';
-      await Linking.openURL(`geo:${coordinates}?q=${coordinates}${name}`);
+      await Linking.openURL(mapsUrl({ lat: pickup.lat, lng: pickup.lng, label: pickup.place_name ?? undefined }));
     } catch (cause) {
       setMapError(errorMessage(cause));
     } finally {

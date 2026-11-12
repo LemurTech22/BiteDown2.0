@@ -1,6 +1,6 @@
 import * as Location from 'expo-location';
 import { useRef, useState } from 'react';
-import { Modal, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { KeyboardAvoidingView, Modal, Platform, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import type { PickupSpot } from '@/api';
@@ -48,39 +48,43 @@ export function PickupSheet({ pickup, onSave, onClose }: {
 
   return <Modal visible animationType={reducedMotion ? 'fade' : 'slide'} presentationStyle="pageSheet"
     testID="item.pickup.sheet" onRequestClose={() => { if (!working.current) onClose(); }}>
-    <SafeAreaView style={styles.screen}><ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.content}>
-      <View accessibilityViewIsModal style={styles.sheet}>
-        <View style={styles.header}><AppButton label="Cancel" variant="outline" disabled={pending} testID="item.pickup.cancel" onPress={onClose} />
-          <Text accessibilityRole="header" style={styles.title}>Pickup spot</Text>
-          <AppButton label="Done" testID="item.pickup.done" disabled={pending || !valid} onPress={() => void perform(() => save(spot))} /></View>
-        <ItemField label="Note" testID="item.pickup.note" value={spot.note ?? ''} maxLength={120} multiline editable={!pending}
-          onChangeText={(note) => { setSpot({ ...spot, note }); setSaved(false); }} />
-        <Text accessibilityLiveRegion="polite" accessibilityLabel={`${spot.note?.length ?? 0} of 120 characters`} style={styles.meta} testID="item.pickup.counter">{spot.note?.length ?? 0}/120</Text>
-        <ItemField label="Place name" testID="item.pickup.place" value={spot.place_name ?? ''} maxLength={120} editable={!pending}
-          onChangeText={(place_name) => { setSpot({ ...spot, place_name }); setSaved(false); }} />
-        {spot.lat !== null && spot.lng !== null ? <View accessible accessibilityLabel={`Pickup pin at ${spot.place_name || `${spot.lat}, ${spot.lng}`}`} style={styles.pin} testID="item.pickup.pin">
-          <AppIcon name="map-marker" color={theme.colors.forest} size={theme.sizes.iconLarge} />
-          <Text style={styles.body}>{spot.lat.toFixed(5)}, {spot.lng.toFixed(5)}</Text>
-        </View> : null}
-        <AppButton label="Use my location" variant="outline" testID="item.pickup.location" disabled={pending} onPress={() => void perform(useLocation)} />
-        {spot.lat !== null ? <AppButton label="Remove pin" testID="item.pickup.clearPin" variant="outline" disabled={pending}
-          onPress={() => { setSpot({ ...spot, lat: null, lng: null }); setSaved(false); }} /> : null}
-        <Text accessibilityRole="header" style={styles.heading}>Use a saved spot</Text>
-        {!preferences.hydrated || pending ? <SkeletonRows testID="item.pickup.loading" /> : preferences.savedPickupSpots.length ? preferences.savedPickupSpots.map((entry, index) =>
-          <AppButton key={`${entry.name}-${index}`} label={entry.name} accessibilityLabel={`Use saved spot ${entry.name}`}
-            variant="outline" testID={`item.pickup.saved${index}`} onPress={() => { const { name: _name, ...value } = entry; setSpot(value); setSaved(false); }} />)
-          : <Text style={styles.meta} testID="item.pickup.empty">No saved spots yet</Text>}
-        <AppButton label={saved ? 'Spot saved' : 'Save this spot'} testID="item.pickup.saveSpot" variant="outline" disabled={pending || !valid || saved || !preferences.hydrated}
-          onPress={() => void perform(async () => {
-            const name = spot.place_name?.trim() || spot.note?.trim() || 'Pickup spot';
-            await preferences.setSavedPickupSpots([...preferences.savedPickupSpots.filter((entry) => entry.name !== name), { ...spot, name }]);
-            setSaved(true);
-          })} />
-        {pickup ? <AppButton label="Remove pickup spot" testID="item.pickup.remove" variant="outline" disabled={pending} onPress={() => void perform(() => save(null))} /> : null}
-        {error ? <View testID="item.pickup.error" style={styles.sheet}><Text accessibilityRole="alert" style={styles.error}>{error}</Text>
-          <AppButton label="Try again" testID="item.pickup.retry" onPress={() => { if (retry.current) void perform(retry.current); }} /></View> : null}
-      </View>
-    </ScrollView></SafeAreaView>
+    <SafeAreaView style={styles.screen}>
+      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }}>
+        <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.content}>
+          <View accessibilityViewIsModal style={styles.sheet}>
+            <View style={styles.header}><AppButton label="Cancel" variant="outline" disabled={pending} testID="item.pickup.cancel" onPress={onClose} />
+              <Text accessibilityRole="header" style={styles.title}>Pickup spot</Text>
+              <AppButton label="Done" testID="item.pickup.done" disabled={pending || !valid} onPress={() => void perform(() => save(spot))} /></View>
+            <ItemField label="Note" testID="item.pickup.note" value={spot.note ?? ''} maxLength={120} multiline editable={!pending}
+              onChangeText={(note) => { setSpot({ ...spot, note }); setSaved(false); }} />
+            <Text accessibilityLiveRegion="polite" accessibilityLabel={`${spot.note?.length ?? 0} of 120 characters`} style={styles.meta} testID="item.pickup.counter">{spot.note?.length ?? 0}/120</Text>
+            <ItemField label="Place name" testID="item.pickup.place" value={spot.place_name ?? ''} maxLength={120} editable={!pending}
+              onChangeText={(place_name) => { setSpot({ ...spot, place_name }); setSaved(false); }} />
+            {spot.lat !== null && spot.lng !== null ? <View accessible accessibilityLabel={`Pickup pin at ${spot.place_name || `${spot.lat}, ${spot.lng}`}`} style={styles.pin} testID="item.pickup.pin">
+              <AppIcon name="map-marker" color={theme.colors.forest} size={theme.sizes.iconLarge} />
+              <Text style={styles.body}>{spot.lat.toFixed(5)}, {spot.lng.toFixed(5)}</Text>
+            </View> : null}
+            <AppButton label="Use my location" variant="outline" testID="item.pickup.location" disabled={pending} onPress={() => void perform(useLocation)} />
+            {spot.lat !== null ? <AppButton label="Remove pin" testID="item.pickup.clearPin" variant="outline" disabled={pending}
+              onPress={() => { setSpot({ ...spot, lat: null, lng: null }); setSaved(false); }} /> : null}
+            <Text accessibilityRole="header" style={styles.heading}>Use a saved spot</Text>
+            {!preferences.hydrated || pending ? <SkeletonRows testID="item.pickup.loading" /> : preferences.savedPickupSpots.length ? preferences.savedPickupSpots.map((entry, index) =>
+              <AppButton key={`${entry.name}-${index}`} label={entry.name} accessibilityLabel={`Use saved spot ${entry.name}`}
+                variant="outline" testID={`item.pickup.saved${index}`} onPress={() => { const { name: _name, ...value } = entry; setSpot(value); setSaved(false); }} />)
+              : <Text style={styles.meta} testID="item.pickup.empty">No saved spots yet</Text>}
+            <AppButton label={saved ? 'Spot saved' : 'Save this spot'} testID="item.pickup.saveSpot" variant="outline" disabled={pending || !valid || saved || !preferences.hydrated}
+              onPress={() => void perform(async () => {
+                const name = spot.place_name?.trim() || spot.note?.trim() || 'Pickup spot';
+                await preferences.setSavedPickupSpots([...preferences.savedPickupSpots.filter((entry) => entry.name !== name), { ...spot, name }]);
+                setSaved(true);
+              })} />
+            {pickup ? <AppButton label="Remove pickup spot" testID="item.pickup.remove" variant="outline" disabled={pending} onPress={() => void perform(() => save(null))} /> : null}
+            {error ? <View testID="item.pickup.error" style={styles.sheet}><Text accessibilityRole="alert" style={styles.error}>{error}</Text>
+              <AppButton label="Try again" testID="item.pickup.retry" onPress={() => { if (retry.current) void perform(retry.current); }} /></View> : null}
+          </View>
+        </ScrollView>
+      </KeyboardAvoidingView>
+    </SafeAreaView>
   </Modal>;
 }
 

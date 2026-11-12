@@ -276,7 +276,7 @@ describe('Claimed item', () => {
     expect(screen.getByText('From Ben Chen')).toBeTruthy();
     expect(screen.getByText('On the porch shelf')).toBeTruthy();
     await fireEvent.press(screen.getByTestId('claimedItem.maps.button'));
-    expect(open).toHaveBeenCalledWith('geo:29.7604,-95.3698?q=29.7604,-95.3698(Community%20kitchen)');
+    expect(open).toHaveBeenCalledWith('https://maps.apple.com/?ll=29.7604,-95.3698&q=Community%20kitchen');
   });
 
   test('retries a Maps failure', async () => {
