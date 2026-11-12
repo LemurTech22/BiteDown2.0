@@ -28,7 +28,7 @@ review; not a formal QA PASS).
   rebuild or reinstall.
 
 **Owner steps to go live (the agent's permission classifier blocks opening tunnels and publishing):**
-1. Start Docker Desktop. Then double-click `scriptsstart_showcase.cmd` (or run, from the repo root, in a window you leave open):
+1. Start Docker Desktop. Then double-click `scripts/start_showcase.cmd` (or run, from the repo root, in a window you leave open):
    `powershell -ExecutionPolicy Bypass -File scripts\serve_public.ps1`
    It uses Tailscale Funnel if approved, else a Cloudflare quick tunnel, then runs `expo export` + `eas deploy --prod`.
 2. Optional, for a fixed address: the tailnet admin (`joseconde101jc`) approves Funnel for `laptop-64ms4pd7`
