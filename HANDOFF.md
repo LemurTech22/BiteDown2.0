@@ -14,7 +14,9 @@ every checkpoint (`CLAUDE.md` Rules). Rules: [`CLAUDE.md`](CLAUDE.md)._
 
 ## Checkpoint 16 (2026-11-12, Windows PC): showcase build for Android + iPhone. Read this first
 **Owner's goal:** a finished app other people can try on Android and iPhone by 2026-11-13 09:00.
-**Branch:** `feat/expo-android` (pushed; the owner now has write access). Rulings: `docs/DECISIONS.md` 2026-11-12.
+**Branch:** `feat/expo-android`, PR https://github.com/LemurTech22/BiteDown2.0/pull/1 (no formal QA PASS yet, so not merged).
+Rulings: `docs/DECISIONS.md` 2026-11-12. The final APK was installed on the emulator: it launches with the BiteDown
+icon and welcome screen; it reaches a backend only after step 1 below publishes `api-config.json`.
 Checks and what was verified by hand: `docs/qa/client.md` (orchestrator checks + independent Codex/OpenCode audits and a
 review; not a formal QA PASS).
 
