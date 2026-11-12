@@ -2,14 +2,14 @@ import { useRef, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { DEFAULT_API_BASE_URL, useApi } from '@/api';
+import { useApi } from '@/api';
 import { SectionError } from '@/components/server-error';
 import { AppButton } from '@/components/ui/app-button';
 import { type AppTheme, useTheme } from '@/theme';
 
 export function DebugSettingsScreen() {
   const theme = useTheme();
-  const { baseUrl, demoMode, setBaseUrl, setDemoMode } = useApi();
+  const { baseUrl, baseUrlSource, demoMode, setBaseUrl, clearBaseUrl, setDemoMode } = useApi();
   const [draft, setDraft] = useState<string | null>(null);
   const [message, setMessage] = useState('');
   const [saving, setSaving] = useState(false);
@@ -53,11 +53,33 @@ export function DebugSettingsScreen() {
     }
   }
 
+  async function resetServerAddress() {
+    if (busy.current) return;
+    busy.current = true;
+    setSaving(true);
+    setMessage('');
+    setError(null);
+    retry.current = resetServerAddress;
+    try {
+      await clearBaseUrl();
+      setDraft(null);
+      setMessage('Server address reset.');
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Couldn’t reset server address.');
+    } finally {
+      busy.current = false;
+      setSaving(false);
+    }
+  }
+
   return (
     <SafeAreaView style={styles.screen} edges={['bottom']}>
       <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
         <View style={styles.section}>
           <Text style={styles.label}>Server address</Text>
+          <Text style={styles.meta}>
+            {baseUrlSource === 'custom' ? 'Custom address' : baseUrlSource === 'remote' ? 'From server config' : 'Default address'}
+          </Text>
           <TextInput
             accessibilityLabel="Server address"
             editable={!saving}
@@ -77,7 +99,7 @@ export function DebugSettingsScreen() {
             accessibilityLabel="Reset server address to default"
             testID="settings.server.reset"
             disabled={saving}
-            onPress={() => setDraft(DEFAULT_API_BASE_URL)}
+            onPress={() => void resetServerAddress()}
             style={({ pressed }) => [styles.secondaryButton, pressed && styles.pressed]}>
             <Text style={styles.secondaryButtonText}>Reset to default</Text>
           </Pressable>
