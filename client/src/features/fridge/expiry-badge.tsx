@@ -33,7 +33,7 @@ export function ExpiryBadge({ item, testID }: { item: Item; testID: string }) {
 
 function createStyles(theme: AppTheme) {
   return StyleSheet.create({
-    badge: { alignSelf: 'center', borderRadius: theme.radii.chip, backgroundColor: theme.colors.limeTint,
+    badge: { alignSelf: 'center', maxWidth: '100%', borderRadius: theme.radii.chip, backgroundColor: theme.colors.limeTint,
       paddingHorizontal: theme.spacing.sm, paddingVertical: theme.spacing.xs },
     urgent: { backgroundColor: theme.colors.urgentBg }, soon: { backgroundColor: theme.colors.useSoonBg },
     label: { ...theme.type.badge, color: theme.colors.forest }, urgentLabel: { color: theme.colors.urgentInk }, soonLabel: { color: theme.colors.useSoonInk },
