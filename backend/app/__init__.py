@@ -13,6 +13,8 @@ def create_app(config: dict | None = None) -> Flask:
     app.config["JWT_SECRET"] = os.environ.get("JWT_SECRET", "")
     app.config["GEMINI_API_KEY"] = os.environ.get("GEMINI_API_KEY", "")
     app.config["GEMINI_MODEL"] = os.environ.get("GEMINI_MODEL", "")
+    app.config["GEMINI_FALLBACK_MODELS"] = [m.strip() for m in os.environ.get("GEMINI_FALLBACK_MODELS", "").split(",") if m.strip()]
+    app.config["GEMINI_FALLBACK_BUDGET_S"] = os.environ.get("GEMINI_FALLBACK_BUDGET_S", "40")
     # Seconds per Gemini HTTP attempt for every call except enrichment (ENRICH_TIMEOUT_S); see services/gemini.py.
     try:
         app.config["GEMINI_TIMEOUT_S"] = float(os.environ.get("GEMINI_TIMEOUT_S") or 30)

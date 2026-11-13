@@ -93,7 +93,7 @@ def _unwrap(data, list_key):
 
 def _default_timeout() -> float:
     """HTTP timeout for every Gemini call except enrichment (which has ENRICH_TIMEOUT_S). Worst case one
-    call holds a request thread for 2 attempts x GEMINI_TIMEOUT_S + RETRY_DELAYS_S (30 s default: 61.5 s),
+    call without fallbacks holds a request thread for 2 attempts x GEMINI_TIMEOUT_S + RETRY_DELAYS_S (30 s default: 61.5 s),
     under gunicorn's 120 s --timeout (backend/entrypoint.sh)."""
     if not has_app_context():  # prompt-building helpers are also called outside a request (tests, scripts)
         return 30.0
@@ -112,6 +112,7 @@ def _generate(contents, schema_hint: str, response_schema=None, purpose: str = "
     HTTP call (the SDK sets none, and a hung call would pin a request thread: gthread keeps
     heartbeating, so gunicorn never reaps it); None leaves the call exactly as it was. `retry=False` skips the
     one retry on a transient error (enrichment: a second 25 s attempt would blow the client's time budget).
+    Optional fallback models get one attempt each after transient failures, within a start-time budget.
     `as_object=True` returns the parsed JSON object itself, which must hold a `list_key` list (anything
     else is an error), for a caller that needs more than that one list."""
     key = current_app.config.get("GEMINI_API_KEY")
@@ -128,14 +129,30 @@ def _generate(contents, schema_hint: str, response_schema=None, purpose: str = "
         config = types.GenerateContentConfig(
             response_mime_type="application/json", system_instruction=schema_hint,
             **({"response_schema": response_schema} if response_schema else {}))
-        for delay in ((*RETRY_DELAYS_S, None) if retry else (None,)):
+        fallbacks = current_app.config.get("GEMINI_FALLBACK_MODELS", [])
+        try:
+            budget = float(current_app.config.get("GEMINI_FALLBACK_BUDGET_S", 40))
+            if not math.isfinite(budget) or budget < 0:
+                raise ValueError
+        except (TypeError, ValueError):
+            budget = 40.0
+        for index, model in enumerate([model, *fallbacks]):
             try:
-                resp = client.models.generate_content(model=model, contents=contents, config=config)
-                break
-            except Exception as e:  # retried only if transient; the usage line is still one per call
-                if delay is None or not _is_transient(e):
+                for delay in ((*RETRY_DELAYS_S, None) if retry and index == 0 else (None,)):
+                    try:
+                        resp = client.models.generate_content(model=model, contents=contents, config=config)
+                        break
+                    except Exception as e:
+                        exhausted = _http_code(e) == 429 or "RESOURCE_EXHAUSTED" in str(e)[:300]
+                        if delay is None or not _is_transient(e) or (fallbacks and exhausted):
+                            raise
+                        time.sleep(delay)
+            except Exception as e:
+                if (not _is_transient(e) or index == len(fallbacks)
+                        or time.monotonic() - started > budget):
                     raise
-                time.sleep(delay)
+            else:
+                break
         data = json.loads(resp.text)
         if as_object:
             if not isinstance(data, dict) or (list_key and not isinstance(data.get(list_key), list)):

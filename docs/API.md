@@ -576,6 +576,7 @@ fulfilled_by_name, created_at, audiences, source, group_id, group_name}`:
   (`expired`, `forgot`, `didnt_like`, `other`); `past_expiry` and `saved_recent` are new codes.
 
 ## Gemini timeouts
+Optional `GEMINI_FALLBACK_MODELS` (comma-separated, default empty) tries each fallback once on transient errors; primary quota exhaustion skips its retry, other transient errors retain it, and `GEMINI_FALLBACK_BUDGET_S` (default 40 s) stops new fallback attempts after the budget (in-flight attempts keep their timeout); the usage model is the answering or last attempted model. The bounds below apply with fallbacks disabled.
 Every Gemini call sets an HTTP timeout so a hung request cannot pin one of the 4 gunicorn threads. Photo
 enrichment uses `ENRICH_TIMEOUT_S` (25, no retry). All other calls (`parse_text`, `detect`, `receipt_categorize`,
 `recipes`, `shelf_life`) use `GEMINI_TIMEOUT_S` (env, default 30 s per attempt). A transient error is retried once
