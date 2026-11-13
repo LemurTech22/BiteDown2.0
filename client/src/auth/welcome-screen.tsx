@@ -3,6 +3,7 @@ import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { useApi } from '@/api';
+import { ServerSettingsLink } from '@/auth/server-settings-link';
 import { SessionExpiredBanner } from '@/auth/session-expired-banner';
 import { AppButton } from '@/components/ui/app-button';
 import { AppIcon, type IconName } from '@/components/ui/app-icon';
@@ -44,12 +45,7 @@ export function WelcomeScreen() {
             testID="welcome.login.button"
             variant="secondary"
           />
-          <AppButton
-            label="Debug settings"
-            onPress={() => router.push('/debug')}
-            testID="welcome.debug.button"
-            variant="outline"
-          />
+          <ServerSettingsLink />
         </View>
       </ScrollView>
     </SafeAreaView>

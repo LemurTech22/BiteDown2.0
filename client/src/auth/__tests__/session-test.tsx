@@ -33,6 +33,12 @@ test('Launch waits for the stored session and routes an unauthenticated user to 
   await act(async () => finish(null));
   expect(await screen.findByText('Use what you have. Share what you spare.')).toBeTruthy();
   expect(screen.queryByTestId('welcome.session.expired')).toBeNull();
+  const link = screen.getByTestId('auth.server-settings.link');
+  expect(link).toHaveProp('accessibilityRole', 'link');
+  expect(link).toHaveProp('accessibilityLabel', 'Server settings');
+  expect(link).toHaveStyle({ minHeight: 44 });
+  await fireEvent.press(link);
+  expect(router.push).toHaveBeenCalledWith('/debug');
 });
 
 test('Launch restores a saved session and routes to Home', async () => {
@@ -53,6 +59,22 @@ test('Launch displays an error and retries a saved session without deleting the 
   expect(tokens.set).not.toHaveBeenCalled();
   await fireEvent.press(screen.getByTestId('auth.error.retry'));
   expect(await screen.findByText('/home')).toBeTruthy();
+});
+
+test('an unreachable backend at launch offers server settings below retry', async () => {
+  const api = new MockApiClient();
+  jest.spyOn(api, 'me').mockRejectedValueOnce(new ApiError(0, 'upstream_unavailable', 'Server unreachable'));
+  tokens.get.mockResolvedValue('saved-token');
+  const screen = await render(<ApiProvider client={api}><AuthProvider><IndexRoute /></AuthProvider></ApiProvider>);
+  expect(await screen.findByText('Can’t reach BiteDown')).toBeTruthy();
+  expect(screen.getByTestId('auth.error.retry')).toBeTruthy();
+  const link = screen.getByTestId('auth.server-settings.link');
+  expect(link).toHaveProp('accessibilityRole', 'link');
+  expect(link).toHaveProp('accessibilityLabel', 'Server settings');
+  expect(link).toHaveStyle({ minHeight: 44 });
+  await fireEvent.press(link);
+  expect(router.push).toHaveBeenCalledWith('/debug');
+  expect(tokens.set).not.toHaveBeenCalled();
 });
 
 test('a live-client 401 returns to Landing with the exact signed-out banner', async () => {

@@ -5,6 +5,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { isApiError } from '@/api';
 import { useAuth } from '@/auth/auth-provider';
+import { ServerSettingsLink } from '@/auth/server-settings-link';
 import { socialNext } from '@/auth/social-next';
 import { AppButton } from '@/components/ui/app-button';
 import { FormField } from '@/components/ui/form-field';
@@ -142,6 +143,7 @@ export function AuthScreen({ mode, next: nextParam }: AuthScreenProps) {
             <Text style={styles.switchLink}>{signingUp ? 'Log in' : 'Create an account'}</Text>
           </Pressable>
         </View>
+        <ServerSettingsLink />
       </ScrollView>
     </SafeAreaView>
   );

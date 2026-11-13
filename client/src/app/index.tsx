@@ -1,8 +1,9 @@
 import { Redirect } from 'expo-router';
-import { ScrollView, StyleSheet } from 'react-native';
+import { ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { useAuth } from '@/auth/auth-provider';
+import { ServerSettingsLink } from '@/auth/server-settings-link';
 import { WelcomeScreen } from '@/auth/welcome-screen';
 import { SkeletonRows } from '@/components/ui/skeleton-rows';
 import { StateView } from '@/components/ui/state-view';
@@ -25,15 +26,18 @@ export default function IndexRoute() {
     return (
       <SafeAreaView style={styles.screen}>
         <ScrollView contentContainerStyle={styles.errorContent}>
-          <StateView
-            actionLabel="Try again"
-            actionTestID="auth.error.retry"
-            icon="cloud-off-outline"
-            message={error ?? 'We couldn’t restore your session. Try again.'}
-            onAction={() => void retry()}
-            testID="auth.error.state"
-            title="Can’t reach BiteDown"
-          />
+          <View>
+            <StateView
+              actionLabel="Try again"
+              actionTestID="auth.error.retry"
+              icon="cloud-off-outline"
+              message={error ?? 'We couldn’t restore your session. Try again.'}
+              onAction={() => void retry()}
+              testID="auth.error.state"
+              title="Can’t reach BiteDown"
+            />
+            <ServerSettingsLink />
+          </View>
         </ScrollView>
       </SafeAreaView>
     );

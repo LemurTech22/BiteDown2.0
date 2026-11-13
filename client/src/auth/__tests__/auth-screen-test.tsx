@@ -2,7 +2,7 @@ import { fireEvent, render, waitFor } from '@testing-library/react-native';
 import { router } from 'expo-router';
 import { Text } from 'react-native';
 
-import { ApiProvider, MockApiClient } from '@/api';
+import { ApiError, ApiProvider, MockApiClient } from '@/api';
 import { AuthProvider, useAuth } from '@/auth/auth-provider';
 import { AuthScreen } from '@/auth/auth-screen';
 import { tokenStore } from '@/auth/token-store';
@@ -10,6 +10,7 @@ import { tokenStore } from '@/auth/token-store';
 jest.mock('expo-router', () => ({
   router: {
     back: jest.fn(),
+    push: jest.fn(),
     replace: jest.fn(),
   },
 }));
@@ -98,6 +99,27 @@ describe('email authentication', () => {
 
     expect(await screen.findByText('demo@example.com')).toBeTruthy();
     expect(me).toHaveBeenCalledTimes(1);
+  });
+
+  test.each(['login', 'signup'] as const)('%s links to server settings before and after an offline submit', async (mode) => {
+    const api = new MockApiClient();
+    jest.spyOn(api, mode).mockRejectedValueOnce(new ApiError(0, 'upstream_unavailable', 'Server unreachable'));
+    const screen = await renderAuth(api, mode);
+    const link = screen.getByTestId('auth.server-settings.link');
+    expect(link).toHaveProp('accessibilityRole', 'link');
+    expect(link).toHaveProp('accessibilityLabel', 'Server settings');
+    expect(link).toHaveStyle({ minHeight: 44 });
+    await fireEvent.press(link);
+    expect(router.push).toHaveBeenCalledWith('/debug');
+
+    if (mode === 'signup') await fireEvent.changeText(screen.getByTestId('signup.name.input'), 'Demo User');
+    await fireEvent.changeText(screen.getByTestId(`${mode}.email.input`), 'demo@example.com');
+    await fireEvent.changeText(screen.getByTestId(`${mode}.password.input`), 'password-for-demo');
+    await fireEvent.press(screen.getByTestId(`${mode}.submit.button`));
+    expect(await screen.findByText('Server unreachable')).toBeTruthy();
+    jest.mocked(router.push).mockClear();
+    await fireEvent.press(screen.getByRole('link', { name: 'Server settings' }));
+    expect(router.push).toHaveBeenCalledWith('/debug');
   });
 
   describe.each(['login', 'signup'] as const)('%s next target', (mode) => {

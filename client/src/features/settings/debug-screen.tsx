@@ -128,6 +128,9 @@ export function DebugSettingsScreen() {
             style={styles.switch}
           />
         </View>
+        {demoMode ? (
+          <Text style={styles.meta}>Demo mode uses sample data on this phone. Create any account to try it.</Text>
+        ) : null}
       </ScrollView>
     </SafeAreaView>
   );
