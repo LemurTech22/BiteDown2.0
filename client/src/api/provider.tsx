@@ -13,6 +13,7 @@ const BASE_URL_KEY = 'settings.apiBaseUrl';
 const REMOTE_BASE_URL_KEY = 'settings.remoteApiBaseUrl';
 const DEMO_MODE_KEY = 'settings.demoMode';
 const REMOTE_REFRESH_MS = 60_000;
+const NETWORK_REFRESH_MS = 10_000;
 
 export type BaseUrlSource = 'custom' | 'remote' | 'default';
 
@@ -39,6 +40,13 @@ export function ApiProvider({ children, client }: { children: ReactNode; client?
   const [demoMode, setDemoModeState] = useState(DEFAULT_DEMO_MODE);
   const [sessionExpired, setSessionExpired] = useState(false);
   const loading = useRef<Promise<void>>(Promise.resolve());
+  const baseUrls = useRef<{ custom: string | null; remote: string | null }>({ custom: null, remote: null });
+  const refreshOnNetworkError = useRef<() => void>(() => {});
+  const [readiness] = useState(() => {
+    let resolve!: () => void;
+    const promise = new Promise<void>((done) => { resolve = done; });
+    return { promise, resolve };
+  });
 
   useEffect(() => {
     let active = true;
@@ -50,10 +58,15 @@ export function ApiProvider({ children, client }: { children: ReactNode; client?
       ([storedBaseUrl, storedDemoMode, storedRemoteBaseUrl]) => {
         if (!active) return;
         if (storedBaseUrl) {
-          try { setCustomBaseUrl(normalizeBaseUrl(storedBaseUrl)); } catch { /* Ignore invalid saved addresses. */ }
+          try {
+            baseUrls.current.custom = normalizeBaseUrl(storedBaseUrl);
+            setCustomBaseUrl(baseUrls.current.custom);
+          } catch { /* Ignore invalid saved addresses. */ }
         }
-        setRemoteBaseUrl(normalizeRemoteBaseUrl(storedRemoteBaseUrl));
+        baseUrls.current.remote = normalizeRemoteBaseUrl(storedRemoteBaseUrl);
+        setRemoteBaseUrl(baseUrls.current.remote);
         if (storedDemoMode !== null) setDemoModeState(storedDemoMode === 'true');
+        if (!API_CONFIG_URL || baseUrls.current.remote) readiness.resolve();
       },
     );
 
@@ -61,15 +74,17 @@ export function ApiProvider({ children, client }: { children: ReactNode; client?
 
     let lastFetchAt = -Infinity;
     let fetching = false;
-    async function refreshRemoteConfig() {
+    async function refreshRemoteConfig(throttleMs = REMOTE_REFRESH_MS) {
       await loading.current;
-      if (!active || fetching || Date.now() - lastFetchAt < REMOTE_REFRESH_MS) return;
+      if (!active || fetching || Date.now() - lastFetchAt < throttleMs) return;
       lastFetchAt = Date.now();
       fetching = true;
       try {
         const next = await fetchRemoteApiBaseUrl();
         if (!active || next === null) return;
+        baseUrls.current.remote = next;
         setRemoteBaseUrl(next);
+        readiness.resolve();
         await deviceStore.set(REMOTE_BASE_URL_KEY, next);
       } catch {
         // A cache write failure must not discard a valid server config.
@@ -77,26 +92,46 @@ export function ApiProvider({ children, client }: { children: ReactNode; client?
         fetching = false;
       }
     }
-    void refreshRemoteConfig();
+    void refreshRemoteConfig().finally(readiness.resolve);
+    refreshOnNetworkError.current = () => { void refreshRemoteConfig(NETWORK_REFRESH_MS); };
+    let timer: ReturnType<typeof setInterval> | undefined;
+    function startTimer() {
+      clearInterval(timer);
+      timer = setInterval(() => { void refreshRemoteConfig(); }, REMOTE_REFRESH_MS);
+    }
+    if (AppState.currentState === 'active') startTimer();
     const subscription = AppState.addEventListener('change', (state) => {
-      if (state === 'active') void refreshRemoteConfig();
+      clearInterval(timer);
+      if (state === 'active') {
+        startTimer();
+        void refreshRemoteConfig();
+      }
     });
     return () => {
       active = false;
+      clearInterval(timer);
+      refreshOnNetworkError.current = () => {};
       subscription.remove();
     };
-  }, []);
+  }, [readiness]);
 
   const api = useMemo<ApiClient>(() => {
     if (client) return client;
     if (demoMode) return new MockApiClient();
+    // The constructor stores these callbacks; their refs are read only when a request runs.
+    // eslint-disable-next-line react-hooks/refs
     return new LiveApiClient({
-      getBaseUrl: () => baseUrl,
+      getBaseUrl: () => baseUrls.current.custom ?? baseUrls.current.remote ?? DEFAULT_API_BASE_URL,
       getToken: tokenStore.get,
       setToken: tokenStore.set,
       onSessionExpired: () => setSessionExpired(true),
+      whenReady: API_CONFIG_URL ? () => readiness.promise : undefined,
+      onNetworkError: () => refreshOnNetworkError.current(),
     });
-  }, [baseUrl, client, demoMode]);
+    // baseUrl stays a dependency: a new address must yield a new client so the session check and screens
+    // that depend on `api` reload by themselves (e.g. a stale cached tunnel replaced by api-config.json).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [baseUrl, client, demoMode, readiness]);
 
   const value = useMemo<ApiContextValue>(
     () => ({
@@ -109,11 +144,13 @@ export function ApiProvider({ children, client }: { children: ReactNode; client?
         const normalized = normalizeBaseUrl(next);
         await loading.current;
         await deviceStore.set(BASE_URL_KEY, normalized);
+        baseUrls.current.custom = normalized;
         setCustomBaseUrl(normalized);
       },
       clearBaseUrl: async () => {
         await loading.current;
         await deviceStore.delete(BASE_URL_KEY);
+        baseUrls.current.custom = null;
         setCustomBaseUrl(null);
       },
       setDemoMode: async (next) => {

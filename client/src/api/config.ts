@@ -7,8 +7,11 @@ export function normalizeRemoteBaseUrl(value: unknown): string | null {
     if (typeof value !== 'string') return null;
     const normalized = normalizeBaseUrl(value);
     const url = new URL(normalized);
-    if (url.protocol !== 'https:' &&
-      !(url.protocol === 'http:' && (url.hostname === 'localhost' || url.hostname === '127.0.0.1'))) {
+    const hostname = url.hostname.replace(/\.$/, '');
+    const loopback = hostname === 'localhost' || hostname.endsWith('.localhost') ||
+      hostname.startsWith('127.') || hostname === '[::1]';
+    if ((!__DEV__ && loopback) ||
+      (url.protocol !== 'https:' && !(url.protocol === 'http:' && loopback))) {
       return null;
     }
     return normalized;

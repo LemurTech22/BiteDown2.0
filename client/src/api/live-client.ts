@@ -43,6 +43,8 @@ interface LiveApiClientOptions {
   getToken: () => Promise<string | null>;
   setToken: (token: string | null) => Promise<void>;
   onSessionExpired: () => void;
+  whenReady?: () => Promise<void>;
+  onNetworkError?: () => void;
   fetcher?: typeof fetch;
 }
 
@@ -273,6 +275,7 @@ export class LiveApiClient implements ApiClient {
   }
 
   private async request<T>(path: string, options: RequestOptions = {}): Promise<T> {
+    await this.options.whenReady?.();
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), options.timeoutMs ?? 30_000);
     const headers = new Headers({ Accept: 'application/json' });
@@ -301,8 +304,10 @@ export class LiveApiClient implements ApiClient {
       }
       return payload as T;
     } catch (error) {
-      if (error instanceof ApiError) throw error;
+      if (error instanceof ApiError && error.status !== 0) throw error;
       if (__DEV__) console.warn(`[api] ${options.method ?? 'GET'} ${path} failed:`, error);
+      this.options.onNetworkError?.();
+      if (error instanceof ApiError) throw error;
       throw new ApiError(
         0,
         'upstream_unavailable',

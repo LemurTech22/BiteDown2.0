@@ -1,4 +1,5 @@
 const previousConfigUrl = process.env.EXPO_PUBLIC_API_CONFIG_URL;
+const previousDev = __DEV__;
 let config: typeof import('../config');
 
 function loadConfig(url = 'https://config.example.com/api-config.json') {
@@ -11,6 +12,7 @@ afterEach(() => {
   if (previousConfigUrl === undefined) delete process.env.EXPO_PUBLIC_API_CONFIG_URL;
   else process.env.EXPO_PUBLIC_API_CONFIG_URL = previousConfigUrl;
   jest.useRealTimers();
+  Object.assign(globalThis, { __DEV__: previousDev });
 });
 
 function response(body: unknown, ok = true): Response {
@@ -37,6 +39,20 @@ test.each([
   expect(fetcher).toHaveBeenCalledWith('https://config.example.com/api-config.json', {
     method: 'GET', cache: 'no-store', signal: expect.any(AbortSignal),
   });
+});
+
+test.each([
+  'http://localhost:5055', 'http://127.0.0.1:5055', 'https://localhost',
+  'https://127.0.0.1', 'https://127.1.2.3', 'https://[::1]',
+  'https://LOCALHOST.', 'https://demo.localhost',
+])('rejects loopback remote address %s in release builds', (url) => {
+  Object.assign(globalThis, { __DEV__: false });
+  expect(config.normalizeRemoteBaseUrl(url)).toBeNull();
+});
+
+test('release builds accept public HTTPS remote addresses', () => {
+  Object.assign(globalThis, { __DEV__: false });
+  expect(config.normalizeRemoteBaseUrl('https://api.example.com/')).toBe('https://api.example.com');
 });
 
 test.each([

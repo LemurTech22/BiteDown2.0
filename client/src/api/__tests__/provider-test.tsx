@@ -1,5 +1,5 @@
 import { act, render, waitFor } from '@testing-library/react-native';
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { AppState, type AppStateStatus } from 'react-native';
 
 import { ApiProvider, DEFAULT_API_BASE_URL, useApi } from '@/api';
@@ -27,10 +27,11 @@ function Probe() {
   return null;
 }
 function response(value: unknown): Response {
-  return { ok: true, json: async () => value } as Response;
+  return { ok: true, status: 200, json: async () => value, text: async () => JSON.stringify(value) } as Response;
 }
 
 beforeEach(() => {
+  AppState.currentState = 'active';
   store.get.mockReset().mockResolvedValue(null);
   store.set.mockReset().mockResolvedValue(undefined);
   store.delete.mockReset().mockResolvedValue(undefined);
@@ -41,7 +42,7 @@ beforeEach(() => {
     return { remove };
   });
 });
-afterEach(() => jest.restoreAllMocks());
+afterEach(() => { jest.restoreAllMocks(); jest.useRealTimers(); });
 
 test.each([
   ['https://custom.example.com', 'https://remote.example.com', 'https://custom.example.com', 'custom'],
@@ -66,11 +67,66 @@ test('uses the cached remote before the startup request returns, then caches the
   await render(<ApiProvider><Probe /></ApiProvider>);
   await waitFor(() => expect(current.baseUrl).toBe('https://cached.example.com'));
   expect(current.baseUrlSource).toBe('remote');
+  await expect(current.api.health()).resolves.toEqual({});
+  expect(fetcher).toHaveBeenLastCalledWith('https://cached.example.com/health', expect.any(Object));
   const cachedClient = current.api;
   await act(async () => finish(response({ api_base_url: 'https://new.example.com/' })));
   expect(current.baseUrl).toBe('https://new.example.com');
   expect(current.api).not.toBe(cachedClient);
   expect(store.set).toHaveBeenCalledWith('settings.remoteApiBaseUrl', 'https://new.example.com');
+});
+
+test('a request from a child mount waits for storage and the first config fetch, then uses its URL', async () => {
+  let loadStored!: (value: string | null) => void;
+  store.get.mockImplementationOnce(() => new Promise((resolve) => { loadStored = resolve; }));
+  let finish!: (value: Response) => void;
+  fetcher.mockImplementationOnce(() => new Promise((resolve) => { finish = resolve; }));
+  const requests: Promise<unknown>[] = [];
+  function RequestOnMount() {
+    const { api } = useApi();
+    const started = useRef(false);
+    useEffect(() => {
+      if (started.current) return;
+      started.current = true;
+      requests.push(api.health());
+    }, [api]);
+    return null;
+  }
+  await render(<ApiProvider><Probe /><RequestOnMount /></ApiProvider>);
+  expect(fetcher).not.toHaveBeenCalled();
+  await act(async () => loadStored(null));
+  expect(fetcher).toHaveBeenCalledTimes(1);
+  await act(async () => finish(response({ api_base_url: 'https://ready.example.com' })));
+  await expect(requests[0]).resolves.toEqual({});
+  expect(fetcher).toHaveBeenLastCalledWith('https://ready.example.com/health', expect.any(Object));
+  expect(fetcher).toHaveBeenCalledTimes(2);
+});
+
+test('a timed out initial config fetch releases requests to the default URL', async () => {
+  jest.useFakeTimers();
+  fetcher.mockImplementationOnce((_url, init) => new Promise((_resolve, reject) => {
+    init?.signal?.addEventListener('abort', () => reject(new Error('Aborted')));
+  }));
+  await render(<ApiProvider><Probe /></ApiProvider>);
+  const request = current.api.health();
+  await act(async () => { await jest.advanceTimersByTimeAsync(4999); });
+  expect(fetcher).toHaveBeenCalledTimes(1);
+  await act(async () => { await jest.advanceTimersByTimeAsync(1); });
+  await expect(request).resolves.toEqual({});
+  expect(fetcher).toHaveBeenLastCalledWith(`${DEFAULT_API_BASE_URL}/health`, expect.any(Object));
+  await expect(current.api.health()).resolves.toEqual({});
+  expect(fetcher).toHaveBeenCalledTimes(3);
+});
+
+test('an unsuccessful initial config fetch also releases waiting requests', async () => {
+  let finish!: (value: Response) => void;
+  fetcher.mockImplementationOnce(() => new Promise((resolve) => { finish = resolve; }));
+  await render(<ApiProvider><Probe /></ApiProvider>);
+  const request = current.api.health();
+  expect(fetcher).toHaveBeenCalledTimes(1);
+  await act(async () => finish(response({ api_base_url: 'invalid' })));
+  await expect(request).resolves.toEqual({});
+  expect(fetcher).toHaveBeenLastCalledWith(`${DEFAULT_API_BASE_URL}/health`, expect.any(Object));
 });
 
 test.each([{}, { api_base_url: 'http://insecure.example.com' }, null])('invalid or missing remote config %j preserves the cache', async (body) => {
@@ -146,4 +202,77 @@ test('refreshes on active at most once per minute and preserves the live client 
   expect(current.api).not.toBe(liveClient);
   await screen.unmount();
   expect(remove).toHaveBeenCalled();
+});
+
+test('polls every minute while active and clears polling on background and unmount', async () => {
+  jest.useFakeTimers();
+  const intervals = jest.spyOn(globalThis, 'setInterval');
+  const clearIntervals = jest.spyOn(globalThis, 'clearInterval');
+  fetcher.mockResolvedValue(response({ api_base_url: 'https://remote.example.com' }));
+  const screen = await render(<ApiProvider><Probe /></ApiProvider>);
+  expect(fetcher).toHaveBeenCalledTimes(1);
+  await act(async () => { await jest.advanceTimersByTimeAsync(59_999); });
+  expect(fetcher).toHaveBeenCalledTimes(1);
+  fetcher.mockResolvedValue(response({ api_base_url: 'https://updated.example.com' }));
+  await act(async () => { await jest.advanceTimersByTimeAsync(1); });
+  expect(current.baseUrl).toBe('https://updated.example.com');
+  expect(fetcher).toHaveBeenCalledTimes(2);
+  await act(async () => onAppState('background'));
+  expect(clearIntervals).toHaveBeenCalledWith(intervals.mock.results[0].value);
+  await act(async () => { await jest.advanceTimersByTimeAsync(120_000); });
+  expect(fetcher).toHaveBeenCalledTimes(2);
+  await act(async () => onAppState('active'));
+  expect(fetcher).toHaveBeenCalledTimes(3);
+  await act(async () => { await jest.advanceTimersByTimeAsync(60_000); });
+  expect(fetcher).toHaveBeenCalledTimes(4);
+  await screen.unmount();
+  expect(clearIntervals).toHaveBeenLastCalledWith(intervals.mock.results[intervals.mock.results.length - 1].value);
+  await act(async () => { await jest.advanceTimersByTimeAsync(60_000); });
+  expect(fetcher).toHaveBeenCalledTimes(4);
+});
+
+test('does not start a polling timer until an initially backgrounded app becomes active', async () => {
+  jest.useFakeTimers();
+  const intervals = jest.spyOn(globalThis, 'setInterval');
+  AppState.currentState = 'background';
+  await render(<ApiProvider><Probe /></ApiProvider>);
+  expect(fetcher).toHaveBeenCalledTimes(1);
+  expect(intervals).not.toHaveBeenCalled();
+  await act(async () => { await jest.advanceTimersByTimeAsync(60_000); });
+  expect(fetcher).toHaveBeenCalledTimes(1);
+  await act(async () => onAppState('active'));
+  expect(fetcher).toHaveBeenCalledTimes(2);
+  expect(intervals).toHaveBeenCalledTimes(1);
+});
+
+test('network failures refresh config at most every ten seconds without retrying requests', async () => {
+  jest.useFakeTimers();
+  jest.spyOn(console, 'warn').mockImplementation(() => {});
+  fetcher.mockImplementation(async (url) => {
+    if (url === 'https://config.example.com/api-config.json') return response({ api_base_url: 'https://remote.example.com' });
+    throw new TypeError('Network request failed');
+  });
+  const screen = await render(<ApiProvider><Probe /></ApiProvider>);
+  await act(async () => { await jest.advanceTimersByTimeAsync(9999); });
+  await expect(current.api.health()).rejects.toMatchObject({ status: 0 });
+  expect(fetcher).toHaveBeenCalledTimes(2);
+  await act(async () => { await jest.advanceTimersByTimeAsync(1); });
+  let finish!: (value: Response) => void;
+  fetcher.mockImplementationOnce(async () => { throw new TypeError('Offline'); })
+    .mockImplementationOnce(() => new Promise((resolve) => { finish = resolve; }));
+  await expect(current.api.health()).rejects.toMatchObject({ status: 0 });
+  expect(fetcher).toHaveBeenCalledTimes(4);
+  await act(async () => { await jest.advanceTimersByTimeAsync(10_000); });
+  await expect(current.api.health()).rejects.toMatchObject({ status: 0 });
+  expect(fetcher).toHaveBeenCalledTimes(5); // The config fetch is still in flight.
+  await act(async () => finish(response({ api_base_url: 'https://updated.example.com' })));
+  expect(current.baseUrl).toBe('https://updated.example.com');
+  await act(async () => { await expect(current.api.health()).rejects.toMatchObject({ status: 0 }); });
+  expect(fetcher).toHaveBeenCalledTimes(7);
+  const apiUrls = fetcher.mock.calls.map(([url]) => url).filter((url) => url !== 'https://config.example.com/api-config.json');
+  expect(apiUrls).toEqual([
+    'https://remote.example.com/health', 'https://remote.example.com/health',
+    'https://remote.example.com/health', 'https://updated.example.com/health',
+  ]);
+  await screen.unmount();
 });

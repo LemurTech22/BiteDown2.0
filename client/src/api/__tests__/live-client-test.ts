@@ -1,6 +1,7 @@
 import { File } from 'expo-file-system';
 
 import { LiveApiClient } from '@/api/live-client';
+import { ApiError } from '@/api/errors';
 
 jest.mock('expo-file-system', () => ({
   File: jest.fn().mockImplementation(() => ({ bytes: async () => new Uint8Array([1, 2, 3]) })),
@@ -99,4 +100,55 @@ test('social failures retain the server error code', async () => {
     ok: false, status: 409, text: async () => JSON.stringify({ error: { code: 'already_claimed', message: 'Already claimed.' } }),
   } as Response);
   await expect(client().claimShare('id')).rejects.toMatchObject({ status: 409, code: 'already_claimed' });
+});
+
+test('waits for readiness before reading the URL, without delaying later requests', async () => {
+  let baseUrl = 'https://old.example.com';
+  let ready!: () => void;
+  const readiness = new Promise<void>((resolve) => { ready = resolve; });
+  const getBaseUrl = jest.fn(() => baseUrl);
+  const fetcher = jest.fn<ReturnType<typeof fetch>, [input: RequestInfo | URL, init?: RequestInit]>()
+    .mockResolvedValue({ ok: true, status: 200, text: async () => '{"status":"ok"}' } as Response);
+  const api = new LiveApiClient({
+    getBaseUrl, getToken: async () => null, setToken: async () => {},
+    onSessionExpired: jest.fn(), whenReady: () => readiness, fetcher,
+  });
+  const first = api.health();
+  const concurrent = api.health();
+  expect(getBaseUrl).not.toHaveBeenCalled();
+  expect(fetcher).not.toHaveBeenCalled();
+  baseUrl = 'https://new.example.com';
+  ready();
+  await Promise.all([first, concurrent]);
+  await api.health();
+  expect(fetcher).toHaveBeenCalledTimes(3);
+  for (const [url] of fetcher.mock.calls) expect(url).toBe('https://new.example.com/health');
+});
+
+test.each([
+  new TypeError('Network request failed'),
+  new ApiError(0, 'upstream_unavailable', 'Offline'),
+])('notifies network failures without retrying the request (%s)', async (error) => {
+  jest.spyOn(console, 'warn').mockImplementation(() => {});
+  const fetcher = jest.fn<ReturnType<typeof fetch>, [input: RequestInfo | URL, init?: RequestInit]>().mockRejectedValue(error);
+  const onNetworkError = jest.fn();
+  const api = new LiveApiClient({
+    getBaseUrl: () => 'https://api.example.com', getToken: async () => null,
+    setToken: async () => {}, onSessionExpired: jest.fn(), onNetworkError, fetcher,
+  });
+  await expect(api.health()).rejects.toMatchObject({ status: 0 });
+  expect(onNetworkError).toHaveBeenCalledTimes(1);
+  expect(fetcher).toHaveBeenCalledTimes(1);
+});
+
+test('HTTP failures do not trigger a network refresh', async () => {
+  const fetcher = jest.fn<ReturnType<typeof fetch>, [input: RequestInfo | URL, init?: RequestInit]>()
+    .mockResolvedValue({ ok: false, status: 503, text: async () => '' } as Response);
+  const onNetworkError = jest.fn();
+  const api = new LiveApiClient({
+    getBaseUrl: () => 'https://api.example.com', getToken: async () => null,
+    setToken: async () => {}, onSessionExpired: jest.fn(), onNetworkError, fetcher,
+  });
+  await expect(api.health()).rejects.toMatchObject({ status: 503 });
+  expect(onNetworkError).not.toHaveBeenCalled();
 });
