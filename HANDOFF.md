@@ -18,7 +18,7 @@ every checkpoint (`CLAUDE.md` Rules). Rules: [`CLAUDE.md`](CLAUDE.md)._
 Checks: `docs/qa/client.md` 2026-11-13 (orchestrator checks + Codex/OpenCode audits; not a formal QA PASS).
 
 **New APK** (EAS build `67fa34a7-3a31-48d2-b4cb-6cb2a344fd39`, profile `preview`, includes every fix below):
-https://expo.dev/artifacts/eas/UVaV_TVkB9HfITzjqxS1PYzG0EpQ__V38yfxfIK9Zhs.apk. Installed on the emulator: launches,
+https://expo.dev/artifacts/eas/yzO3WvvN_jWuuTUvv5RtCy2BQq5ngOYL5lcwwAGNj9U.apk. Installed on the emulator: launches,
 Server settings opens before sign-in, Demo mode signs up offline and reaches Home. It reaches the real backend only
 once the owner runs `scripts\start_showcase.cmd` (the public tunnel + `eas deploy` are owner steps; the agent's
 classifier blocks them). **The web app is not deployed yet:** `https://bitedown.expo.app` has no deployment until that
