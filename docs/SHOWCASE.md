@@ -38,6 +38,8 @@ with their own email**; there is no rate limit per network, so a whole venue on 
 | Symptom | Likely cause | Fix |
 |---|---|---|
 | App says "Can't reach BiteDown" for everyone | Tunnel or PC down | Check the `serve_public` window and `http://127.0.0.1:5055/health`. Restart the script. Phones recover on their own (they refetch the config every 60 s and after a network error). |
+| `bitedown.expo.app` shows "No worker deployment was found" right after a publish | The production alias is still propagating (the first deploy on 2026-11-13 took about 6 minutes) | Wait and refresh. Meanwhile the deployment's own URL works (listed under Hosting > Deployments on expo.dev). |
+| The script warns "can't resolve ... yet (local DNS cache)" | The router cached "not found" for a brand-new tunnel name | Nothing: phones use their own DNS. The watchdog doesn't count it as a failure. |
 | One phone can't reach the server | Venue Wi-Fi blocks the tunnel, or a stale address | Switch that phone to mobile data. Or tap **Server settings** (welcome, login or error screen) and check the address. |
 | Nothing works and time is short | Backend unreachable | On the presenter phone, tap **Server settings**, turn on **Demo mode**, create any account. The app then runs on the phone alone: the fridge starts empty, and photo, text and recipes return sample results, so the whole demo path (add, remove, Undo, Impact) still works. Say so to the audience. |
 | Photo scan says the scanner is busy | Gemini overloaded | Try again; the backend already falls back across 3 models (`GEMINI_MODEL`, `GEMINI_FALLBACK_MODELS`). Use **Add by text** as the backup demo. |
