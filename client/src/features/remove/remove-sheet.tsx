@@ -3,7 +3,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { useApi, type Item, type ReachablePerson, type RemoveItemInput, type WasteReason } from '@/api';
+import { isApiError, useApi, type Item, type ReachablePerson, type RemoveItemInput, type WasteReason } from '@/api';
 import { AppButton } from '@/components/ui/app-button';
 import { AppIcon, type IconName } from '@/components/ui/app-icon';
 import { FadeIn } from '@/components/ui/fade-in';
@@ -78,9 +78,14 @@ export function RemoveSheet({ item, initialShared = false, units = 'us', onClose
       const response = await api.removeItem(item.id, input);
       removed = response.item;
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : 'Couldn’t remove this item. Try again.');
-      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error).catch(() => {});
-      return;
+      if (isApiError(cause) && cause.code === 'already_removed') {
+        // Callers use removed_at to hide the item and offer Undo.
+        removed = { ...item, removed_at: item.removed_at ?? new Date().toISOString(), outcome: input.outcome, waste_reason: input.waste_reason ?? null };
+      } else {
+        setError(cause instanceof Error ? cause.message : 'Couldn’t remove this item. Try again.');
+        void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error).catch(() => {});
+        return;
+      }
     } finally {
       submitting.current = false;
       setPending(false);

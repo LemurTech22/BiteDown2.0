@@ -18,7 +18,7 @@ import { formatWeight, usePreferences } from '@/settings/preferences';
 import { deviceStore } from '@/storage/key-value-store';
 import { type AppTheme, useTheme } from '@/theme';
 
-interface HomeData { items: Item[]; recipe: Recipe | null; tips: Tip[]; saved: number; dismissed: string[] }
+interface HomeData { items: Item[]; tips: Tip[]; saved: number; dismissed: string[] }
 const tipKey = (tip: Tip) => `${tip.code}:${tip.message}`;
 
 export function HomeScreen() {
@@ -31,24 +31,47 @@ export function HomeScreen() {
   const [error, setError] = useState('');
   const [tipError, setTipError] = useState('');
   const [loading, setLoading] = useState(true);
+  const [recipe, setRecipe] = useState<Recipe | null>(null);
+  const [recipeLoading, setRecipeLoading] = useState(false);
+  const [recipeFailed, setRecipeFailed] = useState(false);
+  const recipeCache = useRef<{ api: typeof api; storeKey: string; itemIds: string; recipe: Recipe } | null>(null);
   const sequence = useRef(0);
   const storeKey = `home.dismissedTips.${user?.id ?? 'current'}`;
   const load = useCallback(async () => {
     const request = ++sequence.current;
     setLoading(true); setError('');
     try {
-      const [food, impact, tips, recipes, dismissed] = await Promise.all([
-        api.getItems(), api.getImpact('month'), api.getTips(), api.suggestRecipes({ max_results: 1 }), deviceStore.get(storeKey),
+      const [food, impact, tips, dismissed] = await Promise.all([
+        api.getItems(), api.getImpact('month'), api.getTips(), deviceStore.get(storeKey),
       ]);
       if (request !== sequence.current) return;
       let keys: string[] = [];
       try { const parsed: unknown = JSON.parse(dismissed ?? '[]'); if (Array.isArray(parsed)) keys = parsed.filter((key): key is string => typeof key === 'string'); } catch { /* Ignore malformed stored tips. */ }
       const items = 'items' in food ? food.items : food.sections.flatMap((section) => section.items);
       items.sort((a, b) => (a.predicted_expiry ?? '9999').localeCompare(b.predicted_expiry ?? '9999'));
-      setData({ items, saved: impact.saved.kg, recipe: recipes.recipes[0] ?? null, tips: tips.tips, dismissed: keys });
+      setData({ items, saved: impact.saved.kg, tips: tips.tips, dismissed: keys });
+      const itemIds = JSON.stringify(items.map((item) => item.id).sort());
+      const cached = recipeCache.current;
+      const cachedRecipe = cached?.api === api && cached.storeKey === storeKey && cached.itemIds === itemIds ? cached.recipe : null;
+      setRecipe(cachedRecipe); setRecipeFailed(false);
+      setRecipeLoading(items.length > 0 && !cachedRecipe);
+      if (items.length > 0 && !cachedRecipe) {
+        void api.suggestRecipes({ max_results: 1 }).then((response) => {
+          if (request !== sequence.current) return;
+          const nextRecipe = response.recipes[0] ?? null;
+          setRecipe(nextRecipe);
+          recipeCache.current = nextRecipe ? { api, storeKey, itemIds, recipe: nextRecipe } : null;
+        }).catch(() => {
+          if (request === sequence.current) setRecipeFailed(true);
+        }).finally(() => {
+          if (request === sequence.current) setRecipeLoading(false);
+        });
+      }
     } catch (cause) {
-      reportServerError(cause);
-      if (request === sequence.current) setError(cause instanceof Error ? cause.message : 'Couldn’t load Home. Try again.');
+      if (request === sequence.current) {
+        reportServerError(cause);
+        setError(cause instanceof Error ? cause.message : 'Couldn’t load Home. Try again.');
+      }
     } finally { if (request === sequence.current) setLoading(false); }
   }, [api, storeKey]);
   useFocusEffect(useCallback(() => { void load(); return () => { sequence.current += 1; }; }, [load]));
@@ -91,13 +114,13 @@ export function HomeScreen() {
             <ExpiryBadge item={item} testID={`home.status.${item.id}`} />
           </Pressable>)}</View>}
         </View>
-        <View style={styles.section}><Text accessibilityRole="header" style={styles.heading}>Cook tonight</Text>
-          {data.items.length && data.recipe ? <Pressable accessibilityRole="button" accessibilityLabel={`Cook tonight: ${data.recipe.title}`}
+        {!recipeFailed ? <View style={styles.section}><Text accessibilityRole="header" style={styles.heading}>Cook tonight</Text>
+          {recipeLoading ? <SkeletonRows testID="home.recipe.loading.skeleton" /> : data.items.length && recipe ? <Pressable accessibilityRole="button" accessibilityLabel={`Cook tonight: ${recipe.title}`}
             testID="home.recipe.card" onPress={() => router.push('/recipes')} style={styles.recipe}>
-            <Text style={styles.recipeTitle}>{data.recipe.title}</Text><Text style={styles.recipeMeta}>{data.recipe.minutes} min · Uses {data.recipe.uses_items.length} of your items</Text>
-            {data.recipe.uses_items.map((item) => <Text key={item.item_id} style={styles.recipeChip}>{item.name}</Text>)}
+            <Text style={styles.recipeTitle}>{recipe.title}</Text><Text style={styles.recipeMeta}>{recipe.minutes} min · Uses {recipe.uses_items.length} of your items</Text>
+            {recipe.uses_items.map((item) => <Text key={item.item_id} style={styles.recipeChip}>{item.name}</Text>)}
           </Pressable> : <View style={styles.card} testID="home.recipe.empty"><Text style={styles.meta}>Recipes appear once you&apos;ve added a few items</Text></View>}
-        </View>
+        </View> : null}
         <Pressable accessibilityRole="button" accessibilityLabel={`${formatWeight(data.saved, units)} saved, view Impact`}
           testID="home.impact.pill" onPress={() => router.push('/impact')} style={styles.impact}>
           <AppIcon name="leaf" color={theme.colors.forest} /><Text style={styles.linkText}>{formatWeight(data.saved, units)} saved</Text>

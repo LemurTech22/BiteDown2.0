@@ -2,14 +2,21 @@ import { act, fireEvent, render } from '@testing-library/react-native';
 import { router } from 'expo-router';
 
 import { ApiProvider, MockApiClient, type ItemsResponse } from '@/api';
+import { reportServerError } from '@/components/server-error';
 import { HomeScreen } from '@/features/home/home-screen';
 import { PreferencesProvider } from '@/settings/preferences';
 import { deviceStore } from '@/storage/key-value-store';
 
+const mockFocus: { current?: () => void | (() => void); cleanup?: void | (() => void) } = {};
 jest.mock('expo-router', () => {
   const React = jest.requireActual<typeof import('react')>('react');
-  return { router: { push: jest.fn() }, useFocusEffect: (callback: () => void | (() => void)) => React.useEffect(callback, [callback]) };
+  return { router: { push: jest.fn() }, useFocusEffect: (callback: () => void | (() => void)) => React.useEffect(() => {
+    mockFocus.current = callback;
+    mockFocus.cleanup = callback();
+    return mockFocus.cleanup;
+  }, [callback]) };
 });
+jest.mock('@/components/server-error', () => ({ reportServerError: jest.fn() }));
 jest.mock('@/auth/auth-provider', () => ({ useAuth: () => ({ user: { id: 'home-user', display_name: 'Priya Shah' } }) }));
 jest.mock('@/hooks/use-reduced-motion', () => ({ useReducedMotion: () => true }));
 jest.mock('@/storage/key-value-store', () => {
@@ -98,4 +105,70 @@ test('a device storage failure keeps the tip visible and offers retry', async ()
   expect(screen.getByTestId('home.tip.card')).toBeTruthy();
   await fireEvent.press(screen.getByTestId('home.tip.retry'));
   expect(screen.queryByTestId('home.tip.error')).toBeNull();
+});
+
+test('slow recipes leave food, tips and impact usable with a separate recipe skeleton', async () => {
+  const api = await client();
+  const response = await api.suggestRecipes({ max_results: 1 });
+  let complete!: (value: typeof response) => void;
+  jest.spyOn(api, 'suggestRecipes').mockImplementationOnce(() => new Promise((resolve) => { complete = resolve; }));
+  const screen = await show(api);
+  expect(await screen.findByText('Spinach')).toBeTruthy();
+  expect(screen.getByTestId('home.tip.card')).toBeTruthy();
+  expect(screen.getByTestId('home.impact.pill')).toBeTruthy();
+  expect(screen.queryByTestId('home.loading.skeleton')).toBeNull();
+  expect(screen.getByTestId('home.recipe.loading.skeleton')).toBeTruthy();
+  await act(() => complete(response));
+  expect(await screen.findByTestId('home.recipe.card')).toBeTruthy();
+  expect(screen.queryByTestId('home.recipe.loading.skeleton')).toBeNull();
+});
+
+test('recipe failure hides only the recipe section and never reports a server error', async () => {
+  const api = await client();
+  let reject!: (cause: Error) => void;
+  jest.spyOn(api, 'suggestRecipes').mockImplementationOnce(() => new Promise((_, fail) => { reject = fail; }));
+  const screen = await show(api);
+  await screen.findByTestId('home.recipe.loading.skeleton');
+  await act(() => reject(new Error('Recipe service unavailable')));
+  expect(screen.getByText('Spinach')).toBeTruthy();
+  expect(screen.getByTestId('home.impact.pill')).toBeTruthy();
+  expect(screen.queryByText('Cook tonight')).toBeNull();
+  expect(screen.queryByTestId('home.error.state')).toBeNull();
+  expect(reportServerError).not.toHaveBeenCalled();
+});
+
+test.each(['resolve', 'reject'] as const)('ignores a stale recipe %s after refocusing', async (settlement) => {
+  const api = await client();
+  const response = await api.suggestRecipes({ max_results: 1 });
+  let complete!: (value: typeof response) => void;
+  let reject!: (cause: Error) => void;
+  const suggest = jest.spyOn(api, 'suggestRecipes').mockImplementationOnce(() => new Promise((resolve, fail) => { complete = resolve; reject = fail; }));
+  const screen = await show(api);
+  await screen.findByTestId('home.recipe.loading.skeleton');
+  await act(() => { mockFocus.cleanup?.(); mockFocus.cleanup = mockFocus.current?.(); });
+  const card = await screen.findByTestId('home.recipe.card');
+  const title = card.props.accessibilityLabel;
+  await act(() => {
+    if (settlement === 'resolve') complete({ ...response, recipes: [{ ...response.recipes[0], title: 'Stale recipe' }] });
+    else reject(new Error('Stale failure'));
+  });
+  expect(screen.getByTestId('home.recipe.card').props.accessibilityLabel).toBe(title);
+  expect(screen.queryByTestId('home.recipe.loading.skeleton')).toBeNull();
+  expect(suggest).toHaveBeenCalledTimes(2);
+  expect(reportServerError).not.toHaveBeenCalled();
+});
+
+test('refocusing reuses a shown recipe until the set of item ids changes', async () => {
+  const api = await client();
+  const suggest = jest.spyOn(api, 'suggestRecipes');
+  const screen = await show(api);
+  await screen.findByTestId('home.recipe.card');
+  await act(() => { mockFocus.cleanup?.(); mockFocus.cleanup = mockFocus.current?.(); });
+  await screen.findByTestId('home.recipe.card');
+  expect(suggest).toHaveBeenCalledTimes(1);
+  await api.createItems({ items: [{ name: 'Carrots', food_group: 'veggies' }] });
+  await act(() => { mockFocus.cleanup?.(); mockFocus.cleanup = mockFocus.current?.(); });
+  await screen.findByText('Carrots');
+  await screen.findByTestId('home.recipe.card');
+  expect(suggest).toHaveBeenCalledTimes(2);
 });

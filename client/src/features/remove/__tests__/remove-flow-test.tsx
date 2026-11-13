@@ -141,6 +141,33 @@ describe('Remove and Undo', () => {
     expect(Haptics.notificationAsync).toHaveBeenLastCalledWith(Haptics.NotificationFeedbackType.Success);
   });
 
+  test.each(['used', 'donated', 'thrown_out'] as const)('retrying %s after a lost response treats already_removed as success with Undo', async (outcome) => {
+    const { api, screen, item } = await setup();
+    const originalRemove = api.removeItem.bind(api);
+    const remove = jest.spyOn(api, 'removeItem').mockImplementationOnce(async (id, input) => {
+      await originalRemove(id, input);
+      throw new ApiError(0, 'upstream_unavailable', 'Response lost');
+    });
+    await fireEvent.press(screen.getByTestId(`fridge.remove.${item.id}`));
+    await fireEvent.press(screen.getByTestId(`remove.outcome.${outcome}`));
+    if (outcome === 'donated') await fireEvent.press(screen.getByTestId('remove.shared.done'));
+    if (outcome === 'thrown_out') await fireEvent.press(screen.getByTestId('remove.reason.expired'));
+    await screen.findByText('Response lost');
+    jest.mocked(Haptics.notificationAsync).mockClear();
+    await fireEvent.press(screen.getByTestId('remove.error.retry'));
+
+    expect(remove).toHaveBeenCalledTimes(2);
+    expect(remove).toHaveBeenLastCalledWith(item.id, { outcome, ...(outcome === 'thrown_out' ? { waste_reason: 'expired' } : {}) });
+    expect(await screen.findByTestId(`remove.toast.${item.id}`)).toBeTruthy();
+    expect(screen.queryByTestId(`fridge.item.${item.id}`)).toBeNull();
+    expect(screen.queryByTestId('remove.sheet.modal')).toBeNull();
+    expect(screen.queryByTestId('remove.error.state')).toBeNull();
+    expect(Haptics.notificationAsync).toHaveBeenCalledTimes(1);
+    expect(Haptics.notificationAsync).toHaveBeenCalledWith(Haptics.NotificationFeedbackType.Success);
+    await fireEvent.press(screen.getByTestId(`remove.undo.${item.id}`));
+    expect(await screen.findByTestId(`fridge.item.${item.id}`)).toBeTruthy();
+  });
+
   test('pending removal shows skeletons, disables Cancel and prevents duplicate requests', async () => {
     const { api, screen, item } = await setup();
     const originalRemove = api.removeItem.bind(api);
