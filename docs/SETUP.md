@@ -144,7 +144,8 @@ so stop it after the demo.
 
 ### Showcase: phones over the internet (Windows PC, Expo app)
 The Expo app (`client/`) reaches the backend through `https://bitedown.expo.app/api-config.json`, so the backend's public
-address can change without reinstalling the app (`docs/DECISIONS.md`, 2026-11-12).
+address can change without reinstalling the app (`docs/DECISIONS.md`, 2026-11-12). Event-day checklist and
+troubleshooting: [`SHOWCASE.md`](SHOWCASE.md).
 1. Docker Desktop running; `.env` has `CORS_ORIGINS=https://bitedown.expo.app,http://localhost:8081`
    (after editing: `docker compose up -d --force-recreate api`).
 2. Once: `npx eas-cli login` (account that owns `@bitedown/bitedown`). Optional, for a stable address: a tailnet admin

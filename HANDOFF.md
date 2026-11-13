@@ -2,7 +2,7 @@
 
 _The app is **BiteDown** (owner, 2026-10-10; see `docs/DECISIONS.md`). Internal names such as `FoodWasteReducer` stay._
 
-_Last updated: 2026-11-12 (checkpoint 16, showcase build; see below). Older text from 2026-10-11: **`food-main` (VPS) orchestrates**: it plans, rules, reviews and merges,
+_Last updated: 2026-11-13 (checkpoint 17, final pre-showcase hardening; see below). Older text from 2026-10-11: **`food-main` (VPS) orchestrates**: it plans, rules, reviews and merges,
 and owns the canvas and the orchestrator docs. **`food-main-mac` (the Mac) does all the building**: builder + QA
 sub-agents (**Sonnet**, owner preference), Xcode and simulators, Docker and every test run, plus any
 `.github/workflows` push. The owner also lets the Mac merge a PR when it judges it ready, and edit the canvas when
@@ -12,7 +12,38 @@ checkpoints. **Since checkpoint 10:** `food-modal-test` (iOS simulator test pass
 merges on the Mac; `food-main` reviews the Auth PR. All of them update this file and the affected `docs/` at
 every checkpoint (`CLAUDE.md` Rules). Rules: [`CLAUDE.md`](CLAUDE.md)._
 
-## Checkpoint 16 (2026-11-12, Windows PC): showcase build for Android + iPhone. Read this first
+## Checkpoint 17 (2026-11-13, Windows PC): final pre-showcase hardening. Read this first
+**Event:** live demo at a food bank volunteering event, 2026-11-13 morning. **Runbook: [`docs/SHOWCASE.md`](docs/SHOWCASE.md)**
+(night-before and morning checklists, failure-to-fix table, demo account). Rulings: `docs/DECISIONS.md` 2026-11-13.
+Checks: `docs/qa/client.md` 2026-11-13 (orchestrator checks + Codex/OpenCode audits; not a formal QA PASS).
+
+**New APK** (EAS build `67fa34a7-3a31-48d2-b4cb-6cb2a344fd39`, profile `preview`, includes every fix below):
+https://expo.dev/artifacts/eas/UVaV_TVkB9HfITzjqxS1PYzG0EpQ__V38yfxfIK9Zhs.apk. Installed on the emulator: launches,
+Server settings opens before sign-in, Demo mode signs up offline and reaches Home. It reaches the real backend only
+once the owner runs `scripts\start_showcase.cmd` (the public tunnel + `eas deploy` are owner steps; the agent's
+classifier blocks them). **The web app is not deployed yet:** `https://bitedown.expo.app` has no deployment until that
+script runs once. The local web export builds (3.9 MB).
+
+**Live config on this PC (`.env`, not in git):** `GEMINI_MODEL=gemini-3.5-flash-lite`,
+`GEMINI_FALLBACK_MODELS=gemini-3.1-flash-lite,gemini-3.5-flash`, `GEMINI_TIMEOUT_S=20`, `GUNICORN_THREADS=12`.
+Demo account `demo@bitedown.app`, password in gitignored `.env.demo`: 13 priced items (2 expire tomorrow) plus
+earlier removals for Impact.
+
+**What landed tonight (on `feat/expo-android`, each diff reviewed by Claude):** Server settings link before sign-in;
+config readiness gate, 60 s refresh, refresh after network errors, loopback rejected in release; Home recipe card
+loads separately; Remove 409 `already_removed` = success + Undo; barcode Type it instead always visible; web photo
+downscale + 413 message; batch Undo 10 min; Gemini fallback chain (429, 503/504, timeouts); fridge photo merges
+identical detections (24 rows → 7); `serve_public.ps1` watchdog/publish-retry/CORS-preflight/DB-check, `eas-cli`
+pinned to 27.9.0.
+**Verified:** client tsc + lint clean, Jest 30 suites / 419; backend suite (not slow) 3046 passed, 4 skipped, 7 xfailed,
+1 env-only failure (`test_app_reads_env` reads the local `.env` `GEMINI_TIMEOUT_S=20`; passes without `.env`, as in
+CI); live API smoke + 8-way concurrent photo burst; production web bundle in Chrome: login, Home, Fridge, Remove,
+Impact 3.2 → 3.7 lb, Undo back to 3.2 lb.
+**Not verified:** public tunnel, `eas deploy`, real phones (Android APK against the live backend, iPhone Safari).
+
+**Next (owner):** follow `docs/SHOWCASE.md` "The night before". After the event: formal QA PASS on PR #1, then merge.
+
+## Checkpoint 16 (2026-11-12, Windows PC): showcase build for Android + iPhone
 **Owner's goal:** a finished app other people can try on Android and iPhone by 2026-11-13 09:00.
 **Branch:** `feat/expo-android`, PR https://github.com/LemurTech22/BiteDown2.0/pull/1 (no formal QA PASS yet, so not merged).
 Rulings: `docs/DECISIONS.md` 2026-11-12. The final APK was installed on the emulator: it launches with the BiteDown

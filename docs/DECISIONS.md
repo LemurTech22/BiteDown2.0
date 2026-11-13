@@ -2,6 +2,24 @@
 
 Newest first. Each entry: date, decision, why, alternatives considered.
 
+## 2026-11-13 — Showcase hardening: Gemini models, capacity, photo merge (orchestrator)
+- **Gemini primary model is `gemini-3.5-flash-lite`**, with `GEMINI_FALLBACK_MODELS=gemini-3.1-flash-lite,gemini-3.5-flash`
+  and `GEMINI_TIMEOUT_S=20`. Why: probes on 2026-11-12/13 measured `3.5-flash-lite` at about 1 s, `3.1-flash-lite`
+  flapping between 503 and 15-30 s, and `gemini-3.8-flash` at 362 s for a one-line prompt. Free-tier quota is per
+  model, so a chain also multiplies headroom. A 429 or a timeout moves straight to the next model; the 40 s
+  `GEMINI_FALLBACK_BUDGET_S` keeps the 75 s client timeouts safe. Replaces the 2026-10-10 `gemini-3.8-flash` choice.
+  Alternatives: keep 3.8-flash (unusable latency), add a paid key only (doesn't help 503 "high demand").
+- **`GUNICORN_THREADS=12`** for the showcase (default stays 4). Why: four slow Gemini calls blocked login and Fridge
+  for everyone. 12 threads stay under SQLAlchemy's 15-connection pool. Load check: 8 concurrent photo scans took
+  2.5-7 s each while `GET /items` stayed at about 10 ms.
+- **`POST /items/from-photo` (fridge mode) merges identical detections** (name, freshness, unit, storage): quantity summed,
+  max confidence, first-seen order, before enrichment. Why: one photo returned 24 rows (one per apple); now 7. Contract in
+  `docs/API.md`; the QA test `test_duplicate_detections_share_one_question_and_one_answer` was updated to match.
+- **Client resilience:** first request waits for `api-config.json` (5 s cap, skipped when an address is cached);
+  config refetch every 60 s and after a network error; release builds ignore loopback remote addresses; Home loads
+  the recipe card separately; a Remove 409 `already_removed` counts as success; **Server settings** (address, Demo
+  mode) is reachable before sign-in; batch Undo lasts the full 10-minute window. Runbook: `docs/SHOWCASE.md`.
+
 ## 2026-11-12 — Showcase distribution for the Expo app (owner)
 - **Android:** an installable APK from EAS Build (`client/eas.json` profile `preview`), project `@bitedown/bitedown`.
 - **iPhone:** the same app's **web build** in Safari (Add to Home Screen), hosted on Expo Hosting
