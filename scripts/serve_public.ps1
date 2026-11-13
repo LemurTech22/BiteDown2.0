@@ -157,7 +157,8 @@ try {
     Write-Warning "$(Get-Date -Format HH:mm:ss) $url/health failed ($failures)"
     if ($failures -ge 3 -and $tunnel) {
       Write-Host 'Restarting the Cloudflare tunnel ...'
-      Stop-Process -Id $tunnel.Process.Id -Force -ErrorAction SilentlyContinue
+      # HasExited reads the process handle, so a reused PID is never killed.
+      if (-not $tunnel.Process.HasExited) { Stop-Process -Id $tunnel.Process.Id -Force -ErrorAction SilentlyContinue }
       # A failed restart must not end the script: keep the dead tunnel object so the next round retries.
       try { $newTunnel = Start-Cloudflare } catch { Write-Warning "Cloudflare restart failed: $($_.Exception.Message). Retrying in about 3 minutes."; $failures = 0; continue }
       $tunnel = $newTunnel; $url = $tunnel.Url
@@ -168,7 +169,7 @@ try {
     }
   }
 } finally {
-  if ($tunnel) { Stop-Process -Id $tunnel.Process.Id -Force -ErrorAction SilentlyContinue }
+  if ($tunnel -and -not $tunnel.Process.HasExited) { Stop-Process -Id $tunnel.Process.Id -Force -ErrorAction SilentlyContinue }
   # `funnel --bg` lives on in the Tailscale daemon; turn it off so the API is public only while this script runs.
   if ($script:funnelOn) { & $tailscale funnel --https=443 off 2>&1 | Out-Null; Write-Host 'Tailscale Funnel turned off.' }
 }
