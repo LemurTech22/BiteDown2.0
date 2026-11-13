@@ -51,6 +51,10 @@ function Start-Cloudflare {
   Stop-Process -Id $proc.Id -Force; throw "no tunnel URL after 60 s; see $log"
 }
 
+function Test-Resolves([string]$url) {
+  try { [void][System.Net.Dns]::GetHostAddresses(([Uri]$url).Host); return $true } catch { return $false }
+}
+
 function Wait-Public([string]$url) {
   for ($i = 0; $i -lt 45; $i++) { if (Test-Health $url) { return $true }; Start-Sleep 2 }
   return $false
@@ -151,6 +155,12 @@ try {
           } finally { Pop-Location }
         } catch { Write-Warning "API recovery failed: $($_.Exception.Message). Will retry no sooner than 5 minutes after this attempt." }
       }
+      continue
+    }
+    # A new trycloudflare name can stay unresolvable on this PC for minutes (the router caches "not found") while
+    # phones reach it fine. That is not a dead tunnel, so it counts as a failure only once cloudflared has exited.
+    if ($tunnel -and -not $tunnel.Process.HasExited -and -not (Test-Resolves $url)) {
+      Write-Warning "$(Get-Date -Format HH:mm:ss) This PC can't resolve $url yet (local DNS cache); not counting it as a tunnel failure."
       continue
     }
     $failures++
