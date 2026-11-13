@@ -2,11 +2,13 @@ import { act, fireEvent, render, waitFor, within } from '@testing-library/react-
 import * as Haptics from 'expo-haptics';
 import * as ImagePicker from 'expo-image-picker';
 import { router } from 'expo-router';
-import { BackHandler } from 'react-native';
+import { BackHandler, Platform } from 'react-native';
 import { SafeAreaInsetsContext } from 'react-native-safe-area-context';
 
 import { ApiError, ApiProvider, MockApiClient, type PhotoCandidatesResponse } from '@/api';
 import AddModalScreen from '@/app/add-modal';
+
+import * as webImage from '../web-image';
 
 jest.mock('expo-router', () => {
   const React = jest.requireActual<typeof import('react')>('react');
@@ -119,6 +121,29 @@ describe('add by photo', () => {
     expect(await screen.findByText('The food scanner is busy right now. Try again in a minute.')).toBeTruthy();
     await fireEvent.press(screen.getByTestId('add.analysis.retry'));
     expect(await screen.findByDisplayValue('Mock apples')).toBeTruthy();
+  });
+
+  test('oversized photos offer a clear message and another photo', async () => {
+    const { api, screen } = await setup();
+    jest.spyOn(api, 'fromPhoto').mockRejectedValueOnce(new ApiError(413, 'http_error', 'Request failed.'));
+    await fireEvent.press(screen.getByTestId('add.library.button'));
+    expect(await screen.findByText('That photo is too large. Try another one.')).toBeTruthy();
+    await fireEvent.press(screen.getByTestId('add.reset.button'));
+    expect(screen.getByTestId('add.library.button')).toBeTruthy();
+  });
+
+  test.each(['web', 'ios', 'android'] as const)('%s photo upload uses web compression only on web', async (platform) => {
+    const { api, screen } = await setup();
+    jest.replaceProperty(Platform, 'OS', platform);
+    const downscale = jest.spyOn(webImage, 'downscaleWebImage').mockResolvedValue('data:image/jpeg;base64,smaller');
+    const upload = jest.spyOn(api, 'fromPhoto');
+    await fireEvent.press(screen.getByTestId('add.library.button'));
+    await screen.findByDisplayValue('Mock apples');
+    expect(downscale).toHaveBeenCalledTimes(platform === 'web' ? 1 : 0);
+    expect(upload).toHaveBeenCalledWith(expect.objectContaining({
+      uri: platform === 'web' ? 'data:image/jpeg;base64,smaller' : 'file:///food.jpg',
+      fileName: platform === 'web' ? 'photo.jpg' : 'food.jpg', mimeType: 'image/jpeg',
+    }));
   });
 
   test('status 0 keeps the connection message instead of the scanner message', async () => {

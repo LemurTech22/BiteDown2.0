@@ -1,8 +1,8 @@
 import * as ImagePicker from 'expo-image-picker';
 import { useEffect, useRef, useState } from 'react';
-import { Image, Text, View } from 'react-native';
+import { Image, Platform, Text, View } from 'react-native';
 
-import { useApi } from '@/api';
+import { isApiError, useApi } from '@/api';
 import { AppButton } from '@/components/ui/app-button';
 import { SkeletonRows } from '@/components/ui/skeleton-rows';
 import { StateView } from '@/components/ui/state-view';
@@ -14,6 +14,7 @@ import { CameraDeniedCard } from './camera-denied-card';
 import { draftError } from './candidate-editor';
 import { CandidateReview, type ReviewDraft, reviewDrafts } from './candidate-review';
 import { useCandidateSave } from './use-candidate-save';
+import { downscaleWebImage } from './web-image';
 
 export function AddReceiptScreen() {
   const { api } = useApi();
@@ -42,7 +43,9 @@ export function AddReceiptScreen() {
       const result = await api.fromReceipt({ uri: asset.uri, fileName: asset.fileName ?? undefined, mimeType: asset.mimeType ?? undefined });
       if (request.current === id) { setDrafts(reviewDrafts(result.candidates, 'receipt')); setTotal(result.total); }
     } catch (cause) {
-      if (request.current === id) setError(cause instanceof Error ? cause.message : 'We couldn’t analyze this receipt. Try again.');
+      if (request.current === id) setError(isApiError(cause) && cause.status === 413
+        ? 'That photo is too large. Try another one.'
+        : cause instanceof Error ? cause.message : 'We couldn’t analyze this receipt. Try again.');
     } finally {
       if (request.current === id) setLoading(false);
     }
@@ -60,7 +63,11 @@ export function AddReceiptScreen() {
       }
       const options: ImagePicker.ImagePickerOptions = { mediaTypes: ['images'], allowsEditing: false, quality: 0.8 };
       const result = source === 'camera' ? await ImagePicker.launchCameraAsync(options) : await ImagePicker.launchImageLibraryAsync(options);
-      if (request.current === id && !result.canceled && result.assets[0]) void analyze(result.assets[0]);
+      if (request.current === id && !result.canceled && result.assets[0]) {
+        const asset = result.assets[0];
+        const uri = Platform.OS === 'web' ? await downscaleWebImage(asset.uri) : asset.uri;
+        if (request.current === id) void analyze(uri === asset.uri ? asset : { ...asset, uri, fileName: 'receipt.jpg', mimeType: 'image/jpeg' });
+      }
     } catch (cause) {
       if (request.current === id) setError(cause instanceof Error ? cause.message : 'We couldn’t open your photos. Try again.');
     } finally {

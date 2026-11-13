@@ -2,7 +2,7 @@ import * as Haptics from 'expo-haptics';
 import * as ImagePicker from 'expo-image-picker';
 import { router, useFocusEffect } from 'expo-router';
 import { type ReactNode, useCallback, useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, BackHandler, Image, Pressable, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, BackHandler, Image, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { isApiError, useApi } from '@/api';
@@ -21,6 +21,7 @@ import { AddReviewLayout } from './add-review-layout';
 import { CameraDeniedCard } from './camera-denied-card';
 import { ChoiceControl } from './choice-control';
 import { DiscardSheet } from './discard-sheet';
+import { downscaleWebImage } from './web-image';
 
 type Photo = { asset: ImagePicker.ImagePickerAsset; mode: 'fridge' | 'single' };
 
@@ -79,7 +80,11 @@ export function AddPhotoScreen() {
       const options: ImagePicker.ImagePickerOptions = { mediaTypes: ['images'], allowsEditing: false, quality: 0.8 };
       const result = source === 'camera' ? await ImagePicker.launchCameraAsync(options) :
         await ImagePicker.launchImageLibraryAsync(options);
-      if (!result.canceled && result.assets[0]) setPhoto({ asset: result.assets[0], mode });
+      if (!result.canceled && result.assets[0]) {
+        const asset = result.assets[0];
+        const uri = Platform.OS === 'web' ? await downscaleWebImage(asset.uri) : asset.uri;
+        setPhoto({ asset: uri === asset.uri ? asset : { ...asset, uri, fileName: 'photo.jpg', mimeType: 'image/jpeg' }, mode });
+      }
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'We couldn’t open your photos. Try again.');
     } finally {
@@ -167,7 +172,9 @@ function PhotoReview({ photo, header, onReset, onCandidatesChange, onSaved }: {
       if (active) setDrafts(result.candidates.map((candidate, id) => ({ id, candidate, name: candidate.name,
         quantity: String(candidate.quantity), storage: candidate.storage, expiry: candidate.predicted_expiry })));
     }).catch((cause: unknown) => {
-      if (active) setError(isApiError(cause) && cause.code === 'upstream_unavailable' &&
+      if (active) setError(isApiError(cause) && cause.status === 413
+        ? 'That photo is too large. Try another one.'
+        : isApiError(cause) && cause.code === 'upstream_unavailable' &&
         (cause.status === 502 || cause.status === 503)
         ? 'The food scanner is busy right now. Try again in a minute.'
         : cause instanceof Error ? cause.message : 'We couldn’t analyze this photo. Try again.');

@@ -3,7 +3,7 @@ import { useCameraPermissions } from 'expo-camera';
 import * as ImagePicker from 'expo-image-picker';
 import { router, useLocalSearchParams } from 'expo-router';
 import type { ReactElement } from 'react';
-import { Linking } from 'react-native';
+import { Linking, Platform } from 'react-native';
 import { SafeAreaInsetsContext } from 'react-native-safe-area-context';
 
 import { ApiError, ApiProvider, MockApiClient, type ReceiptCandidatesResponse } from '@/api';
@@ -15,6 +15,7 @@ import { AddMethods } from '../add-methods';
 import { AddPhotoScreen } from '../add-photo-screen';
 import { AddReceiptScreen } from '../add-receipt-screen';
 import { AddTextScreen } from '../add-text-screen';
+import * as webImage from '../web-image';
 
 jest.mock('expo-router', () => {
   const React = jest.requireActual<typeof import('react')>('react');
@@ -190,7 +191,26 @@ describe('barcode', () => {
     expect(create).toHaveBeenCalledWith({ items: [expect.objectContaining({ quantity: 3, source: 'barcode' })] });
   });
 
-  test('not found and Not this both lead to typing', async () => {
+  test.each(['web', 'ios', 'android'] as const)('%s scanner always offers a large manual entry button before any scan', async (platform) => {
+    jest.replaceProperty(Platform, 'OS', platform);
+    const { screen } = await setup(<AddBarcodeScreen />);
+    expect(screen.getByTestId('addBarcode.camera.scanner')).toBeTruthy();
+    const button = screen.getByTestId('add.barcode.manual.button');
+    expect(button).toHaveStyle({ minHeight: createTheme('light').sizes.primaryButton });
+    expect(createTheme('light').sizes.primaryButton).toBeGreaterThanOrEqual(44);
+    await fireEvent.press(button);
+    expect(router.replace).toHaveBeenCalledWith('/add-text');
+  });
+
+  test('manual entry is available while camera permission is loading', async () => {
+    jest.mocked(useCameraPermissions).mockReturnValue([null, requestPermission, requestPermission]);
+    const { screen } = await setup(<AddBarcodeScreen />);
+    expect(screen.getByTestId('addBarcode.permission.skeleton')).toBeTruthy();
+    await fireEvent.press(screen.getByTestId('add.barcode.manual.button'));
+    expect(router.replace).toHaveBeenCalledWith('/add-text');
+  });
+
+  test('not found and review both lead to typing', async () => {
     const { screen } = await setup(<AddBarcodeScreen />);
     await scan(screen, '00000000');
     expect(await screen.findByText('Barcode not found')).toBeTruthy();
@@ -199,7 +219,7 @@ describe('barcode', () => {
     await fireEvent.press(screen.getByTestId('addBarcode.reset.button'));
     await scan(screen);
     await screen.findByDisplayValue('Whole grain cereal');
-    await fireEvent.press(screen.getByTestId('addBarcode.type.button'));
+    await fireEvent.press(screen.getByTestId('add.barcode.manual.button'));
     expect(router.replace).toHaveBeenCalledTimes(2);
   });
 
@@ -242,6 +262,29 @@ describe('barcode', () => {
 });
 
 describe('receipt', () => {
+  test.each(['web', 'ios', 'android'] as const)('%s receipt upload uses web compression only on web', async (platform) => {
+    const { api, screen } = await setup(<AddReceiptScreen />);
+    jest.replaceProperty(Platform, 'OS', platform);
+    const downscale = jest.spyOn(webImage, 'downscaleWebImage').mockResolvedValue('data:image/jpeg;base64,smaller');
+    const upload = jest.spyOn(api, 'fromReceipt');
+    await fireEvent.press(screen.getByTestId('addReceipt.library.button'));
+    await screen.findByText('1 food item');
+    expect(downscale).toHaveBeenCalledTimes(platform === 'web' ? 1 : 0);
+    expect(upload).toHaveBeenCalledWith(expect.objectContaining({
+      uri: platform === 'web' ? 'data:image/jpeg;base64,smaller' : 'file:///receipt.jpg',
+      fileName: 'receipt.jpg', mimeType: 'image/jpeg',
+    }));
+  });
+
+  test('oversized receipts offer a clear message and another photo', async () => {
+    const { api, screen } = await setup(<AddReceiptScreen />);
+    jest.spyOn(api, 'fromReceipt').mockRejectedValueOnce(new ApiError(413, 'http_error', 'Request failed.'));
+    await fireEvent.press(screen.getByTestId('addReceipt.library.button'));
+    expect(await screen.findByText('That photo is too large. Try another one.')).toBeTruthy();
+    await fireEvent.press(screen.getByTestId('addReceipt.reset.button'));
+    expect(screen.getByTestId('addReceipt.library.button')).toBeTruthy();
+  });
+
   test.each(['camera', 'library'])('%s photo shows raw lines, food count, prices, and selected food save', async (source) => {
     const { api, screen } = await setup(<AddReceiptScreen />, 'EUR');
     const create = jest.spyOn(api, 'createItems');
