@@ -127,7 +127,8 @@ def _generate(contents, schema_hint: str, response_schema=None, purpose: str = "
     heartbeating, so gunicorn never reaps it); None leaves the call exactly as it was. `retry=False` skips the
     one retry on a transient error (enrichment: a second 25 s attempt would blow the client's time budget).
     Optional fallback models get one attempt each after transient failures or timeouts, within a
-    start-time budget. Timeouts skip the same-model retry when fallbacks are configured.
+    start-time budget. Timeouts skip the same-model retry when fallbacks are configured, and end the
+    chain when `retry=False`.
     `as_object=True` returns the parsed JSON object itself, which must hold a `list_key` list (anything
     else is an error), for a caller that needs more than that one list."""
     key = current_app.config.get("GEMINI_API_KEY")
@@ -164,8 +165,11 @@ def _generate(contents, schema_hint: str, response_schema=None, purpose: str = "
                             raise
                         time.sleep(delay)
             except Exception as e:
-                if (not (_is_transient(e) or (fallbacks and _is_timeout(e))) or index == len(fallbacks)
-                        or time.monotonic() - started > budget):
+                timed_out = _is_timeout(e)
+                # retry=False (enrichment) has no time for a second full-length attempt after a timeout:
+                # detection (up to ENRICH_SKIP_AFTER_S) + 2 x ENRICH_TIMEOUT_S would pass the client's 75 s.
+                if (not (_is_transient(e) or (fallbacks and timed_out)) or index == len(fallbacks)
+                        or time.monotonic() - started > budget or (timed_out and not retry)):
                     raise
             else:
                 break

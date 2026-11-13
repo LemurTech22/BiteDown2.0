@@ -145,6 +145,19 @@ def test_wrapped_timeout_tries_fallback(gem, monkeypatch, explicit_cause):
     usage(gem, "fallback")
 
 
+@pytest.mark.parametrize("on_fallback", [False, True])
+def test_timeout_ends_chain_without_retry(gem, monkeypatch, on_fallback):
+    """Enrichment (retry=False) never spends a second full timeout on another model."""
+    exc = httpx.ReadTimeout("x")
+    outcomes = [Err(code=503), exc, "[]"] if on_fallback else [exc, "[]"]
+    calls = install(monkeypatch, outcomes, gem)
+    with pytest.raises(gemini.UpstreamError) as caught:
+        gemini._generate("x", "hint", retry=False)
+    assert caught.value.__cause__ is exc
+    assert [c["model"] for c in calls] == (["primary", "fallback"] if on_fallback else ["primary"])
+    assert gem.sleeps == []
+
+
 @pytest.mark.parametrize("succeeds", [True, False])
 def test_timeout_on_fallback_moves_to_next_model(gem, monkeypatch, succeeds):
     exc = httpx.ReadTimeout("x")
