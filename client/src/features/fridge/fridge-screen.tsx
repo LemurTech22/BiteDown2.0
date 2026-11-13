@@ -18,7 +18,7 @@ import { MoveSheet, storageLabel } from '@/features/fridge/move-sheet';
 import { StorageSegmented } from '@/features/fridge/storage-segmented';
 import { RemoveSheet } from '@/features/remove/remove-sheet';
 import { UndoToast } from '@/features/remove/undo-toast';
-import { useRemovalUndo } from '@/features/remove/use-removal-undo';
+import { UNDO_WINDOW_MS, useRemovalUndo } from '@/features/remove/use-removal-undo';
 import { type AppTheme, useTheme } from '@/theme';
 import { useReducedMotion } from '@/hooks/use-reduced-motion';
 import { usePreferences } from '@/settings/preferences';
@@ -109,7 +109,7 @@ export function FridgeScreen() {
     try {
       const { items } = await api.removeBatch({ item_ids: selected, outcome });
       items.forEach(applyItem);
-      const entry: BatchUndo = { id: ++batchSequence.current, itemIds: items.map((item) => item.id), outcome, expiresAt: Date.now() + 5000, pending: false, error: '' };
+      const entry: BatchUndo = { id: ++batchSequence.current, itemIds: items.map((item) => item.id), outcome, expiresAt: Date.now() + UNDO_WINDOW_MS, pending: false, error: '' };
       setBatches((current) => [...current, entry]);
       setSelecting(false); setSelected([]);
       void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
