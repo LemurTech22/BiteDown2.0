@@ -27,6 +27,12 @@ Rulings: `docs/DECISIONS.md` 2026-11-13. Runbook: `docs/SHOWCASE.md`.
 - Production web bundle in Chrome against the local API: welcome (Server settings link), log in as the demo account,
   Home (recipe card loads after the rest), Fridge, Remove (Used it), Impact 3.2 → 3.7 lb, Undo restores 3.2 lb exactly.
 
+**Final review (Claude, after the OpenCode review was stopped for low memory):** whole diff `17d0723..69c9742`. Fixed:
+enrichment could fall back after a 25 s timeout and pass the 75 s photo timeout; the watchdog could `Stop-Process` a
+dead tunnel's PID again after a failed restart (now checks `HasExited`); the address screen title is now
+**Server settings**. Gemini fallback tests 63 passed, photo/timeout tests 108 passed; live photo + enrich 5.2 s (7
+enriched), recipes 2.1 s on the rebuilt API. No other defects found.
+
 **Not verified:** the new APK on a device; the public tunnel and `eas deploy` (owner step); iPhone Safari on a real
 device; camera flows on a real phone.
 

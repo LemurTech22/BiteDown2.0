@@ -7,7 +7,9 @@ Newest first. Each entry: date, decision, why, alternatives considered.
   and `GEMINI_TIMEOUT_S=20`. Why: probes on 2026-11-12/13 measured `3.5-flash-lite` at about 1 s, `3.1-flash-lite`
   flapping between 503 and 15-30 s, and `gemini-3.8-flash` at 362 s for a one-line prompt. Free-tier quota is per
   model, so a chain also multiplies headroom. A 429 or a timeout moves straight to the next model; the 40 s
-  `GEMINI_FALLBACK_BUDGET_S` keeps the 75 s client timeouts safe. Replaces the 2026-10-10 `gemini-3.8-flash` choice.
+  `GEMINI_FALLBACK_BUDGET_S` keeps the 75 s client timeouts safe. A timeout on enrichment (`retry=False`) ends the
+  chain: detection (up to 30 s) plus two 25 s enrichment attempts would pass the photo request's 75 s.
+  Replaces the 2026-10-10 `gemini-3.8-flash` choice.
   Alternatives: keep 3.8-flash (unusable latency), add a paid key only (doesn't help 503 "high demand").
 - **`GUNICORN_THREADS=12`** for the showcase (default stays 4). Why: four slow Gemini calls blocked login and Fridge
   for everyone. 12 threads stay under SQLAlchemy's 15-connection pool. Load check: 8 concurrent photo scans took
