@@ -37,7 +37,7 @@ test('uses custom headers for feature screens, keeps Debug native, and preserves
     expect(options(route).headerShown).toBe(false);
   }
   expect(options('debug').headerShown).not.toBe(false);
-  expect(options('debug').title).toBe('Debug settings');
+  expect(options('debug').title).toBe('Server settings');
   for (const route of ['add-modal', 'add-text', 'add-barcode', 'add-receipt', 'social/request-new', 'social/scan']) {
     expect(options(route).presentation).toBe('modal');
   }

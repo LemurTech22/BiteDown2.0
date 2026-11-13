@@ -29,7 +29,7 @@ function RootStack() {
         <Stack.Screen name="group/[code]" options={{ headerShown: false }} />
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
         <Stack.Screen name="add-modal" options={{ headerShown: false, presentation: 'modal' }} />
-        <Stack.Screen name="debug" options={{ title: 'Debug settings' }} />
+        <Stack.Screen name="debug" options={{ title: 'Server settings' }} />
         <Stack.Screen name="item/[id]" options={{ title: "Item detail", headerShown: false }} />
         <Stack.Screen name="add-text" options={{ title: "Type or say it", presentation: 'modal', headerShown: false }} />
         <Stack.Screen name="add-barcode" options={{ title: "Scan a barcode", presentation: 'modal', headerShown: false }} />
