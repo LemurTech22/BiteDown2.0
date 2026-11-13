@@ -57,7 +57,8 @@ function Wait-Public([string]$url) {
 }
 
 function Publish-ApiUrl([string]$url) {
-  try { $current = (Invoke-RestMethod -Uri "$Hosting/api-config.json" -TimeoutSec 10 -Headers @{ 'Cache-Control' = 'no-cache' }).api_base_url } catch { $current = $null }
+  $headers = @{ 'Cache-Control' = 'no-cache'; 'Pragma' = 'no-cache' }
+  try { $current = (Invoke-RestMethod -Uri "$Hosting/api-config.json?cb=$([DateTime]::UtcNow.Ticks)" -TimeoutSec 10 -Headers $headers).api_base_url } catch { $current = $null }
   if ($current -eq $url) { Write-Host "Web config already points at $url"; return }
   Write-Host "Publishing $url to $Hosting/api-config.json ..."
   Push-Location $client
@@ -67,47 +68,103 @@ function Publish-ApiUrl([string]$url) {
     npx expo export --platform web --output-dir dist --clear
     if ($LASTEXITCODE -ne 0) { throw 'expo export failed' }
     [IO.File]::WriteAllText((Join-Path $client 'dist\api-config.json'), (@{ api_base_url = $url } | ConvertTo-Json -Compress))
-    npx --yes eas-cli@latest deploy --prod --non-interactive
+    # Pinned: a new CLI release on the morning of the demo must not change how publishing behaves.
+    npx --yes eas-cli@27.9.0 deploy --prod --non-interactive
     if ($LASTEXITCODE -ne 0) { throw 'eas deploy failed' }
   } finally { Pop-Location }
+  try {
+    $published = (Invoke-RestMethod -Uri "$Hosting/api-config.json?cb=$([DateTime]::UtcNow.Ticks)" -TimeoutSec 10 -Headers $headers).api_base_url
+    if ($published -ne $url) { Write-Warning "Published config mismatch: expected api_base_url '$url', received '$published' from $Hosting/api-config.json." }
+  } catch { Write-Warning "Publish completed, but checking $Hosting/api-config.json failed: $($_.Exception.Message)" }
 }
 
+function Try-PublishApiUrl([string]$url) {
+  try {
+    Publish-ApiUrl $url
+    $script:publishPending = $false
+  } catch {
+    $script:publishPending = $true
+    Write-Warning "API URL PUBLISH FAILED: $($_.Exception.Message). Keeping the tunnel running; retrying in 2 minutes."
+  } finally { $script:nextPublishAttempt = (Get-Date).AddMinutes(2) }
+}
+
+$lastComposeAttempt = $null
 if (-not (Test-Health "http://127.0.0.1:$Port")) {
   Write-Host 'API not answering; starting docker compose ...'
-  Push-Location $repo; docker compose up -d; Pop-Location
+  $lastComposeAttempt = Get-Date
+  Push-Location $repo
+  try { docker compose up -d } finally { Pop-Location }
   if (-not (Wait-Public "http://127.0.0.1:$Port")) { throw "API not reachable at http://127.0.0.1:$Port/health" }
 }
-$corsLine = Select-String -Path (Join-Path $repo '.env') -Pattern '^CORS_ORIGINS=' -ErrorAction SilentlyContinue
-if (-not $corsLine -or $corsLine.Line -notmatch [regex]::Escape($Hosting)) {
-  Write-Warning "Add $Hosting to CORS_ORIGINS in .env, then: docker compose up -d --force-recreate api (the web app needs it)."
+try {
+  Push-Location $repo
+  try {
+    $dbContainer = docker compose ps -q db
+    if ($LASTEXITCODE -ne 0 -or -not $dbContainer) { throw 'Could not find the compose db container.' }
+    $dbHealth = docker inspect --format '{{.State.Health.Status}}' $dbContainer
+    if ($LASTEXITCODE -ne 0) { throw 'docker inspect failed for the db container.' }
+    if ($dbHealth -ne 'healthy') { Write-Warning "Database container is not healthy (status: $dbHealth)." }
+  } finally { Pop-Location }
+} catch { Write-Warning "Database health check failed: $($_.Exception.Message)" }
+
+try {
+  $preflight = Invoke-WebRequest -UseBasicParsing -Method Options -Uri "http://127.0.0.1:$Port/auth/login" -TimeoutSec 10 -Headers @{
+    'Origin' = $Hosting
+    'Access-Control-Request-Method' = 'POST'
+    'Access-Control-Request-Headers' = 'authorization,content-type'
+  }
+  if ($preflight.Headers['Access-Control-Allow-Origin'] -cne $Hosting) { throw 'Access-Control-Allow-Origin does not match the web origin.' }
+} catch {
+  Write-Warning "CORS preflight failed: $($_.Exception.Message) Add $Hosting to CORS_ORIGINS in .env, then run: docker compose up -d --force-recreate api (the APK still works)."
 }
 
 $tunnel = $null
-$url = Get-FunnelUrl
-if ($url) {
-  Write-Host "Tailscale Funnel: $url"
-  if (-not (Wait-Public $url)) { Write-Warning 'Funnel is on but /health does not answer yet; falling back to Cloudflare.'; $url = $null }
-}
-if (-not $url) {
-  $tunnel = Start-Cloudflare; $url = $tunnel.Url
-  Write-Host "Cloudflare tunnel: $url (pid $($tunnel.Process.Id))"
-  if (-not (Wait-Public $url)) { Write-Warning "$url/health did not answer within 90 s (new hostnames can take a minute)." }
-}
-Publish-ApiUrl $url
-Write-Host "`nBackend:  $url`nWeb app:  $Hosting`nLeave this window open. Stop with Ctrl-C (closing the window skips the cleanup).`n"
-
 $failures = 0
 try {
+  $url = Get-FunnelUrl
+  if ($url) {
+    Write-Host "Tailscale Funnel: $url"
+    if (-not (Wait-Public $url)) { Write-Warning 'Funnel is on but /health does not answer yet; falling back to Cloudflare.'; $url = $null }
+  }
+  if (-not $url) {
+    $tunnel = Start-Cloudflare; $url = $tunnel.Url
+    Write-Host "Cloudflare tunnel: $url (pid $($tunnel.Process.Id))"
+    if (-not (Wait-Public $url)) { Write-Warning "$url/health did not answer within 90 s (new hostnames can take a minute)." }
+  }
+  Try-PublishApiUrl $url
+  Write-Host "`n========== Demo URLs ==========`nBackend URL: $url`nWeb URL:     $Hosting`nThe APK reads the same api-config.json as the web app.`nLeave this window open. Stop with Ctrl-C (closing the window skips the cleanup).`n===============================`n"
+
   while ($true) {
     Start-Sleep 60
+    if ($publishPending -and (Get-Date) -ge $nextPublishAttempt) { Try-PublishApiUrl $url }
     if (Test-Health $url) { $failures = 0; continue }
+    if (-not (Test-Health "http://127.0.0.1:$Port")) {
+      $failures = 0
+      Write-Warning "$(Get-Date -Format HH:mm:ss) The API itself is down or overloaded at http://127.0.0.1:$Port/health; keeping the tunnel running."
+      if ($null -eq $lastComposeAttempt -or (Get-Date) -ge $lastComposeAttempt.AddMinutes(5)) {
+        $lastComposeAttempt = Get-Date
+        try {
+          Push-Location $repo
+          try {
+            docker compose up -d
+            if ($LASTEXITCODE -ne 0) { throw 'docker compose up -d failed' }
+          } finally { Pop-Location }
+        } catch { Write-Warning "API recovery failed: $($_.Exception.Message). Will retry no sooner than 5 minutes after this attempt." }
+      }
+      continue
+    }
     $failures++
     Write-Warning "$(Get-Date -Format HH:mm:ss) $url/health failed ($failures)"
     if ($failures -ge 3 -and $tunnel) {
       Write-Host 'Restarting the Cloudflare tunnel ...'
       Stop-Process -Id $tunnel.Process.Id -Force -ErrorAction SilentlyContinue
-      $tunnel = Start-Cloudflare; $url = $tunnel.Url
-      if (Wait-Public $url) { Publish-ApiUrl $url; $failures = 0 }
+      # A failed restart must not end the script: keep the dead tunnel object so the next round retries.
+      try { $newTunnel = Start-Cloudflare } catch { Write-Warning "Cloudflare restart failed: $($_.Exception.Message). Retrying in about 3 minutes."; $failures = 0; continue }
+      $tunnel = $newTunnel; $url = $tunnel.Url
+      $publishPending = $true
+      $nextPublishAttempt = Get-Date
+      if (Wait-Public $url) { Try-PublishApiUrl $url }
+      $failures = 0
     }
   }
 } finally {
