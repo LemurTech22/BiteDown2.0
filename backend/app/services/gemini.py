@@ -64,6 +64,20 @@ def _is_transient(e: Exception) -> bool:
     return code in (429, 503, 504) or any(t in str(e)[:300] for t in _TRANSIENT)
 
 
+def _is_timeout(e: BaseException) -> bool:
+    """Recognize timeout types and wrappers, including cyclic exception chains."""
+    pending, seen = [e], set()
+    while pending:
+        exc = pending.pop()
+        if exc is None or id(exc) in seen:
+            continue
+        seen.add(id(exc))
+        if isinstance(exc, TimeoutError) or any("Timeout" in cls.__name__ for cls in type(exc).__mro__):
+            return True
+        pending.extend((exc.__cause__, exc.__context__))
+    return False
+
+
 def is_configured() -> bool:
     return bool(current_app.config.get("GEMINI_API_KEY"))
 
@@ -112,7 +126,8 @@ def _generate(contents, schema_hint: str, response_schema=None, purpose: str = "
     HTTP call (the SDK sets none, and a hung call would pin a request thread: gthread keeps
     heartbeating, so gunicorn never reaps it); None leaves the call exactly as it was. `retry=False` skips the
     one retry on a transient error (enrichment: a second 25 s attempt would blow the client's time budget).
-    Optional fallback models get one attempt each after transient failures, within a start-time budget.
+    Optional fallback models get one attempt each after transient failures or timeouts, within a
+    start-time budget. Timeouts skip the same-model retry when fallbacks are configured.
     `as_object=True` returns the parsed JSON object itself, which must hold a `list_key` list (anything
     else is an error), for a caller that needs more than that one list."""
     key = current_app.config.get("GEMINI_API_KEY")
@@ -144,11 +159,12 @@ def _generate(contents, schema_hint: str, response_schema=None, purpose: str = "
                         break
                     except Exception as e:
                         exhausted = _http_code(e) == 429 or "RESOURCE_EXHAUSTED" in str(e)[:300]
-                        if delay is None or not _is_transient(e) or (fallbacks and exhausted):
+                        if (delay is None or not _is_transient(e)
+                                or (fallbacks and (exhausted or _is_timeout(e)))):
                             raise
                         time.sleep(delay)
             except Exception as e:
-                if (not _is_transient(e) or index == len(fallbacks)
+                if (not (_is_transient(e) or (fallbacks and _is_timeout(e))) or index == len(fallbacks)
                         or time.monotonic() - started > budget):
                     raise
             else:

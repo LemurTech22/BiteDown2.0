@@ -7,6 +7,20 @@ import re
 from types import SimpleNamespace
 
 import pytest
+
+try:
+    import httpx
+except ImportError:  # not pinned in requirements.txt; timeout detection matches class names, so stand-ins suffice
+    class _TimeoutException(Exception):
+        pass
+
+    httpx = SimpleNamespace(
+        TimeoutException=_TimeoutException,
+        ConnectTimeout=type("ConnectTimeout", (_TimeoutException,), {}),
+        ReadTimeout=type("ReadTimeout", (_TimeoutException,), {}),
+        WriteTimeout=type("WriteTimeout", (_TimeoutException,), {}),
+        PoolTimeout=type("PoolTimeout", (_TimeoutException,), {}),
+    )
 from flask import Flask
 
 from app.services import gemini
@@ -85,6 +99,68 @@ def test_quota_skips_primary_retry_and_sleep(gem, monkeypatch, exc):
     usage(gem, "fallback")
 
 
+class ProviderTimeout(Exception):
+    pass
+
+
+class ProviderFailure(ProviderTimeout):
+    pass
+
+
+@pytest.mark.parametrize("timeout_type", [TimeoutError, httpx.TimeoutException, httpx.ConnectTimeout,
+                                         httpx.ReadTimeout, httpx.WriteTimeout, httpx.PoolTimeout,
+                                         ProviderTimeout, ProviderFailure])
+@pytest.mark.parametrize("fallbacks", [True, False])
+def test_timeout_skips_retry_and_sleep(gem, monkeypatch, timeout_type, fallbacks):
+    if not fallbacks:
+        gem.app.config["GEMINI_FALLBACK_MODELS"] = []
+    exc = timeout_type("x")
+    calls = install(monkeypatch, [exc, '[{"name":"Milk"}]'], gem, [30, 1])
+    if fallbacks:
+        assert gemini._generate("milk", "hint") == [{"name": "Milk"}]
+        usage(gem, "fallback")
+    else:
+        with pytest.raises(gemini.UpstreamError) as caught:
+            gemini._generate("milk", "hint")
+        assert caught.value.__cause__ is exc
+        usage(gem, "primary", "error", "null")
+    assert [c["model"] for c in calls] == (["primary", "fallback"] if fallbacks else ["primary"])
+    assert gem.sleeps == []
+
+
+@pytest.mark.parametrize("explicit_cause", [True, False])
+def test_wrapped_timeout_tries_fallback(gem, monkeypatch, explicit_cause):
+    try:
+        try:
+            raise httpx.ReadTimeout("x")
+        except httpx.ReadTimeout as timeout:
+            if explicit_cause:
+                raise RuntimeError() from timeout
+            raise RuntimeError()
+    except RuntimeError as exc:
+        calls = install(monkeypatch, [exc, "[]"], gem)
+    assert gemini._generate("x", "hint") == []
+    assert [c["model"] for c in calls] == ["primary", "fallback"]
+    assert gem.sleeps == []
+    usage(gem, "fallback")
+
+
+@pytest.mark.parametrize("succeeds", [True, False])
+def test_timeout_on_fallback_moves_to_next_model(gem, monkeypatch, succeeds):
+    exc = httpx.ReadTimeout("x")
+    calls = install(monkeypatch, [exc, exc, "[]" if succeeds else exc], gem)
+    if succeeds:
+        assert gemini._generate("x", "hint") == []
+        usage(gem, "last")
+    else:
+        with pytest.raises(gemini.UpstreamError) as caught:
+            gemini._generate("x", "hint")
+        assert caught.value.__cause__ is exc
+        usage(gem, "last", "error", "null")
+    assert [c["model"] for c in calls] == ["primary", "fallback", "last"]
+    assert gem.sleeps == []
+
+
 @pytest.mark.parametrize("exc", [Err(code=503), Err(code=504), Err("UNAVAILABLE"),
                                  Err("DEADLINE_EXCEEDED")])
 @pytest.mark.parametrize("retry", [True, False])
@@ -149,17 +225,17 @@ def test_each_fallback_gets_only_one_attempt(gem, monkeypatch, succeeds):
     (None, [20, 21], ["primary", "fallback"]),
     (12.5, [13], ["primary"]),
 ])
-def test_budget_stops_before_next_model(gem, monkeypatch, budget, durations, want):
+@pytest.mark.parametrize("exc", [Err(code=429), httpx.ReadTimeout("x")])
+def test_budget_stops_before_next_model(gem, monkeypatch, budget, durations, want, exc):
     if budget is not None:
         gem.app.config["GEMINI_FALLBACK_BUDGET_S"] = budget
-    exc = Err(code=429)
     calls = install(monkeypatch, [exc] * len(durations), gem, durations)
     with pytest.raises(gemini.UpstreamError) as caught:
         gemini._generate("x", "hint")
     assert caught.value.__cause__ is exc
     assert [c["model"] for c in calls] == want
     assert gem.sleeps == []
-    usage(gem, want[-1], "error", "429")
+    usage(gem, want[-1], "error", "429" if isinstance(exc, Err) else "null")
 
 
 def test_budget_boundary_allows_attempt_and_keeps_its_answer(gem, monkeypatch):
