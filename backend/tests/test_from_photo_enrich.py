@@ -236,9 +236,10 @@ def test_duplicate_detections_share_one_question_and_one_answer(app, client, use
     e = stub(monkeypatch)
     body = photo(client, user, enrich="expiry,nutrition").get_json()
     assert [i["name"] for i in e.calls[0]["items"]] == ["Egg", "Milk"] and len(e.calls[0]["crops"]) == 2
-    eggs = body["candidates"][:3]
-    assert len({c["predicted_expiry"] for c in eggs}) == 1 and all(c["nutrition"] == CLEAN for c in eggs)
-    assert body["enrichment"]["enriched"] == 4 and body["enrichment"]["status"] == "ok"
+    # Fridge mode merges identical detections before enrichment (docs/API.md, 2026-11-13): one Egg row, quantity 3.
+    egg = body["candidates"][0]
+    assert len(body["candidates"]) == 2 and egg["name"] == "Egg" and egg["quantity"] == 3 and egg["nutrition"] == CLEAN
+    assert body["enrichment"]["enriched"] == 2 and body["enrichment"]["status"] == "ok"
 
 
 def test_at_most_max_items_foods_are_sent_most_confident_first(app, client, user, monkeypatch, gemini_on):

@@ -261,6 +261,7 @@ post it straight back.
   `200 {candidates: [{name, category, confidence, freshness: "fresh"|"semi_fresh"|"spoiled", bbox: [x1,y1,x2,y2]|null,
   …}], source: "yolo"|"gemini"}`. Uses `ML_SERVICE_URL`/detect when set; if unset **or the ML
   service errors**, falls back to Gemini vision; neither → `502`.
+  In `fridge` mode only, candidates matching on stripped lowercased name, freshness, unit and storage merge before enrichment in first-seen order, summing quantity and taking maximum confidence while retaining the first candidate's other fields.
   `freshness` is normalised server-side for both sources (`candidates.normalize_freshness`): the
   three values pass through; variants map `semi-fresh`/`semi fresh`/`use soon`/… → `semi_fresh`
   and `rotten`/`stale`/`moldy`/`overripe`/`decayed`/… → `spoiled` (case/hyphen/space-insensitive; the word

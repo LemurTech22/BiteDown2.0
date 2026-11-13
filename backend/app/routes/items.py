@@ -593,6 +593,19 @@ def from_photo():
         except gemini.UpstreamError as e:
             raise upstream_unavailable(f"No vision backend available: {e}")
     cands = candidates.normalize_all(raws, source)
+    if mode == "fridge":
+        merged = {}
+        for cand in cands:
+            key = (cand["name"].strip().lower(), cand["freshness"], cand["unit"], cand["storage"])
+            if key not in merged:
+                merged[key] = cand
+                continue
+            first = merged[key]
+            first["quantity"] += cand["quantity"]
+            confidence = cand.get("confidence")
+            if confidence is not None and (first.get("confidence") is None or confidence > first["confidence"]):
+                first["confidence"] = confidence
+        cands = list(merged.values())
     body = {"candidates": cands, "source": source}
     if facets:  # opt-in; enrich.run never raises and never changes the status
         body["enrichment"] = enrich.run(cands, facets, image=data, source=source, started=started)
