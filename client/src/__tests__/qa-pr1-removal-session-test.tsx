@@ -2,6 +2,7 @@ import { act, fireEvent, render } from '@testing-library/react-native';
 
 import { ApiError, ApiProvider, MockApiClient } from '@/api';
 import { FridgeScreen } from '@/features/fridge/fridge-screen';
+import { RecentlyRemovedScreen } from '@/features/removed/recently-removed-screen';
 import { PreferencesProvider } from '@/settings/preferences';
 
 jest.mock('@/hooks/use-reduced-motion', () => ({ useReducedMotion: () => true }));
@@ -56,7 +57,7 @@ test('CL-10: lost batch-removal response can recover on retry and Undo restores 
   expect(await api.getImpact('month')).toEqual(before);
 });
 
-test.each(['used', 'donated'] as const)('CL-10: a partial batch 409 keeps active items selected for %s retry and separate Undo', async (outcome) => {
+test.each(['used', 'donated'] as const)('CL-10: a partial batch 409 keeps active items selected for %s retry and both removals restorable', async (outcome) => {
   const { api, items } = await seed();
   const before = await api.getImpact('month');
   const remove = jest.spyOn(api, 'removeBatch');
@@ -86,14 +87,19 @@ test.each(['used', 'donated'] as const)('CL-10: a partial batch 409 keeps active
   expect(screen.queryByText('Some items were already removed. Try again to remove the rest.')).toBeNull();
   for (const item of items) expect(screen.queryByTestId(`fridge.item.${item.id}`)).toBeNull();
   expect((await api.getImpact('month'))[outcome].count).toBe(2);
+  expect(screen.queryByTestId('fridge.batchUndo.1')).toBeNull();
+  expect(screen.getAllByTestId(/^fridge.batchToast\./)).toHaveLength(1);
 
   await fireEvent.press(await screen.findByTestId('fridge.batchUndo.2'));
   expect(restore).toHaveBeenLastCalledWith([items[1].id]);
   expect(await screen.findByTestId(`fridge.item.${items[1].id}`)).toBeTruthy();
   expect(await api.getImpact('month')).toEqual(afterExternalRemoval);
-  await fireEvent.press(screen.getByTestId('fridge.batchUndo.1'));
-  expect(restore).toHaveBeenLastCalledWith([items[0].id]);
-  for (const item of items) expect(await screen.findByTestId(`fridge.item.${item.id}`)).toBeTruthy();
+  // The newest removal replaced the older panel; Recently removed retains its restore path.
+  await screen.unmount();
+  const history = await render(<ApiProvider client={api}><PreferencesProvider><RecentlyRemovedScreen /></PreferencesProvider></ApiProvider>);
+  await fireEvent.press(await history.findByTestId(`removed.putBack.${items[0].id}`));
+  expect(history.queryByTestId(`removed.item.${items[0].id}`)).toBeNull();
+  expect(await api.getItems()).toEqual({ items });
   expect(await api.getImpact('month')).toEqual(before);
 });
 

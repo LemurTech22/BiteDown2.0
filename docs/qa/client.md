@@ -1,5 +1,48 @@
 # QA: Expo client (`client/`)
 
+## 2026-11-13: Undo panel + Recently removed QA
+
+Scope: HEAD `0c093b9b4ec73e5022d104fc3fcb9dc51201a500`, read with `git show HEAD`, against
+`docs/DECISIONS.md` (2026-11-13 Undo panel decision), `docs/design/SCREENS.md` rows 34/43,
+the restore bullets in `docs/API.md`, and the domain, motion and accessibility rules in `CLAUDE.md`.
+Added 30 QA cases in `src/__tests__/qa-undo-panels-test.tsx`,
+`src/__tests__/qa-undo-fridge-test.tsx` and `src/__tests__/qa-undo-recently-removed-test.tsx`.
+Updated the two used/donated partial-409 cases in `qa-pr1-removal-session-test.tsx` for the
+one-panel rule. Only QA tests and this new section were changed; no feature code or git writes.
+
+| Area | Checked / result |
+|---|---|
+| Eight-second panels | Single and batch panels remain at 7,999 ms and disappear at 8,000 ms. Dismiss hides immediately without reversing the removal; the item stays restorable through Recently removed. PASS. |
+| Accessibility timing | Native screen-reader detection keeps both panels indefinitely; unresolved detection also blocks expiry. A screen-reader change wins over a stale initial query, and subscriptions are removed. With `Platform.OS = 'web'` and `isScreenReaderEnabled` mocked to resolve true, both timers still expire at eight seconds. PASS. |
+| Pending/failure | Both real Fridge restore paths block duplicate taps, keep panels beyond the deadline while pending and failed, show an inline alert and Try again, and restore exact Impact on retry. Component cases also verify Dismiss remains available after failure. PASS. |
+| Replace-on-new | Single replaces single, batch replaces single, batch replaces batch, and single replaces batch. The old timer cannot dismiss its replacement. Only the newest panel is visible; its Undo works and all older removals remain available via Recently removed. Restoring all returns the original items and full Impact exactly. PASS. |
+| CL-10 partial 409 | Used/donated conflicts still leave only active items selected with the exact retry message. Retry sends only the remaining ID and replaces the older panel. The visible batch Undo restores the latest removal and intermediate Impact; Put back in Recently removed restores the older removal and original full Impact. The lost-response recovery regression also passes. PASS. |
+| Recently removed | Real route export checked. Plain/sectioned responses are fetched with `include_removed: true`, flattened, sorted newest first across storage, and filtered at seven days; active, invalid-date, exact-cutoff and older rows are excluded. Just-inside and slightly future server timestamps remain visible. Outcome/relative-time labels match the spec. PASS. |
+| Put back / Impact | Used, donated and thrown-out removals at 6 days 23 h restore the same ID and original storage, clear removal metadata, and return every week/month/all Impact field exactly with unrelated history preserved. Donation reopens the listing. Polite success text, success/error haptics, duplicate-tap blocking, inline failure/retry, and an expiry 409 while a row is open are covered. Mock single/batch refusals at 7 days + 1 minute change neither inventory nor Impact. PASS. |
+| Screen states / navigation | Loading skeleton, load error with working retry, specified empty copy, and the empty state after restoring the last row pass. The Fridge header entry navigates to `/removed`, including with empty inventory. PASS. |
+| Targets / motion | Dismiss and the Fridge entry have explicit 44 x 44 pt styles; Undo, Put back and retry buttons have labelled button roles and minimum height >=44 pt. Entrance animations are short opacity fades (<=0.5 s), with no movement/countdown loop. Fridge scenarios run with Reduce Motion enabled. PASS for component/style evidence. |
+
+Bugs: no new client defects reproduced; CL-30 through CL-39 remain unused. Backend exact-cutoff
+mismatch BE-52 is recorded in `docs/qa/backend.md`; the client mock and filter exclude that age.
+
+### Commands
+
+Run from `client/`:
+
+| Command | Result |
+|---|---|
+| `npx jest src/__tests__/qa-undo-panels-test.tsx src/__tests__/qa-undo-recently-removed-test.tsx src/__tests__/qa-undo-fridge-test.tsx src/__tests__/qa-pr1-removal-session-test.tsx --runInBand` | PASS, exit 0: 4 suites, 36 tests, 0 snapshots. |
+| `npx tsc --noEmit` | PASS, exit 0. |
+| `npx eslint src` | PASS, exit 0 after correcting a render-purity issue in the QA harness. |
+| `npx jest` | PASS, exit 0: 38 suites, 527 tests, 0 snapshots. Includes the demo path and existing feature regressions. |
+
+These are Jest/component and mock-service results. Web timing was exercised through the explicit
+platform branch, not an actual browser. Native screen readers, device hit bounds, AX5 text sizing,
+visual contrast, real animation playback and live-service client integration remain unverified.
+No Android/iOS build, browser export or device run was performed.
+
+**Verdict: PASS**
+
 ## 2026-11-13: PR #1 full QA
 
 Scope: `git diff origin/main...HEAD`, `feat/expo-android` at `fb5e08a`, against `CLAUDE.md`
