@@ -2,6 +2,14 @@
 
 Newest first. Each entry: date, decision, why, alternatives considered.
 
+## 2026-11-13: GitHub CI retired (owner ruling)
+- **No more GitHub Actions CI.** The orchestrator (Claude) runs the checks CI ran and records them in the `docs/QA.md`
+  sign-off log: the backend suite (not slow, Gemini `.env` overrides blanked), client `tsc`, lint and Jest, and the iOS
+  Smoke plan on a Mac when iOS changes. Why: Actions is locked by a billing issue on the repo owner's account (no job has
+  started since 2026-11-06). The owner said: "Let that be directly through you." An iOS change with no Mac run merges
+  only on a recorded owner ruling. Supersedes the 2026-10-19 "PRs wait for green CI" rule. The workflows stay in
+  `.github/workflows/` unused.
+
 ## 2026-11-13: Sharing, storage moves and "pantry" wording (owner rulings)
 - **Shared food lists your own open shares.** The Expo screen adds a "You're sharing" section (All filter only),
   built from `GET /items` (`share.status == "open"`). `GET /share` still excludes the caller's own listings, so the
