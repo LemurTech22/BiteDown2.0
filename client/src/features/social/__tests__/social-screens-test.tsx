@@ -156,6 +156,73 @@ describe('Social board and Offer confirmation', () => {
 });
 
 describe('Food Pantry', () => {
+  test('shows your open share, opens its item and keeps it after claiming another listing', async () => {
+    const api = await seededClient();
+    const { items: [item] } = await api.createItems({ items: [{ name: 'Own rice', quantity: 1, unit: 'kg', predicted_expiry: '2026-11-20' }] });
+    const { listing } = await api.createShare({ item_id: item.id });
+    expect((await api.getShare()).listings.some((entry) => entry.id === listing.id)).toBe(false);
+    const getItems = jest.spyOn(api, 'getItems');
+    const screen = await mount(api, <PantryScreen />);
+    expect(await screen.findByTestId(`foodPantry.mine.${item.id}`)).toBeTruthy();
+    expect(screen.getByTestId('foodPantry.mine.header')).toHaveTextContent("You're sharing");
+    expect(screen.getByTestId('foodPantry.mine.header')).toHaveProp('accessibilityRole', 'header');
+    expect(screen.getByText('Own rice, 2.2 lb')).toBeTruthy();
+    expect(screen.getByText('Not claimed yet')).toBeTruthy();
+    expect(screen.getByTestId(`foodPantry.mine.expiry.${item.id}`)).toBeTruthy();
+    expect(screen.queryByTestId(`foodPantry.claim.${listing.id}`)).toBeNull();
+    expect(getItems).toHaveBeenCalledWith();
+    await fireEvent.press(screen.getByRole('button', { name: `${item.name}, shared by you` }));
+    expect(router.push).toHaveBeenCalledWith({ pathname: '/item/[id]', params: { id: item.id } });
+    await fireEvent.press(screen.getByTestId('foodPantry.claim.listing-seed-0'));
+    await screen.findByTestId('foodPantry.claimed.listing-seed-0');
+    expect(screen.getByTestId(`foodPantry.mine.${item.id}`)).toBeTruthy();
+  });
+
+  test('hides your shares under source filters and shows the empty state only for those filters', async () => {
+    const api = await seededClient();
+    const { items: [item] } = await api.createItems({ items: [{ name: 'Own apples' }] });
+    await api.createShare({ item_id: item.id });
+    jest.spyOn(api, 'getShare').mockResolvedValue({ listings: [] });
+    const screen = await mount(api, <PantryScreen />);
+    await screen.findByTestId(`foodPantry.mine.${item.id}`);
+    expect(screen.queryByTestId('foodPantry.empty.state')).toBeNull();
+    for (const filter of ['friends', 'groups']) {
+      await fireEvent.press(screen.getByTestId(`foodPantry.filter.${filter}`));
+      expect(screen.queryByTestId('foodPantry.mine.header')).toBeNull();
+      expect(screen.queryByTestId(`foodPantry.mine.${item.id}`)).toBeNull();
+      expect(screen.getByText('No shared food yet')).toBeTruthy();
+      expect(screen.getByText(`No food shared by ${filter} right now.`)).toBeTruthy();
+    }
+    await fireEvent.press(screen.getByTestId('foodPantry.filter.all'));
+    expect(screen.getByTestId(`foodPantry.mine.${item.id}`)).toBeTruthy();
+    expect(screen.queryByTestId('foodPantry.empty.state')).toBeNull();
+  });
+
+  test('flattens item sections and includes only active personal open shares with claimant names', async () => {
+    const api = await seededClient();
+    const { items: [item] } = await api.createItems({ items: [{ name: 'Own bread' }] });
+    await api.createShare({ item_id: item.id });
+    const response = await api.getItems();
+    const shared = 'items' in response ? response.items.find((entry) => entry.id === item.id)! : response.sections[0].items[0];
+    jest.spyOn(api, 'getItems').mockResolvedValue({ sections: [
+      { food_group: 'grains', items: [shared] },
+      { food_group: 'other', items: [
+        { ...shared, id: 'claimed', share: { ...shared.share!, claimed_by: { id: 'friend-ana', name: 'Ana Rivera' } } },
+        { ...shared, id: 'removed', removed_at: new Date().toISOString() },
+        { ...shared, id: 'group', group_id: 'group-flat' },
+        { ...shared, id: 'fulfilled', share: { ...shared.share!, status: 'fulfilled' } },
+        { ...shared, id: 'unshared', share: null },
+      ] },
+    ] });
+    const screen = await mount(api, <PantryScreen />);
+    expect(await screen.findByTestId(`foodPantry.mine.${item.id}`)).toBeTruthy();
+    expect(screen.getByTestId('foodPantry.mine.claimed')).toBeTruthy();
+    expect(screen.getByText('Claimed by Ana Rivera')).toBeTruthy();
+    for (const id of ['removed', 'group', 'fulfilled', 'unshared']) {
+      expect(screen.queryByTestId(`foodPantry.mine.${id}`)).toBeNull();
+    }
+  });
+
   test('filters sources, claims once and opens the claimed listing by share id', async () => {
     const api = await seededClient();
     const claim = jest.spyOn(api, 'claimShare');
