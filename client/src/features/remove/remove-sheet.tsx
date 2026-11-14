@@ -6,6 +6,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { isApiError, useApi, type Item, type ReachablePerson, type RemoveItemInput, type WasteReason } from '@/api';
 import { AppButton } from '@/components/ui/app-button';
 import { AppIcon, type IconName } from '@/components/ui/app-icon';
+import { bottomSheetPanelStyle } from '@/components/ui/bottom-sheet-panel-style';
 import { FadeIn } from '@/components/ui/fade-in';
 import { SkeletonRows } from '@/components/ui/skeleton-rows';
 import { ExpiryBadge } from '@/features/fridge/expiry-badge';
@@ -104,7 +105,7 @@ export function RemoveSheet({ item, initialShared = false, units = 'us', onClose
       testID="remove.sheet.modal">
       <SafeAreaView style={styles.screen}>
         <ScrollView contentContainerStyle={styles.content}>
-          <View accessibilityViewIsModal style={styles.sheet}>
+          <View accessibilityViewIsModal testID="remove.sheet.panel" style={[styles.sheet, bottomSheetPanelStyle(theme)]}>
             {reasonStep ? (
               <AppButton
                 label="Back"

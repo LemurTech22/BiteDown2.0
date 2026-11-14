@@ -86,7 +86,7 @@ export function ItemRow({ item, last, onRemove, onMove, selecting = false, selec
       </Pressable> : null}
       {!selecting ? <Pressable accessibilityRole="button" accessibilityLabel={`Remove ${item.name}`}
         testID={`fridge.remove.${item.id}`} disabled={disabled} onPress={remove} style={styles.action}>
-        <AppIcon name="tray-arrow-up" color={theme.colors.forest} size={theme.sizes.icon} />
+        <AppIcon name="check-circle-outline" color={theme.colors.forest} size={theme.sizes.icon} />
       </Pressable> : null}
     </View>
   );

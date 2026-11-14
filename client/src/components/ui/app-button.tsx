@@ -1,8 +1,8 @@
-import { ActivityIndicator, Pressable, StyleSheet, Text } from 'react-native';
+import { ActivityIndicator, Pressable, type PressableProps, StyleSheet, Text } from 'react-native';
 
 import { type AppTheme, useTheme } from '@/theme';
 
-interface AppButtonProps {
+interface AppButtonProps extends Pick<PressableProps, 'onFocus' | 'onBlur' | 'onPressIn' | 'onPressOut'> {
   label: string;
   testID: string;
   onPress: () => void;
@@ -20,6 +20,7 @@ export function AppButton({
   disabled = false,
   loading = false,
   variant = 'primary',
+  ...interactionProps
 }: AppButtonProps) {
   const theme = useTheme();
   const styles = createStyles(theme);
@@ -27,6 +28,7 @@ export function AppButton({
 
   return (
     <Pressable
+      {...interactionProps}
       accessibilityRole="button"
       accessibilityLabel={accessibilityLabel ?? label}
       accessibilityState={{ disabled: unavailable, busy: loading }}

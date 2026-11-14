@@ -10,6 +10,7 @@ import { useAuth } from '@/auth/auth-provider';
 import { SectionError, useServerErrorReporter } from '@/components/server-error';
 import { AppButton } from '@/components/ui/app-button';
 import { AppIcon } from '@/components/ui/app-icon';
+import { bottomSheetPanelStyle } from '@/components/ui/bottom-sheet-panel-style';
 import { IconButton } from '@/components/ui/icon-button';
 import { SkeletonRows } from '@/components/ui/skeleton-rows';
 import { StateView } from '@/components/ui/state-view';
@@ -26,7 +27,8 @@ export function SettingsScreen() {
   const { signOut } = useAuth();
   const preferences = usePreferences();
   const reportError = useServerErrorReporter();
-  const styles = createStyles(useTheme());
+  const theme = useTheme();
+  const styles = createStyles(theme);
   const reducedMotion = useReducedMotion();
   const [profile, setProfile] = useState<AuthMeResponse | null>(null);
   const [loading, setLoading] = useState(true);
@@ -178,7 +180,7 @@ export function SettingsScreen() {
       <Modal visible={confirming} animationType={reducedMotion ? 'fade' : 'slide'} presentationStyle="pageSheet"
         onRequestClose={() => { if (!busy.current && !deleted.current) setConfirming(false); }} testID="settings.delete.modal">
         <SafeAreaView style={styles.screen}>
-          <ScrollView contentContainerStyle={styles.content}>
+          <ScrollView contentContainerStyle={[styles.content, bottomSheetPanelStyle(theme)]}>
             <View accessibilityViewIsModal style={styles.confirmation}>
               <Text accessibilityRole="header" style={styles.title}>Delete account?</Text>
               <Text style={styles.body}>{DELETION_COPY}</Text>

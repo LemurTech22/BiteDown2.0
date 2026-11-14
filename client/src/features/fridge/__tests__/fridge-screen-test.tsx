@@ -1,6 +1,6 @@
 import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
 import { router } from 'expo-router';
-import { PanResponder, Platform } from 'react-native';
+import { PanResponder, Platform, StyleSheet } from 'react-native';
 
 import { ApiError, ApiProvider, MockApiClient } from '@/api';
 import type { Item, ItemsResponse } from '@/api/types';
@@ -8,6 +8,7 @@ import { FridgeScreen } from '@/features/fridge/fridge-screen';
 import { groupItems } from '@/features/fridge/fridge-utils';
 import { ItemRow } from '@/features/fridge/item-row';
 import { PreferencesProvider } from '@/settings/preferences';
+import { spacing } from '@/theme';
 
 jest.mock('@/hooks/use-reduced-motion', () => ({ useReducedMotion: () => true }));
 
@@ -74,6 +75,52 @@ async function seededClient() {
 describe('Fridge', () => {
   beforeEach(() => jest.clearAllMocks());
   afterEach(() => { jest.restoreAllMocks(); jest.useRealTimers(); });
+
+  test.each([
+    ['ios', 'single'], ['ios', 'batch'],
+    ['android', 'single'], ['android', 'batch'],
+    ['web', 'single'], ['web', 'batch'],
+  ] as const)('%s %s Undo scrolls inside a pass-through overlay and reserves measured space without changing the list viewport', async (platform, kind) => {
+    jest.replaceProperty(Platform, 'OS', platform);
+    const api = await seededClient();
+    const { items: [item] } = await api.getItems({ storage: 'fridge' }) as ItemsResponse;
+    const screen = await renderFridge(api);
+    await screen.findByText('Apples');
+    const list = screen.getByLabelText('fridge food');
+    const viewport = { style: list.props.style, height: list.props.height, contentOffset: list.props.contentOffset };
+    expect(StyleSheet.flatten(list.props.contentContainerStyle).paddingBottom).toBe(spacing.xxl);
+    expect(screen.queryByTestId('fridge.undoOverlay')).toBeNull();
+    if (kind === 'single') {
+      await fireEvent.press(screen.getByTestId(`fridge.remove.${item.id}`));
+      await fireEvent.press(screen.getByTestId('remove.outcome.used'));
+      expect(screen.queryByTestId('remove.sheet.modal')).toBeNull();
+    } else {
+      await fireEvent.press(screen.getByTestId('fridge.selection.start'));
+      await fireEvent.press(screen.getByTestId(`fridge.select.${item.id}`));
+      await fireEvent.press(screen.getByTestId('fridge.batch.used'));
+    }
+    const overlay = screen.getByTestId('fridge.undoOverlay');
+    expect(overlay).toHaveStyle({ position: 'absolute', pointerEvents: 'box-none', left: spacing.gutter, right: spacing.gutter, bottom: spacing.sm, maxHeight: '40%' });
+    const toast = screen.getByTestId(kind === 'single' ? `remove.toast.${item.id}` : 'fridge.batchToast.1');
+    let scroller = toast.parent;
+    while (scroller && !scroller.props.contentContainerStyle) scroller = scroller.parent;
+    expect(scroller).not.toBeNull();
+    expect(overlay.children).toEqual([scroller]);
+    expect(scroller).toHaveStyle({ pointerEvents: 'box-none', flexGrow: 0, flexShrink: 1 });
+    expect(scroller!.props.pointerEvents).toBeUndefined();
+    expect(StyleSheet.flatten(scroller!.props.contentContainerStyle)).toEqual({ pointerEvents: 'box-none', gap: spacing.sm });
+    // These props preserve descendant hit targets; physical coordinate hit testing needs a device/browser.
+    expect(StyleSheet.flatten(toast.props.style).pointerEvents ?? 'auto').toBe('auto');
+    await fireEvent(overlay, 'layout', { nativeEvent: { layout: { x: 0, y: 0, width: 360, height: 160 } } });
+    const updated = screen.getByLabelText('fridge food');
+    expect({ style: updated.props.style, height: updated.props.height, contentOffset: updated.props.contentOffset }).toEqual(viewport);
+    expect(StyleSheet.flatten(updated.props.contentContainerStyle).paddingBottom).toBe(spacing.xxl + 160 + spacing.sm);
+    await fireEvent(overlay, 'layout', { nativeEvent: { layout: { x: 0, y: 0, width: 360, height: 200 } } });
+    expect(StyleSheet.flatten(screen.getByLabelText('fridge food').props.contentContainerStyle).paddingBottom).toBe(spacing.xxl + 200 + spacing.sm);
+    await fireEvent.press(screen.getByTestId(kind === 'single' ? `undo.dismiss.${item.id}` : 'fridge.batchUndo.dismiss.1'));
+    expect(screen.queryByTestId('fridge.undoOverlay')).toBeNull();
+    expect(StyleSheet.flatten(screen.getByLabelText('fridge food').props.contentContainerStyle).paddingBottom).toBe(spacing.xxl);
+  });
 
   test('Recently removed header entry is accessible and navigates even with empty food', async () => {
     const api = await seededClient();
@@ -286,8 +333,14 @@ describe('Fridge', () => {
     await fireEvent.press(screen.getByTestId('fridge.selection.start'));
     await fireEvent.press(screen.getByTestId(`fridge.select.${item.id}`));
     await fireEvent.press(screen.getByTestId('fridge.batch.used'));
+    const overlay = screen.getByTestId('fridge.undoOverlay');
+    const [scroller] = overlay.children;
+    await fireEvent(overlay, 'layout', { nativeEvent: { layout: { x: 0, y: 0, width: 360, height: 140 } } });
     await fireEvent.press(screen.getByTestId('fridge.batchUndo.1'));
     expect(await screen.findByText('Undo failed')).toBeTruthy();
+    expect(screen.getByTestId('fridge.undoOverlay').children).toEqual([scroller]);
+    await fireEvent(overlay, 'layout', { nativeEvent: { layout: { x: 0, y: 0, width: 360, height: 200 } } });
+    expect(StyleSheet.flatten(screen.getByLabelText('fridge food').props.contentContainerStyle).paddingBottom).toBe(spacing.xxl + 200 + spacing.sm);
     await fireEvent.press(screen.getByTestId('fridge.batchUndo.1'));
     expect(await screen.findByTestId(`fridge.item.${item.id}`)).toBeTruthy();
     expect(restore).toHaveBeenCalledTimes(2);

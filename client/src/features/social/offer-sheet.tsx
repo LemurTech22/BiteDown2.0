@@ -7,6 +7,7 @@ import { useApi, type FoodRequest } from '@/api';
 import { reportServerError } from '@/components/server-error';
 import { AppButton } from '@/components/ui/app-button';
 import { AppIcon, type IconName } from '@/components/ui/app-icon';
+import { bottomSheetPanelStyle } from '@/components/ui/bottom-sheet-panel-style';
 import { SkeletonRows } from '@/components/ui/skeleton-rows';
 import { useReducedMotion } from '@/hooks/use-reduced-motion';
 import { useTheme } from '@/theme';
@@ -52,7 +53,7 @@ export function OfferSheet({ request, onClose, onFulfilled }: {
   return <Modal visible presentationStyle="pageSheet" animationType={reducedMotion ? 'fade' : 'slide'}
     onRequestClose={() => { if (!busy.current) onClose(); }} testID="offer.sheet.modal">
     <SafeAreaView style={styles.screen}>
-      <ScrollView contentContainerStyle={[styles.content, { paddingTop: theme.spacing.gutter, justifyContent: 'flex-end' }]}>
+      <ScrollView contentContainerStyle={[styles.content, bottomSheetPanelStyle(theme), { paddingTop: theme.spacing.gutter, justifyContent: 'flex-end' }]}>
         <View accessibilityViewIsModal style={styles.section}>
           <Text accessibilityRole="header" style={styles.heading}>Tell {request.author_name} you have it?</Text>
           <RequestNote request={request} full />

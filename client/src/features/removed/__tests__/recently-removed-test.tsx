@@ -5,6 +5,7 @@ import { ApiProvider, MockApiClient, type Item, type ItemsResponse } from '@/api
 import { RESTORE_WINDOW_MS } from '@/api/removal-window';
 import { RecentlyRemovedScreen } from '@/features/removed/recently-removed-screen';
 import { PreferencesProvider } from '@/settings/preferences';
+import { spacing } from '@/theme';
 
 jest.mock('expo-haptics', () => ({
   notificationAsync: jest.fn(() => Promise.resolve()),
@@ -53,6 +54,9 @@ test.each(['used', 'donated', 'thrown_out'] as const)('Put back reverses %s Impa
   const restore = jest.spyOn(api, 'restoreItem');
   const screen = await renderRemoved(api);
   await screen.findByTestId(`removed.item.${item.id}`);
+  const liveRegion = screen.getByTestId('removed.message');
+  expect(liveRegion).toHaveTextContent('');
+  expect(liveRegion).not.toHaveStyle({ marginTop: spacing.md });
   expect(screen.getByText(new RegExp(`^${outcome === 'used' ? 'Used' : outcome === 'donated' ? 'Shared' : 'Thrown out'} ·`))).toBeTruthy();
   const button = screen.getByTestId(`removed.putBack.${item.id}`);
   expect(button).toHaveProp('accessibilityLabel', 'Put back Apples');
@@ -60,6 +64,8 @@ test.each(['used', 'donated', 'thrown_out'] as const)('Put back reverses %s Impa
   expect(restore).toHaveBeenCalledWith(item.id);
   expect(screen.queryByTestId(`removed.item.${item.id}`)).toBeNull();
   expect(screen.getByText(`Apples is back in ${storage[0].toUpperCase()}${storage.slice(1)}`)).toHaveProp('accessibilityLiveRegion', 'polite');
+  expect(screen.getByText(`Apples is back in ${storage[0].toUpperCase()}${storage.slice(1)}`)).toBe(liveRegion);
+  expect(liveRegion).toHaveStyle({ marginTop: spacing.md });
   expect(Haptics.notificationAsync).toHaveBeenLastCalledWith('success');
   expect(await api.getImpact('all')).toEqual(before);
   expect((await api.getItems() as ItemsResponse).items).toContainEqual(item);

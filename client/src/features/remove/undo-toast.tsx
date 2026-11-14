@@ -10,17 +10,23 @@ import { type AppTheme, useTheme } from '@/theme';
 export function UndoToast({ entry, onUndo, onDismiss }: { entry: UndoEntry; onUndo: () => void; onDismiss: () => void }) {
   const theme = useTheme();
   const styles = createStyles(theme);
-  useUndoToastTimeout(entry.toastExpiresAt, entry.restoring || !!entry.error, onDismiss);
+  const { pause, resume } = useUndoToastTimeout(entry.toastExpiresAt, entry.restoring || !!entry.error, onDismiss);
+  const buttonInteractions = {
+    onFocus: () => pause('focus'), onBlur: () => resume('focus'),
+    onPressIn: () => pause('press'), onPressOut: () => resume('press'),
+  };
   return (
-    <FadeIn style={styles.toast} testID={`remove.toast.${entry.item.id}`}>
+    <FadeIn style={styles.toast} testID={`remove.toast.${entry.item.id}`}
+      onPointerEnter={() => pause('hover')} onPointerLeave={() => resume('hover')}>
       <View style={styles.header}>
         <Text accessibilityLiveRegion="polite" style={styles.label}>{entry.item.name} removed</Text>
-        <Pressable accessibilityRole="button" accessibilityLabel="Dismiss" testID={`undo.dismiss.${entry.item.id}`} onPress={onDismiss} style={styles.dismiss}>
+        <Pressable {...buttonInteractions} accessibilityRole="button" accessibilityLabel="Dismiss" testID={`undo.dismiss.${entry.item.id}`} onPress={onDismiss} style={styles.dismiss}>
           <AppIcon name="close" color={theme.colors.ink} size={theme.sizes.icon} />
         </Pressable>
       </View>
       {entry.error ? <Text accessibilityRole="alert" style={styles.error}>{entry.error}</Text> : null}
       <AppButton
+        {...buttonInteractions}
         label={entry.error ? 'Try again' : 'Undo'}
         accessibilityLabel={`${entry.error ? 'Try again to undo' : 'Undo'} removal of ${entry.item.name}`}
         loading={entry.restoring}

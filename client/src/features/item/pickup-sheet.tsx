@@ -6,6 +6,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import type { PickupSpot } from '@/api';
 import { AppButton } from '@/components/ui/app-button';
 import { AppIcon } from '@/components/ui/app-icon';
+import { bottomSheetPanelStyle } from '@/components/ui/bottom-sheet-panel-style';
 import { SkeletonRows } from '@/components/ui/skeleton-rows';
 import { useReducedMotion } from '@/hooks/use-reduced-motion';
 import { usePreferences } from '@/settings/preferences';
@@ -51,7 +52,7 @@ export function PickupSheet({ pickup, onSave, onClose }: {
     <SafeAreaView style={styles.screen}>
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }}>
         <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.content}>
-          <View accessibilityViewIsModal style={styles.sheet}>
+          <View accessibilityViewIsModal style={[styles.sheet, bottomSheetPanelStyle(theme)]}>
             <View style={styles.header}><AppButton label="Cancel" variant="outline" disabled={pending} testID="item.pickup.cancel" onPress={onClose} />
               <Text accessibilityRole="header" style={styles.title}>Pickup spot</Text>
               <AppButton label="Done" testID="item.pickup.done" disabled={pending || !valid} onPress={() => void perform(() => save(spot))} /></View>

@@ -1,16 +1,16 @@
 import { type PropsWithChildren, useEffect } from 'react';
-import { Animated, type StyleProp, type ViewStyle } from 'react-native';
+import { Animated, type StyleProp, type ViewProps, type ViewStyle } from 'react-native';
 import { useAnimatedValue } from '@/hooks/use-animated-value';
 
 import { useTheme } from '@/theme';
 
-interface FadeInProps extends PropsWithChildren {
+interface FadeInProps extends PropsWithChildren, Pick<ViewProps, 'onPointerEnter' | 'onPointerLeave'> {
   delay?: number;
   style?: StyleProp<ViewStyle>;
   testID?: string;
 }
 
-export function FadeIn({ children, delay = 0, style, testID }: FadeInProps) {
+export function FadeIn({ children, delay = 0, style, testID, ...viewProps }: FadeInProps) {
   const theme = useTheme();
   const opacity = useAnimatedValue(0);
 
@@ -26,7 +26,7 @@ export function FadeIn({ children, delay = 0, style, testID }: FadeInProps) {
   }, [delay, opacity, theme.motion.quickMs]);
 
   return (
-    <Animated.View style={[style, { opacity }]} testID={testID}>
+    <Animated.View {...viewProps} style={[style, { opacity }]} testID={testID}>
       {children}
     </Animated.View>
   );

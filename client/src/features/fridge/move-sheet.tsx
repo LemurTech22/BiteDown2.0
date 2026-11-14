@@ -4,6 +4,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { useApi, type Item, type Storage } from '@/api';
 import { AppButton } from '@/components/ui/app-button';
+import { bottomSheetPanelStyle } from '@/components/ui/bottom-sheet-panel-style';
 import { SkeletonRows } from '@/components/ui/skeleton-rows';
 import { StateView } from '@/components/ui/state-view';
 import { useReducedMotion } from '@/hooks/use-reduced-motion';
@@ -57,7 +58,7 @@ export function MoveSheet({ item, onClose, onMoved }: {
       onRequestClose={() => { if (!submitting.current) onClose(); }} testID="fridge.move.sheet">
       <SafeAreaView style={styles.screen}>
         <ScrollView contentContainerStyle={styles.content}>
-          <View accessibilityViewIsModal style={styles.sheet}>
+          <View accessibilityViewIsModal testID="fridge.move.panel" style={[styles.sheet, bottomSheetPanelStyle(theme)]}>
             <Text accessibilityRole="header" style={styles.title}>Move {item.name} to…</Text>
             {item.expiry_source === 'user' ? <Pressable style={styles.switchRow}
               accessibilityRole="switch" accessibilityState={{ checked: reestimate, disabled: pending }}

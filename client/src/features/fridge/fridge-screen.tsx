@@ -44,6 +44,7 @@ export function FridgeScreen() {
   const [batchPending, setBatchPending] = useState(false);
   const [batchError, setBatchError] = useState('');
   const [batches, setBatches] = useState<BatchUndo[]>([]);
+  const [undoHeight, setUndoHeight] = useState(0);
   const batchWorking = useRef(false);
   const restoringBatches = useRef(new Set<number>());
   const batchSequence = useRef(0);
@@ -58,6 +59,7 @@ export function FridgeScreen() {
   const requestSequence = useRef(0);
   const mutations = useRef({ version: 0, items: new Map<string, { version: number; item: Item }>() });
   const { entries, remember, undo, dismiss } = useRemovalUndo(applyItem);
+  const hasUndo = batches.length > 0 || entries.length > 0;
   const styles = createStyles(theme);
 
   useEffect(() => {
@@ -196,7 +198,7 @@ export function FridgeScreen() {
       <ScrollView
         accessibilityLabel={`${storage} food`}
         style={styles.content}
-        contentContainerStyle={styles.listContent}
+        contentContainerStyle={[styles.listContent, hasUndo && { paddingBottom: theme.spacing.xxl + undoHeight + theme.spacing.sm }]}
         showsVerticalScrollIndicator={false}>
         {loading ? <SkeletonRows testID="fridge.loading.skeleton" /> : null}
         {state.status === 'error' ? (
@@ -264,15 +266,16 @@ export function FridgeScreen() {
         <AppButton label="Used them" testID="fridge.batch.used" disabled={batchPending || selected.length === 0} onPress={() => void removeSelected('used')} />
         <AppButton label="Shared them" testID="fridge.batch.donated" variant="outline" disabled={batchPending || selected.length === 0} onPress={() => void removeSelected('donated')} />
       </View> : null}
-      {batches.map((entry) => <BatchUndoToast key={entry.id} entry={entry} onUndo={() => void undoBatch(entry)}
-        onDismiss={() => setBatches((current) => current.filter((batch) => batch.id !== entry.id))} />)}
-      {entries.length > 0 ? (
+      {hasUndo ? <View style={styles.undoOverlay} testID="fridge.undoOverlay"
+        onLayout={(event) => setUndoHeight(event.nativeEvent.layout.height)}>
         <ScrollView style={styles.toasts} contentContainerStyle={styles.toastContent}>
+          {batches.map((entry) => <BatchUndoToast key={entry.id} entry={entry} onUndo={() => void undoBatch(entry)}
+            onDismiss={() => setBatches((current) => current.filter((batch) => batch.id !== entry.id))} />)}
           {entries.map((entry) => (
             <UndoToast key={entry.item.id} entry={entry} onUndo={() => void undo(entry)} onDismiss={() => dismiss(entry.item.id)} />
           ))}
         </ScrollView>
-      ) : null}
+      </View> : null}
       {removing ? (
         <RemoveSheet
           key={removing.id}
@@ -314,8 +317,9 @@ function createStyles(theme: AppTheme) {
     title: { ...theme.type.screenTitle, color: theme.colors.ink },
     confirmation: { ...theme.type.body, color: theme.colors.forest },
     content: { flex: 1 },
-    toasts: { flexGrow: 0, flexShrink: 1, maxHeight: '40%' },
-    toastContent: { gap: theme.spacing.sm, paddingBottom: theme.spacing.sm },
+    undoOverlay: { position: 'absolute', pointerEvents: 'box-none', bottom: theme.spacing.sm, left: theme.spacing.gutter, right: theme.spacing.gutter, maxHeight: '40%' },
+    toasts: { pointerEvents: 'box-none', flexGrow: 0, flexShrink: 1 },
+    toastContent: { pointerEvents: 'box-none', gap: theme.spacing.sm },
     listContent: { flexGrow: 1, gap: theme.spacing.lg, paddingBottom: theme.spacing.xxl },
     section: { gap: theme.spacing.sm },
     sectionHeader: { alignItems: 'center', flexDirection: 'row', gap: theme.spacing.sm },

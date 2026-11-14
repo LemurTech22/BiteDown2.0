@@ -11,16 +11,21 @@ export interface BatchUndo { id: number; itemIds: string[]; outcome: 'used' | 'd
 export function BatchUndoToast({ entry, onUndo, onDismiss }: { entry: BatchUndo; onUndo: () => void; onDismiss: () => void }) {
   const theme = useTheme();
   const styles = createStyles(theme);
-  useUndoToastTimeout(entry.toastExpiresAt, entry.pending || !!entry.error, onDismiss);
-  return <FadeIn style={styles.toast} testID={`fridge.batchToast.${entry.id}`}>
+  const { pause, resume } = useUndoToastTimeout(entry.toastExpiresAt, entry.pending || !!entry.error, onDismiss);
+  const buttonInteractions = {
+    onFocus: () => pause('focus'), onBlur: () => resume('focus'),
+    onPressIn: () => pause('press'), onPressOut: () => resume('press'),
+  };
+  return <FadeIn style={styles.toast} testID={`fridge.batchToast.${entry.id}`}
+    onPointerEnter={() => pause('hover')} onPointerLeave={() => resume('hover')}>
     <View style={styles.header}>
       <Text accessibilityLiveRegion="polite" style={styles.label}>{entry.itemIds.length} items marked {entry.outcome === 'used' ? 'used' : 'shared'}</Text>
-      <Pressable accessibilityRole="button" accessibilityLabel="Dismiss" testID={`fridge.batchUndo.dismiss.${entry.id}`} onPress={onDismiss} style={styles.dismiss}>
+      <Pressable {...buttonInteractions} accessibilityRole="button" accessibilityLabel="Dismiss" testID={`fridge.batchUndo.dismiss.${entry.id}`} onPress={onDismiss} style={styles.dismiss}>
         <AppIcon name="close" color={theme.colors.onForest} size={theme.sizes.icon} />
       </Pressable>
     </View>
     {entry.error ? <Text accessibilityRole="alert" style={styles.error}>{entry.error}</Text> : null}
-    <AppButton label={entry.error ? 'Try again' : 'Undo'} testID={`fridge.batchUndo.${entry.id}`} variant="outline" loading={entry.pending} onPress={onUndo} />
+    <AppButton {...buttonInteractions} label={entry.error ? 'Try again' : 'Undo'} testID={`fridge.batchUndo.${entry.id}`} variant="outline" loading={entry.pending} onPress={onUndo} />
   </FadeIn>;
 }
 

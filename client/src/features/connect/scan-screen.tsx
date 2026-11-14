@@ -10,6 +10,7 @@ import { isApiError, useApi, type Friend, type FriendsResponse } from '@/api';
 import { reportServerError } from '@/components/server-error';
 import { AppButton } from '@/components/ui/app-button';
 import { AppIcon } from '@/components/ui/app-icon';
+import { bottomSheetPanelStyle } from '@/components/ui/bottom-sheet-panel-style';
 import { IconButton } from '@/components/ui/icon-button';
 import { SkeletonRows } from '@/components/ui/skeleton-rows';
 import { StateView } from '@/components/ui/state-view';
@@ -148,7 +149,7 @@ export function ScanScreen() {
     <Modal visible={!!success} transparent animationType={reducedMotion ? 'fade' : 'slide'}
       onRequestClose={close} testID="friendAdded.sheet.modal">
       {success ? <SafeAreaView style={{ flex: 1, justifyContent: 'flex-end' }}>
-        <ScrollView style={{ flexGrow: 0 }} contentContainerStyle={[styles.content, { backgroundColor: theme.colors.ground,
+        <ScrollView style={[{ flexGrow: 0 }, bottomSheetPanelStyle(theme)]} contentContainerStyle={[styles.content, { backgroundColor: theme.colors.ground,
           alignItems: 'center', borderTopLeftRadius: theme.radii.sheet, borderTopRightRadius: theme.radii.sheet }]}>
           <View accessibilityViewIsModal style={{ alignSelf: 'stretch', gap: theme.spacing.sheetSection, alignItems: 'center' }}>
             <View style={[styles.avatar, { minWidth: theme.sizes.brandMark, minHeight: theme.sizes.brandMark }]}>

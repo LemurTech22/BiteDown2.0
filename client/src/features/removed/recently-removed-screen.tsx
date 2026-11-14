@@ -86,7 +86,7 @@ export function RecentlyRemovedScreen() {
   }
 
   return <SafeAreaView edges={['bottom']} style={styles.screen}>
-    <Text accessibilityLiveRegion="polite" style={styles.message}>{message}</Text>
+    <Text testID="removed.message" accessibilityLiveRegion="polite" style={[styles.message, !!message && styles.messageSpacing]}>{message}</Text>
     <ScrollView contentContainerStyle={styles.content}>
       {status === 'loading' ? <SkeletonRows testID="removed.loading" /> : null}
       {status === 'error' ? <StateView icon="cloud-off-outline" title="Couldn’t load recently removed food" message={error}
@@ -114,6 +114,7 @@ function createStyles(theme: AppTheme) {
     screen: { flex: 1, backgroundColor: theme.colors.ground, paddingHorizontal: theme.spacing.gutter },
     content: { flexGrow: 1, gap: theme.spacing.sm, paddingVertical: theme.spacing.lg },
     message: { ...theme.type.body, color: theme.colors.forest },
+    messageSpacing: { marginTop: theme.spacing.md },
     row: { backgroundColor: theme.colors.surface, borderRadius: theme.radii.row, padding: theme.spacing.md, gap: theme.spacing.sm },
     rowContent: { flexDirection: 'row', alignItems: 'center', gap: theme.spacing.sm, flexWrap: 'wrap' },
     copy: { flex: 1, gap: theme.spacing.xxs },
