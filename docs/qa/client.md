@@ -6,27 +6,30 @@ Scope: `git diff origin/main...HEAD`, `feat/expo-android` at `fb5e08a`, against 
 and `docs/API.md`. Formal QA of the rest of PR #1; the checkpoint 18 sign-off below is preserved.
 Added only `client/src/__tests__/qa-pr1-removal-session-test.tsx` and this section.
 Feature code, other documentation and iOS files were not edited. All git commands were read-only.
+Re-verified CL-10/CL-11 on 2026-11-13 at fix commit `25cf826` (HEAD), read with `git show HEAD`.
+Updated only this section and `client/src/__tests__/qa-pr1-removal-session-test.tsx`.
 
 | Area | Result |
 |---|---|
 | Merge-gate demo path | **PASS.** `src/__tests__/demo-path-test.tsx:44` runs login, camera photo, mock expiry prediction, candidate save, Fridge removal, Impact and Undo through real routes with one `MockApiClient`. It asserts the photo/enrichment payload, predicted date, one removal, increased Impact, restored food, and exact full Impact equality with the pre-add baseline (`:155`); network fetch is forbidden. Every required step already has coverage, so no duplicate demo test was needed. |
-| Removal coverage | Existing component tests cover all three outcomes, required throw-away reasons, recipient omission/null/selection, error/retry, single-item lost responses, Undo deadlines and Reduce Motion. Existing batch tests cover used/donated and exact Impact restoration. New QA coverage exposes the unhandled committed-but-lost batch response (CL-10). |
+| Removal coverage | **PASS on re-verification.** Existing component tests cover all three outcomes, required throw-away reasons, recipient omission/null/selection, error/retry, single-item lost responses, Undo deadlines and Reduce Motion. Existing batch tests cover used/donated and exact Impact restoration. The CL-10 lost-response regression now passes. Added used/donated partial-409 regressions: only the still-active item stays selected with the exact retry message; retry sends only its ID, dismisses selection, and provides a separate Undo. Each Undo restores its own items and exact full Impact baseline. |
 | Backend diff and domain rules | Read all changes under `backend/app`: CORS/configuration, photo candidate merging, Gemini fallback and storage expiry re-estimation. No migration changes. Changed behavior matches the documented contract in the reviewed paths. Also traced unchanged removal/restore and listing/request visibility code: row locks, one remove event in the removal transaction, donation fulfilment, restore event deletion/listing reopening, accepted-friend/current-group checks and invisible-resource 404s. **Source review only; backend tests were not run and the test DB was not accessed.** |
-| Client contract and data states | Sampled live request paths/payloads, photo candidate round trip, item editing/pickup, Home, Fridge, Impact, Recipes and Social. Loading skeletons, empty states and retryable errors are present in sampled data flows; the existing suite exercises them. Demo account ownership and Impact filtering violate the contract (CL-11). No additional confirmed production API mismatch found in the sample. |
+| Client contract and data states | Sampled live request paths/payloads, photo candidate round trip, item editing/pickup, Home, Fridge, Impact, Recipes and Social. Loading skeletons, empty states and retryable errors are present in sampled data flows; the existing suite exercises them. **CL-11 fixed/verified:** personal inventory (including removed/sectioned queries) and full week/month/all Impact are isolated between accounts; cross-account personal removal is forbidden. Signing back into the first account preserves its food and Impact. No additional confirmed production API mismatch found in the sample. |
+| Fresh Demo-mode account | **PASS.** The existing settings test enables Demo mode while signed out, creates an account and logs back in using the mock. A new QA test verifies fresh-account seeding: two friends, one group with the current user as a member, one group food item, two shares and two requests. Personal inventory and Impact remain empty. Removing/restoring seeded group food succeeds and restores the item and full Impact exactly. |
 | Accessibility, motion and theme | Sampled shared buttons, item actions, filters, sheets, skeletons, form errors and Impact animations. Sampled button/action targets use the 44 pt token or larger; styles use centralized theme tokens. Sheets select fades for Reduce Motion, skeletons stop pulsing, charts fade and counters show final values. This is source/component evidence, not device hit-bound, contrast, AX5 or screen-reader certification. |
 | Secrets and scripts | No credential/private-key pattern found in scanned client source/config/public files, scripts or backend app files. Public service URLs and the EAS project identifier are configuration identifiers. Read the new tunnel/publish scripts without running them; `serve_public.ps1` parses with zero PowerShell syntax errors. Public tunnel, publishing and watchdog behavior were not exercised. |
 | iOS | Entire iOS diff read: UI/accessibility labels, one comment, mock error wording and matching test expectations only. Enum raw values, identifiers and logic remain unchanged. String/interpolation edits are Swift-valid by inspection. **iOS was not built; compilation and Smoke remain unverified.** |
 
 ### Bugs
 
-| ID | Severity | Location | Repro | Expected vs actual |
+| ID | Severity | Location | Repro | Re-verification at `25cf826` |
 |---|---|---|---|---|
-| CL-10 | high | `client/src/features/fridge/fridge-screen.tsx:110`, `:117` | Select two items, choose Used them, let `removeBatch` commit and then lose its response; press Try again. Run the `CL-10` QA test, which commits through the mock before throwing a network error. | **Expected:** reconcile the committed removal, dismiss selection and provide working Undo that restores food and Impact exactly. **Actual:** retry receives `409 already_removed`; the catch only displays the error. Both removed items remain in the stale selection, Impact already counts two used items, and no batch Undo exists. Further retries repeat the conflict. Applies to live response loss as well as the mock reproduction. |
-| CL-11 | medium | `client/src/api/mock-client.ts:148`, `:259`, `:405`, `:813` | In one Demo-mode client/session, create account A with two foods and remove one; sign in/create account B. Fetch inventory and Impact, or remove A's remaining personal food. Run the two `CL-11` QA tests. | **Expected:** B starts with empty personal inventory/Impact, and removing A's personal food returns `403 forbidden`, per `docs/API.md`. **Actual:** B sees A's remaining food and saved count; removal of A's item succeeds. Items/events are shared across mock users and lookups do not enforce ownership. **Demo-mode defect; no production backend account leak demonstrated.** |
+| CL-10 | high | `client/src/features/fridge/fridge-screen.tsx:110` | Select two items, choose Used them, let `removeBatch` commit and then lose its response; press Try again. Also select two items, remove only one through another request, then attempt the selected batch. | **Fixed/verified.** The lost-response retry reconciles both removed items, dismisses selection and offers working Undo; Impact counts each removal once and restores exactly. In the partial conflict, the batch returns `409 already_removed` without changing Impact. The removed item disappears and gets Undo; the active item remains checked with `1 selected` and "Some items were already removed. Try again to remove the rest." Retry removes only the remaining ID and clears selection/error. Separate Undo actions restore both foods and exact intermediate/original full Impact. Verified for used and donated outcomes. |
+| CL-11 | medium | `client/src/api/mock-client.ts:148`, `:263`, `:420`, `:829` | In one Demo-mode client/session, create account A with two foods and remove one; sign in/create account B. Fetch inventory and Impact, or remove A's remaining personal food. Run the two `CL-11` QA tests. | **Fixed/verified.** B has empty personal inventory, empty removed/sectioned inventory and exact empty full Impact responses for week/month/all, including charts. Removing A's personal food returns `403 forbidden`. Logging back into A preserves its remaining food and removal count. **Demo-mode verification; no production backend account leak demonstrated.** |
 
 ### Commands
 
-Run from `client/` on 2026-11-13:
+Original QA run from `client/` on 2026-11-13, before the fix:
 
 | Command | Result |
 |---|---|
@@ -37,10 +40,20 @@ Run from `client/` on 2026-11-13:
 | `npx jest --runInBand` final | **FAIL**, exit 1: 32 suites passed, 1 failed; 465 tests passed, 3 failed, 468 total; 0 snapshots. Only the three new QA regressions fail. |
 | `npx expo export -p web --output-dir <external scratch>` | **PASS**, exit 0: 1,067 modules, 28 assets, 32 web bundles. `../../mldata` does not exist from `client/`, so used `%TEMP%/bitedown-pr1-qa-20261113-7e39a1-web`. Confirmed generated `index.html`, then deleted only that newly created directory; absence verified. |
 
-No backend tests, backend runtime calls, Android build or device checks were performed.
-The web export establishes bundling, not browser interaction or live-service correctness.
+Re-verification from `client/` on 2026-11-13 at `25cf826`, after adding the QA coverage:
 
-**Verdict: FAIL (CL-10, CL-11)**
+| Command | Result |
+|---|---|
+| `npx jest src/__tests__/qa-pr1-removal-session-test.tsx --runInBand` | **PASS**, exit 0: 1 suite, 6 tests, 0 snapshots. Original CL-10/CL-11 regressions, both partial-conflict outcomes and fresh-account seeding pass. |
+| `npx tsc --noEmit` | **PASS**, exit 0. |
+| `npx eslint src` | **PASS**, exit 0. |
+| `npx jest` | **PASS**, exit 0: 33 suites, 471 tests, 0 snapshots. Includes the routed photo/expiry/removal/Impact demo path with exact full Impact restoration and the Demo-mode enable/signup/login test. |
+
+No backend tests, backend runtime calls, Android build or device checks were performed.
+The earlier web export establishes bundling, not browser interaction or live-service correctness;
+it was not repeated for this re-verification. **iOS not built**; compilation and Smoke remain unverified.
+
+**Verdict: PASS**
 
 ## 2026-11-13: checkpoint 18 QA
 
