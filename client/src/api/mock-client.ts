@@ -48,6 +48,7 @@ interface MockUser extends User {
 }
 
 interface MockEvent {
+  userId: string;
   itemId: string;
   outcome: Outcome;
   reason: WasteReason | null;
@@ -138,17 +139,17 @@ export class MockApiClient implements ApiClient {
   async deleteMe(): Promise<void> {
     const user = this.requireUser();
     this.users.delete(user.email);
-    this.items = [];
-    this.events = [];
+    this.items = this.items.filter((item) => item.owner_id !== user.id);
+    this.events = this.events.filter((event) => event.userId !== user.id);
     this.socialByUser.delete(user.id);
     this.currentUser = null;
     this.token = null;
   }
 
   async getItems(query: ItemsQuery = {}): Promise<ItemsResponse | ItemSectionsResponse> {
-    this.requireUser();
+    const user = this.requireUser();
     const items = this.items
-      .filter((item) => item.group_id === null)
+      .filter((item) => item.owner_id === user.id && item.group_id === null)
       .filter((item) => !query.storage || item.storage === query.storage)
       .filter((item) => query.include_removed === true || item.removed_at === null)
       .sort(compareItems)
@@ -167,6 +168,10 @@ export class MockApiClient implements ApiClient {
     const user = this.requireUser();
     if (input.items.length < 1 || input.items.length > 100) {
       throw new ApiError(400, 'validation_error', 'Add between 1 and 100 items.');
+    }
+    for (const candidate of input.items) {
+      const groupId = candidate.group_id ?? input.group_id;
+      if (groupId) this.memberGroup(groupId);
     }
     const added = input.items.map((candidate) => {
       const now = new Date().toISOString();
@@ -208,6 +213,7 @@ export class MockApiClient implements ApiClient {
     const item = this.findItem(id);
     if (item.removed_at) throw new ApiError(404, 'not_found', 'Item not found.');
     if (item.owner_id !== user.id) throw new ApiError(403, 'forbidden', 'That item belongs to another user.');
+    if (item.group_id) this.memberGroup(item.group_id);
     if ('reestimate_expiry' in patch && typeof patch.reestimate_expiry !== 'boolean') {
       fail(400, 'validation_error', 'reestimate_expiry must be a boolean.');
     }
@@ -257,16 +263,17 @@ export class MockApiClient implements ApiClient {
   }
 
   async removeItem(id: string, input: RemoveItemInput): Promise<{ item: Item }> {
-    this.requireUser();
+    const user = this.requireUser();
     validateRemoval(input);
     const item = this.findItem(id);
+    this.requireRemovable(item);
     if (item.removed_at) throw new ApiError(409, 'already_removed', 'That item was already removed.');
     const now = new Date().toISOString();
     item.removed_at = now;
     item.outcome = input.outcome;
     item.waste_reason = input.outcome === 'thrown_out' ? input.waste_reason ?? null : null;
     item.removed_after_expiry = item.predicted_expiry !== null && now.slice(0, 10) > item.predicted_expiry;
-    this.events.push(eventFor(item, now));
+    this.events.push(eventFor(item, now, user.id));
     const listing = this.socialByUser.get(this.requireUser().id)?.listings.find((entry) => entry.item_id === id && entry.status === 'open');
     if (listing && input.outcome === 'donated') {
       listing.status = 'fulfilled';
@@ -280,6 +287,7 @@ export class MockApiClient implements ApiClient {
   async restoreItem(id: string): Promise<{ item: Item }> {
     this.requireUser();
     const item = this.findItem(id);
+    this.requireRemovable(item);
     if (!item.removed_at || !item.outcome) throw new ApiError(409, 'not_removed', 'That item is still active.');
     if (Date.now() - Date.parse(item.removed_at) >= 10 * 60 * 1000) {
       throw new ApiError(409, 'restore_window_expired', 'The 10-minute undo window has expired.');
@@ -304,6 +312,8 @@ export class MockApiClient implements ApiClient {
     if (input.item_ids.length < 1 || new Set(input.item_ids).size !== input.item_ids.length) {
       throw new ApiError(400, 'validation_error', 'Choose unique items to remove.');
     }
+    const batch = this.batchItems(input.item_ids);
+    if (batch.some((item) => item.removed_at)) fail(409, 'already_removed', 'One or more items have already been removed.');
     const snapshot = copy(this.items);
     const eventSnapshot = copy(this.events);
     const socialState = this.socialByUser.get(this.requireUser().id);
@@ -328,6 +338,11 @@ export class MockApiClient implements ApiClient {
 
   async restoreBatch(itemIds: string[]): Promise<ItemsResponse> {
     this.requireUser();
+    const batch = this.batchItems(itemIds);
+    if (batch.some((item) => !item.removed_at)) fail(409, 'not_removed', 'One or more items have not been removed.');
+    if (batch.some((item) => Date.now() - Date.parse(item.removed_at!) >= 10 * 60 * 1000)) {
+      fail(409, 'restore_window_expired', 'The 10-minute undo window has expired.');
+    }
     const snapshot = copy(this.items);
     const eventSnapshot = copy(this.events);
     const socialState = this.socialByUser.get(this.requireUser().id);
@@ -382,8 +397,8 @@ export class MockApiClient implements ApiClient {
   }
 
   async suggestRecipes(input: RecipesRequest = {}): Promise<{ recipes: Recipe[] }> {
-    this.requireUser();
-    const available = this.items.filter((item) => item.removed_at === null && item.group_id === null);
+    const user = this.requireUser();
+    const available = this.items.filter((item) => item.owner_id === user.id && item.removed_at === null && item.group_id === null);
     const focused = input.item_ids?.length
       ? available.filter((item) => input.item_ids?.includes(item.id))
       : available;
@@ -403,9 +418,10 @@ export class MockApiClient implements ApiClient {
   }
 
   async getImpact(range: ImpactRange = 'all'): Promise<ImpactResponse> {
-    this.requireUser();
+    const user = this.requireUser();
     const cutoff = range === 'week' ? 7 : range === 'month' ? 30 : null;
-    const events = this.events.filter((event) => cutoff === null || Date.parse(event.at) >= Date.now() - cutoff * 86_400_000);
+    const userEvents = this.events.filter((event) => event.userId === user.id);
+    const events = userEvents.filter((event) => cutoff === null || Date.parse(event.at) >= Date.now() - cutoff * 86_400_000);
     const used = totals(events.filter((event) => event.outcome === 'used'));
     const donated = totals(events.filter((event) => event.outcome === 'donated'));
     const wasted = totals(events.filter((event) => event.outcome === 'thrown_out'));
@@ -431,7 +447,7 @@ export class MockApiClient implements ApiClient {
         ? null
         : { saved: empty, wasted: empty, used: empty, donated: empty, waste_rate: 0 },
       weekly: weeklyCounts(events),
-      last_6_weeks: lastSixWeeks(this.events),
+      last_6_weeks: lastSixWeeks(userEvents),
     };
   }
 
@@ -811,9 +827,28 @@ export class MockApiClient implements ApiClient {
   }
 
   private findItem(id: string): Item {
-    const item = this.items.find((candidate) => candidate.id === id);
+    const item = [...this.items, ...this.social().pantry].find((candidate) => candidate.id === id);
     if (!item) throw new ApiError(404, 'not_found', 'Item not found.');
     return item;
+  }
+
+  private canRemove(item: Item): boolean {
+    return item.group_id !== null ? this.social().memberships.has(item.group_id) : item.owner_id === this.requireUser().id;
+  }
+
+  private requireRemovable(item: Item): void {
+    if (!this.canRemove(item)) fail(403, 'forbidden', 'That item belongs to another user.');
+  }
+
+  private batchItems(ids: string[]): Item[] {
+    if (ids.length < 1 || ids.length > 100 || new Set(ids).size !== ids.length) {
+      fail(400, 'validation_error', 'Choose between 1 and 100 unique items.');
+    }
+    return ids.map((id) => {
+      const item = this.findItem(id);
+      if (!this.canRemove(item)) fail(404, 'not_found', 'Item not found.');
+      return item;
+    });
   }
 
   private id(prefix: string): string {
@@ -929,10 +964,11 @@ function validateRemoval(input: RemoveItemInput): void {
   }
 }
 
-function eventFor(item: Item, at: string): MockEvent {
+function eventFor(item: Item, at: string, userId: string): MockEvent {
   if (!item.outcome) throw new Error('Cannot record an event without an outcome.');
   const kg = item.est_weight_kg ?? 0;
   return {
+    userId,
     itemId: item.id,
     outcome: item.outcome,
     reason: item.waste_reason,

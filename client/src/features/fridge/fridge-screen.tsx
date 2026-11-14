@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { Modal, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { useApi } from '@/api';
+import { isApiError, useApi } from '@/api';
 import type { Item, Storage } from '@/api/types';
 import { AppIcon } from '@/components/ui/app-icon';
 import { AppButton } from '@/components/ui/app-button';
@@ -107,10 +107,32 @@ export function FridgeScreen() {
     if (batchWorking.current || selected.length === 0) return;
     batchWorking.current = true; lastOutcome.current = outcome; setBatchPending(true); setBatchError('');
     try {
-      const { items } = await api.removeBatch({ item_ids: selected, outcome });
+      let items: Item[];
+      let remaining: string[] = [];
+      try {
+        ({ items } = await api.removeBatch({ item_ids: selected, outcome }));
+      } catch (cause) {
+        if (!isApiError(cause) || cause.status !== 409 || cause.code !== 'already_removed') throw cause;
+        // A batch conflict writes nothing and only says that at least one item is removed.
+        // Reload before offering Undo, rather than assuming every selected item was removed.
+        const response = await api.getItems({ storage, include_removed: true });
+        const refreshed = 'items' in response ? response.items : response.sections.flatMap((section) => section.items);
+        refreshed.forEach(applyItem);
+        items = refreshed.filter((item) => selected.includes(item.id) && item.removed_at !== null);
+        // Items the conflict did not remove stay selected, so the user can retry them.
+        remaining = refreshed.filter((item) => selected.includes(item.id) && item.removed_at === null).map((item) => item.id);
+      }
       items.forEach(applyItem);
-      const entry: BatchUndo = { id: ++batchSequence.current, itemIds: items.map((item) => item.id), outcome, expiresAt: Date.now() + UNDO_WINDOW_MS, pending: false, error: '' };
-      setBatches((current) => [...current, entry]);
+      if (items.length > 0) {
+        const entry: BatchUndo = { id: ++batchSequence.current, itemIds: items.map((item) => item.id), outcome, expiresAt: Date.now() + UNDO_WINDOW_MS, pending: false, error: '' };
+        setBatches((current) => [...current, entry]);
+      }
+      if (remaining.length > 0) {
+        setSelected(remaining);
+        setBatchError('Some items were already removed. Try again to remove the rest.');
+        void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error).catch(() => {});
+        return;
+      }
       setSelecting(false); setSelected([]);
       void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
     } catch (cause) {
