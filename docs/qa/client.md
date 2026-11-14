@@ -23,7 +23,7 @@ one-panel rule. Only QA tests and this new section were changed; no feature code
 | Targets / motion | Dismiss and the Fridge entry have explicit 44 x 44 pt styles; Undo, Put back and retry buttons have labelled button roles and minimum height >=44 pt. Entrance animations are short opacity fades (<=0.5 s), with no movement/countdown loop. Fridge scenarios run with Reduce Motion enabled. PASS for component/style evidence. |
 
 Bugs: no new client defects reproduced; CL-30 through CL-39 remain unused. Backend exact-cutoff
-mismatch BE-52 is recorded in `docs/qa/backend.md`; the client mock and filter exclude that age.
+mismatch BE-53 is recorded in `docs/qa/backend.md`; the client mock and filter exclude that age.
 
 ### Commands
 
@@ -205,3 +205,49 @@ review covered the whole night's diff. Device checks ran on the Android emulator
 **Not verified**: iPhone Safari on a real device; barcode and receipt camera flows on a device; Food Pantry claim and
 Group detail with a second account; delete account; fontScale 2.0 on a device. Receipts need the ML service or Gemini
 fallback (`docs/DECISIONS.md` 2026-10-11).
+
+## Undo pause, overlay, sheet width, Remove icon (uncommitted, 2026-11-14)
+
+**Initial verdict: FAIL; superseded by the re-check below.** Reviewed the current files against the supplied specification without running Git. Feature code and existing tests were not edited. The original findings and validation history are retained below with current bug statuses.
+
+### Findings
+
+- **CL-12 — Ruled by design.** The original regression expected web screen-reader detection to retain the panel. The orchestrator ruling below supersedes that expectation: the web timer runs, focus on either panel button pauses it, and Recently removed with Put back is the untimed path for seven days. Updated regressions assert expiry at exactly 8,000 ms on web despite a mocked positive screen-reader query; focus retains both panel types beyond that deadline and blur resumes with the two-second minimum. On iOS and Android, a positive native screen-reader query retains both panels beyond 60 seconds. These are mocked component checks; physical screen-reader playback is unverified.
+
+- **CL-13 — Medium — Fixed/verified; original finding: single-item overlay has a transparent descendant that intercepts taps.** `src/features/fridge/fridge-screen.tsx:274` and `:324` in the original review. The outer overlay was `box-none`, but the nested ScrollView retained default `auto` hit testing and added an empty eight-point bottom content strip. Repro: remove a single item, scroll a remaining row underneath that strip, then tap its visible content in the transparent strip. The original regression failed its pass-through contract. Re-check below verifies the updated contract. Actual coordinate hit testing, including rounded transparent corners, remains unverified in Jest.
+
+- **CL-14 — Medium — Fixed/verified; original finding: batch Undo has no overflow path under the overlay's height cap.** `src/features/fridge/fridge-screen.tsx:271` and `:322`; `src/features/fridge/batch-undo-toast.tsx:22` and `:33` in the original review. Batch content was a direct, non-scrolling child. Its minimum unwrapped vertical content is 132 points (24 padding + 44 header target + 8 gap + 56 Undo target), before wrapped labels or errors. Repro recipe: use a short landscape viewport with large system text, remove a batch, then fail Undo to add an error. Content could overflow the 40%-capped measured overlay and exceed the reserved list padding. Re-check below verifies the shared scroll container and measurement contract. Physical layout and tap outcomes remain unverified; Jest does not calculate Yoga layout.
+
+### Coverage and limits
+
+- Added `src/__tests__/qa-undo-pause-lifecycle-test.tsx`: timer/subscription cleanup in running, paused and blocked states; accessibility query resolution after unmount; latest dismissal callback; duplicate/unmatched pause events; three simultaneous pause reasons and the two-second resume minimum; responder termination on either button with a balanced touch pointer leave; focused/pressed/hovered panel replacement; CL-12 regressions for both panel types.
+- Added `src/__tests__/qa-undo-overlay-sheets-test.tsx`: measured overlay padding at two heights for single/batch panels, unchanged list viewport style, Undo/Dismiss handler reachability, CL-13 regression, Remove icon/name/testID/44-point target on iOS/Android/web, conditional Recently removed message spacing, and all seven sheet width/centering contracts on iOS/web.
+- Read the shared hook, both panels, FadeIn, AppButton, Fridge screen/row, Recently removed screen, width helper, and remove/move/discard/pickup/offer/settings-delete/friend-added sheet call sites. The helper uses `width: '100%'`, the theme's 520-point cap, and `alignSelf: 'center'`; every requested call site applies it. Width assertions prove layout inputs, not actual phone/tablet measurements.
+- Existing tests additionally cover eight-second expiry, remaining time above the resume minimum, each individual button interaction, hover/focus overlap, native screen-reader changes, pending/error retention, immediate Dismiss, labels/roles and minimum target heights.
+- No timer leak or post-unmount dismissal was identified in source review or the corrected lifecycle tests. Neither button is individually removed during loading: AppButton replaces its child with a spinner while preserving the Pressable; removing the entire panel runs hook cleanup. Native pointer cancellation emits pointer leave in the installed renderer, and Pressability termination releases the press. The cancellation test supplies those native events; browser/device event delivery is unverified.
+- Hardware hover, pointer exit missed by the operating system/browser, real focus transfer, VoiceOver/TalkBack/browser screen-reader navigation, transparent-region hit testing, last-row clearance after real scrolling, font scaling and physical phone sheet width remain unverified. A direct `fireEvent.press` proves handler wiring, not that a physical tap passes through another view.
+
+### Validation
+
+- `npx tsc --noEmit`: PASS on the final test files.
+- `npm run lint`: PASS on the final test files.
+- `npx jest --runInBand`: run exactly once, after initial test authoring. **41 suites / 602 tests: 39 suites passed, 2 failed; 591 tests passed, 11 failed; 0 snapshots.** All 39 pre-existing suites (559 tests) passed. Of the 11 failures, three reproduce CL-12/CL-13; eight were QA harness assertions that incorrectly treated all renderer/fake-clock work as leaked application timers.
+- Corrected only the new QA assertions to track the actual eight-second timeout handle, its cancellation, subscription removal, and post-unmount callback behavior. Then ran `npx jest --runInBand --runTestsByPath src/__tests__/qa-undo-pause-lifecycle-test.tsx src/__tests__/qa-undo-overlay-sheets-test.tsx`: **43 tests: 40 passed, 3 failed; 2 suites failed; 0 snapshots.** Lifecycle file: 20 passed / 2 failed; overlay/sheets file: 20 passed / 1 failed. The three remaining failures are the two CL-12 panel variants and the CL-13 pass-through assertion. They are ordinary failing tests, not skipped or expected failures.
+- The full suite was not repeated after the QA assertion correction, preserving the requested one-full-run limit. Its raw counts above describe that run; they are not presented as a full-suite result for the corrected files. Final targeted results cover all 43 new tests. No feature fix was applied.
+
+Original next step: address the reported issues and verify the physical interaction/layout cases above. Current statuses are in the re-check below. CL-15 through CL-19 are unused.
+
+**Orchestrator ruling (2026-11-14), CL-12: by design, not a bug.** The web cannot detect a screen reader (react-native-web's `isScreenReaderEnabled()` always resolves `true`), so the web timer runs. Focus on the panel or its buttons now pauses it (fix 1), and Recently removed with Put back is the untimed path for 7 days. QA updates its CL-12 regression to this ruling. CL-13 and CL-14 go back to the builder.
+
+### Re-check (2026-11-14)
+
+**Verdict: PASS** for source/component verification.
+
+- **CL-12: ruled by design.** Both panels expire at eight seconds on web; focus on either button pauses expiry, and blur resumes with the two-second minimum. Native screen-reader-on cases retain both panels on iOS/Android. Recently removed remains the seven-day untimed path.
+- **CL-13: fixed/verified.** Overlay, ScrollView and content-container styles all use `pointerEvents: 'box-none'`, with no empty bottom padding strip. Both panel types retain working Undo and Dismiss. The Jest ScrollView stub does not apply `contentContainerStyle` to its synthetic child, so the test checks that supplied style explicitly.
+- **CL-14: fixed/verified.** Both panel types, including restore-error content, live inside the single scrollable container under the 40% cap. List padding follows measured overlay height when growing and shrinking, and resets after dismissal/restoration. Failed-panel replacement in both directions and successful retry pass. No new defect reproduced; **CL-15–CL-19 unused**.
+- Remove icon/name/testID/44-point target, conditional message spacing and all seven sheet width contracts remain passing.
+
+Final checks from `client/`: `npx tsc --noEmit` **PASS**, exit 0; `npm run lint` **PASS**, exit 0; full `npx jest --runInBand` run **once** after final test edits: **41/41 suites, 619/619 tests passed, 0 failed, 0 snapshots**, exit 0. Final targeted check: **2/2 suites, 56/56 tests passed** (lifecycle **30**, overlay/sheets **26**), 0 snapshots.
+
+Only this document and the two assigned QA test files were edited; no Git commands were run. Physical hit testing, real overflow/font-scale layout, device sheet widths and screen-reader playback remain unverified.
