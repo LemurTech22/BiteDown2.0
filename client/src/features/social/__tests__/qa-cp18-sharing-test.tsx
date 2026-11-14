@@ -1,6 +1,6 @@
 import { act, fireEvent, render } from '@testing-library/react-native';
 import { router } from 'expo-router';
-import { StyleSheet } from 'react-native';
+import { Platform, StyleSheet } from 'react-native';
 
 import { ApiProvider, MockApiClient } from '@/api';
 import { MoveSheet } from '@/features/fridge/move-sheet';
@@ -42,7 +42,7 @@ test.each(['getItems', 'getShare'] as const)('%s failure shows an error and retr
   expect(screen.queryByTestId('foodPantry.empty.state')).toBeNull();
   expect(screen.queryByTestId(`foodPantry.mine.${item.id}`)).toBeNull();
   await fireEvent.press(screen.getByTestId('foodPantry.error.retry'));
-  const card = await screen.findByRole('button', { name: 'Rice, shared by you' });
+  const card = await screen.findByRole('button', { name: 'Rice, 2.2 lb, shared by you, Not claimed yet' });
   expect(card).toHaveStyle({ minHeight: 44 });
   expect(screen.getByRole('header', { name: "You're sharing" })).toBeTruthy();
   expect(screen.getByTestId('foodPantry.claim.listing-seed-0')).toHaveStyle({ minHeight: 44, minWidth: 44 });
@@ -73,7 +73,7 @@ test('Move switch stays off on retry, preserves a user date and respects reduced
   const close = jest.fn(), moved = jest.fn();
   const screen = await render(<ApiProvider client={api}><MoveSheet item={item} onClose={close} onMoved={moved} /></ApiProvider>);
   expect(screen.getByTestId('fridge.move.sheet')).toHaveProp('animationType', 'fade');
-  expect(screen.getByTestId('fridge.move.reestimate')).toHaveProp('value', false);
+  expect(screen.getByTestId('fridge.move.reestimate')).toHaveProp('accessibilityState', { checked: false, disabled: false });
   expect(screen.queryByTestId('fridge.move.expiryNote')).toBeNull();
   expect(screen.queryByTestId('fridge.move.fridge')).toBeNull();
   const pantry = screen.getByRole('button', { name: 'Move Rice to Pantry' });
@@ -85,4 +85,23 @@ test('Move switch stays off on retry, preserves a user date and respects reduced
   expect(update).toHaveBeenLastCalledWith(item.id, { storage: 'pantry' });
   expect(moved).toHaveBeenCalledWith(expect.objectContaining({ storage: 'pantry', predicted_expiry: item.predicted_expiry, expiry_source: 'user' }));
   expect(close).toHaveBeenCalledTimes(1);
+});
+
+test('CL-3: the web re-estimate row is one 44 pt switch that toggles from the label and row', async () => {
+  jest.replaceProperty(Platform, 'OS', 'web');
+  const { api, item } = await setup();
+  const update = jest.spyOn(api, 'updateItem');
+  const screen = await render(<ApiProvider client={api}><MoveSheet item={item} onClose={jest.fn()} onMoved={jest.fn()} /></ApiProvider>);
+  const label = 'Re-estimate expiry for the new spot';
+  const row = screen.getByTestId('fridge.move.reestimate');
+  expect(screen.getByRole('switch', { name: label, checked: false })).toBe(row);
+  expect(screen.getAllByRole('switch')).toHaveLength(1);
+  expect(StyleSheet.flatten(row.props.style).minHeight).toBeGreaterThanOrEqual(44);
+  await fireEvent.press(screen.getByText(label));
+  expect(screen.getByRole('switch', { name: label, checked: true })).toBe(row);
+  await fireEvent.press(row);
+  expect(screen.getByRole('switch', { name: label, checked: false })).toBe(row);
+  await fireEvent.press(row);
+  await fireEvent.press(screen.getByTestId('fridge.move.freezer'));
+  expect(update).toHaveBeenCalledWith(item.id, { storage: 'freezer', reestimate_expiry: true });
 });

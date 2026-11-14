@@ -6,31 +6,38 @@ Scope: `git diff db62ed7..322431e` on `feat/expo-android`; checked against the 2
 sharing/storage/wording decision, `docs/API.md` PATCH contract and `CLAUDE.md`.
 Added `src/api/__tests__/qa-cp18-expiry-test.ts` and
 `src/features/social/__tests__/qa-cp18-sharing-test.tsx`. Feature code was not changed.
+Re-verified fix commit `12847b9` (HEAD) on `feat/expo-android` on 2026-11-13.
+Updated only stale QA assertions for the expanded owner-card label and the row switch's
+`accessibilityState.checked`; added a CL-3 web component regression. Non-QA tests were not changed.
 
 | Area | Result |
 |---|---|
 | You're sharing | Active personal open shares only, including claimed shares; sectioned responses flattened; removed/group/closed/unshared items excluded. All filter only. Own-only data suppresses the empty state; Friends/Groups have their own empty states. Either request failing shows an error, never an empty state; retry restores both sections. Item navigation and external claim/retry still work, retaining own shares. |
-| Accessibility/theme/motion | Header role, card/filter/claim labels and token-based target sizes checked. Move destinations are at least 44 pt; switch wrapper is 44 pt, labelled and initially off; estimated items show the caption instead. User date retained with switch off, opt-in sent when on; failed move retry retains the selection. Reduce Motion selects a fade. New styling uses theme tokens; no added decorative animation. Owner-card spoken content fails CL-1. |
-| Expiry mirror | 528 category/storage/boundary comparisons pass against the same expected cases used by backend QA (all six directed pairs across 11 categories; null, expired, today, short and overlong remaining life). Existing tests cover user-date opt-in, explicit-date precedence, final category, no-ops and non-boolean rejection. Calendar-day parity fails CL-2. |
+| Accessibility/theme/motion | Header role, card/filter/claim labels and token-based target sizes checked. Move destinations are at least 44 pt; re-estimate is one labelled, initially off switch on a Pressable row at least 44 pt high; estimated items show the caption instead. Web component tests verify label and row presses toggle the checked state and opt-in is sent. The visual Switch is hidden from accessibility and web focus, with pointer events delegated to the row. User date retained with switch off; failed move retry retains the selection. Reduce Motion selects a fade. New styling uses theme tokens; no added decorative animation. Owner-card label includes quantity and claimant. CL-1 and CL-3 fixed/verified in source and component tests. |
+| Expiry mirror | 528 category/storage/boundary comparisons pass against the same expected cases used by backend QA (all six directed pairs across 11 categories; null, expired, today, short and overlong remaining life). Existing tests cover user-date opt-in, explicit-date precedence, final category, no-ops and non-boolean rejection. Late-night America/Chicago calendar-day regression passes; CL-2 fixed/verified. |
 | Wording/identifiers | Shared food, Share with friends, Shared with friends, Group food and Staples verified in the diff and client tests; storage still reads Pantry. No remaining old UI label found in client or iOS source. Residual old wording is in comments/test descriptions and the mock's group-item validation error (`src/api/mock-client.ts:485`), treated as the decision's server-error exception. Existing API values, routes, testIDs and iOS accessibilityIdentifiers are unchanged. |
 
 ### Bugs
 
-| ID | Severity | Location | Repro | Expected vs actual |
+| ID | Severity | Location | Repro | Re-verification at `12847b9` |
 |---|---|---|---|---|
-| CL-1 | medium | `client/src/features/social/pantry-screen.tsx:72` | Return an open own share for Rice, 1 kg, claimed by Ana Rivera; render Shared food, All. Run the new `CL-1` test. | Expected: the accessible owner card includes the visible claimant and quantity. Actual: its explicit label is only `Rice, shared by you`, omitting `Claimed by Ana Rivera` and `2.2 lb`. The accessible touchable groups its children, so their text does not supply the card's custom label. Native screen-reader behavior was not exercised. See [React Native accessibility](https://reactnative.dev/docs/accessibility#accessibilitylabel). |
-| CL-2 | medium | `client/src/api/mock-client.ts:993` (UTC helper at `:972`); compare `backend/app/services/expiry.py:39` | Backend host uses America/Chicago. At `2026-11-13T23:30:00-06:00`, move default-dated meat (expiry `2026-11-15`) from fridge to freezer. Run the new `CL-2` test; backend service with `today=2026-11-13` confirms the expected date. | Expected: mock/backend both return `2027-05-12` (backend's Nov 13 + 180 days). Actual: mock returns `2027-05-13`, because `toISOString()` makes today Nov 14 while backend `date.today()` is Nov 13. This affects hosts where the local and UTC dates differ; UTC-configured servers do not exhibit this mismatch. |
+| CL-1 | medium | `client/src/features/social/pantry-screen.tsx:72` | Return an open own share for Rice, 1 kg, claimed by Ana Rivera; render Shared food, All. Run the `CL-1` QA test. | **Fixed/verified.** The explicit card label now includes `2.2 lb` and `Claimed by Ana Rivera`; the unclaimed label includes quantity and `Not claimed yet`. Claimant/quantity and retry/navigation tests pass. Native screen-reader behavior was not exercised. See [React Native accessibility](https://reactnative.dev/docs/accessibility#accessibilitylabel). |
+| CL-2 | medium | `client/src/api/mock-client.ts:993`; compare `backend/app/services/expiry.py:39` | At `2026-11-13T23:30:00-06:00` on an America/Chicago host, move default-dated meat (expiry `2026-11-15`) from fridge to freezer. Run the `CL-2` QA test. | **Fixed/verified.** The mock uses the local calendar date and returns `2027-05-12`, matching the backend contract for Nov 13 + 180 days, rather than the former UTC-based `2027-05-13`. The late-night regression and all 528 boundary comparisons pass. |
+| CL-3 | medium | `client/src/features/fridge/move-sheet.tsx:62` | On web, open Move for a user-dated item and activate `Re-estimate expiry for the new spot` from its label or row. Previously only the 40x20 visual Switch responded; its 44 pt wrapper was not tappable. | **Fixed/verified in source and component tests.** One Pressable row has role `switch`, a label, checked/disabled state and minimum height 44 pt. The new QA regression verifies one accessible switch, label/row presses in both directions and the enabled opt-in payload. HEAD's existing tests also verify the hidden visual wrapper's `pointerEvents="none"`, `aria-hidden` and web `inert`, plus disabled behavior while pending. Browser hit bounds were not measured. |
 
 ### Commands
 
-From `client/`: `npx tsc --noEmit` **PASS** (exit 0); `npx eslint src` **PASS** (exit 0);
-`npx jest` **FAIL** (exit 1): **30 suites passed, 2 failed; 458 tests passed, 2 failed, 460 total**.
-The two failures are the new CL-1 and CL-2 regressions; all 30 existing suites pass.
+Initial run: `npx jest` **FAIL** (exit 1): **30 suites passed, 2 failed; 458 tests passed,
+2 failed, 460 total**. The failures were CL-1 and CL-2; typecheck and lint passed.
 
-iOS build is not verified here. Device rendering, AX5 layout, native Switch hit bounds and VoiceOver/TalkBack
+Re-run on 2026-11-13 from `client/`: `npx tsc --noEmit` **PASS** (exit 0);
+`npx eslint src` **PASS** (exit 0); `npx jest` **PASS** (exit 0):
+**32 suites passed; 465 tests passed, 465 total; 0 snapshots**. CL-1, CL-2 and CL-3 pass.
+
+iOS build is not verified here. Device rendering, AX5 layout, browser/device hit bounds and VoiceOver/TalkBack
 are not verified here; accessibility evidence above is from source and component tests.
 
-**Verdict: FAIL (CL-1, CL-2)**
+**Verdict: PASS**
 
 ## 2026-11-13: final pre-showcase pass on `feat/expo-android` (orchestrator checks; not a formal QA PASS)
 Independent read-only audits by Codex and OpenCode (`glm-5.3`) agreed on the top risks; each fix was reviewed by Claude.

@@ -28,10 +28,17 @@ suite (not slow): 3031 passed, 50 failed. Every failure is a Gemini or receipt t
 `.env` and its `GEMINI_FALLBACK_MODELS` chain makes 3 calls where they expect 1. With the Gemini variables blanked, 2
 failures remain in those files: `test_app_reads_env` (reacts to the blanked override) and BE-22 crop peak memory.
 None touch items or expiry. Test isolation from `.env` is a Backend QA follow-up.
-**Not verified:** iOS build and tests (no Xcode here; iOS CI on push is the first check), the emulator run of the three
-client changes, and a formal QA pass.
-**Next:** run them on the emulator, push to PR #1, QA pass, then update the design canvas (FoodPantry, ItemDetail,
-ItemShared, GroupDetail, Social widget, food-group labels) and mirror it into `docs/design/screens/`.
+**QA (2026-11-13):** Codex QA plus a read-only Codex audit (OpenCode had no credit). Client FAIL (CL-1, CL-2, CL-3) →
+fixed in `12847b9` → re-verified **PASS**: tsc and lint clean, Jest 32 suites / 465. Backend **PASS** (72 targeted tests).
+Recorded in `docs/qa/client.md`, `docs/qa/backend.md` and `docs/QA.md`.
+**Design:** `docs/design/screens/` mirrors the new wording and a "You're sharing" section on FoodPantry (`318a249`).
+**The live canvas is NOT updated:** it belongs to another org and this account has no edit access. The edited files
+(20 artboards incl. web, plus `canvas.json` board titles) must be published by the canvas owner, or after edit access is
+granted.
+**Not verified:** iOS build and tests (no Xcode here). **GitHub Actions is blocked:** "The job was not started because
+your account is locked due to a billing issue" (repo owner's account; nothing has run since 2026-11-06), so PR #1 has
+no CI and cannot meet the green-CI merge gate. Not run on the emulator either (owner skipped it).
+**Next:** owner fixes Actions billing → iOS + backend CI on PR #1; canvas publish; emulator check; then merge.
 
 ## Checkpoint 17 (2026-11-13, Windows PC): final pre-showcase hardening
 **Event:** live demo at a food bank volunteering event, 2026-11-13 morning. **Runbook: [`docs/SHOWCASE.md`](docs/SHOWCASE.md)**
