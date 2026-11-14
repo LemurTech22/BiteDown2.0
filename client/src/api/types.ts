@@ -156,7 +156,7 @@ export interface ItemsQuery {
 
 export type UpdateItemInput = Partial<Pick<CreateItemInput,
   'name' | 'quantity' | 'unit' | 'storage' | 'category' | 'food_group' | 'predicted_expiry' |
-  'est_price' | 'est_weight_kg' | 'freshness'>>;
+  'est_price' | 'est_weight_kg' | 'freshness'>> & { reestimate_expiry?: boolean };
 
 export interface ItemsResponse {
   items: Item[];

@@ -1,4 +1,59 @@
 import { MockApiClient } from '@/api/mock-client';
+import type { ExpirySource, ItemCategory, Storage, UpdateItemInput } from '@/api/types';
+
+describe('storage expiry re-estimation', () => {
+  beforeEach(() => jest.useFakeTimers().setSystemTime(new Date('2026-11-13T12:00:00Z')));
+  afterEach(() => jest.useRealTimers());
+
+  const isoIn = (days: number) => new Date(Date.now() + days * 86_400_000).toISOString().slice(0, 10);
+  const cases: [string, ItemCategory, Storage, number, ExpirySource, UpdateItemInput, number, ExpirySource][] = [
+    ['freezing extends', 'meat', 'fridge', 2, 'default', { storage: 'freezer' }, 180, 'default'],
+    ['thawing meat is capped', 'meat', 'freezer', 100, 'default', { storage: 'fridge' }, 2, 'default'],
+    ['thawing seafood is capped', 'seafood', 'freezer', 100, 'ml', { storage: 'fridge' }, 2, 'default'],
+    ['thawing leftovers is capped', 'leftovers', 'freezer', 60, 'gemini', { storage: 'fridge' }, 3, 'default'],
+    ['thawing to pantry uses the shorter default', 'meat', 'freezer', 100, 'default', { storage: 'pantry' }, 1, 'default'],
+    ['other categories have no thaw cap', 'dairy', 'freezer', 60, 'default', { storage: 'fridge' }, 10, 'default'],
+    ['fridge to pantry is proportional', 'produce_hardy', 'fridge', 9, 'default', { storage: 'pantry' }, 3, 'default'],
+    ['pantry to fridge rounds halves to even', 'bakery', 'pantry', 1, 'default', { storage: 'fridge' }, 2, 'default'],
+    ['remaining fraction is capped at one', 'produce_hardy', 'fridge', 30, 'default', { storage: 'pantry' }, 7, 'default'],
+    ['at least one day remains', 'dairy', 'fridge', 1, 'default', { storage: 'pantry' }, 1, 'default'],
+    ['user date stays', 'meat', 'fridge', 8, 'user', { storage: 'freezer' }, 8, 'user'],
+    ['false flag preserves user date', 'meat', 'fridge', 8, 'user', { storage: 'freezer', reestimate_expiry: false }, 8, 'user'],
+    ['true flag re-estimates user date', 'meat', 'fridge', 8, 'user', { storage: 'freezer', reestimate_expiry: true }, 180, 'default'],
+    ['expired freezing date stays', 'meat', 'fridge', -1, 'default', { storage: 'freezer' }, -1, 'default'],
+    ['freezing on expiry day extends', 'meat', 'fridge', 0, 'default', { storage: 'freezer' }, 180, 'default'],
+    ['expired fridge to pantry date stays', 'dairy', 'fridge', -1, 'default', { storage: 'pantry' }, -1, 'default'],
+    ['fridge to pantry date due today stays', 'dairy', 'fridge', 0, 'default', { storage: 'pantry' }, 0, 'default'],
+    ['expired thawing still uses cap', 'meat', 'freezer', -1, 'default', { storage: 'fridge' }, 2, 'default'],
+    ['final category is used', 'dairy', 'fridge', 8, 'default', { storage: 'freezer', category: 'meat' }, 180, 'default'],
+    ['flag alone is a no-op', 'meat', 'fridge', 8, 'user', { reestimate_expiry: true }, 8, 'user'],
+    ['same storage preserves user date', 'meat', 'fridge', 8, 'user', { storage: 'fridge', reestimate_expiry: true }, 8, 'user'],
+    ['same storage preserves default date', 'meat', 'freezer', 8, 'default', { storage: 'freezer', reestimate_expiry: true }, 8, 'default'],
+  ];
+
+  test.each(cases)('%s', async (_, category, storage, left, expiry_source, patch, expected, source) => {
+    const { api } = await setup();
+    const { items: [item] } = await api.createItems({ items: [{ name: 'Food', category, storage, predicted_expiry: isoIn(left), expiry_source }] });
+    const { item: moved } = await api.updateItem(item.id, patch);
+    expect(moved).toMatchObject({ storage: patch.storage ?? storage, predicted_expiry: isoIn(expected), expiry_source: source });
+    expect(moved).not.toHaveProperty('reestimate_expiry');
+  });
+
+  test.each(['default', 'user'] as const)('explicit date wins over re-estimation for %s expiry', async (expiry_source) => {
+    const { api } = await setup();
+    const { items: [item] } = await api.createItems({ items: [{ name: 'Meat', category: 'meat', predicted_expiry: isoIn(2), expiry_source }] });
+    expect((await api.updateItem(item.id, { storage: 'freezer', reestimate_expiry: true, predicted_expiry: isoIn(20) })).item)
+      .toMatchObject({ predicted_expiry: isoIn(20), expiry_source: 'user' });
+  });
+
+  test.each([null, 0, 1, 'true', [], {}])('rejects a non-boolean flag: %p', async (flag) => {
+    const { api } = await setup();
+    const { items: [item] } = await api.createItems({ items: [{ name: 'Food' }] });
+    await expect(api.updateItem(item.id, { storage: 'freezer', reestimate_expiry: flag } as UpdateItemInput))
+      .rejects.toMatchObject({ status: 400, code: 'validation_error' });
+    expect((await api.updateItem(item.id, {})).item).toEqual(item);
+  });
+});
 
 async function setup() {
   const api = new MockApiClient();

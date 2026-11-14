@@ -234,10 +234,13 @@ def patch_item(item_id):
     if item.removed_at is not None:
         raise not_found("Item not found.")
     allowed = {"name", "quantity", "unit", "storage", "category", "food_group", "predicted_expiry",
-               "est_price", "est_weight_kg", "freshness"}
+               "est_price", "est_weight_kg", "freshness", "reestimate_expiry"}
     unknown = set(body) - allowed
     if unknown:
         raise validation_error(f"Cannot edit: {', '.join(sorted(unknown))}.")
+    if "reestimate_expiry" in body and not isinstance(body["reestimate_expiry"], bool):
+        raise validation_error("reestimate_expiry must be a boolean.")
+    old_storage = item.storage
     if "name" in body:
         if not isinstance(body["name"], str) or not body["name"].strip():
             raise validation_error("name must be a non-empty string.")
@@ -277,6 +280,11 @@ def patch_item(item_id):
         if new != item.predicted_expiry:
             item.expiry_source = "user"
         item.predicted_expiry = new
+    elif ("storage" in body and item.storage != old_storage
+          and (item.expiry_source != "user" or body.get("reestimate_expiry") is True)):
+        item.predicted_expiry = expiry.reestimate(
+            item.category, old_storage, item.storage, item.predicted_expiry)
+        item.expiry_source = "default"
     db.session.commit()
     return jsonify(item=_owner_view(item))
 

@@ -10,11 +10,11 @@ test('updateItem sends an authenticated JSON PATCH to the encoded item URL', asy
     onSessionExpired: jest.fn(),
     fetcher,
   });
-  expect(await api.updateItem('item/id', { storage: 'pantry' })).toEqual(response);
+  expect(await api.updateItem('item/id', { storage: 'pantry', reestimate_expiry: true })).toEqual(response);
   const [url, options] = fetcher.mock.calls[0];
   expect(url).toBe('http://localhost:5001/items/item%2Fid');
   expect(options.method).toBe('PATCH');
-  expect(JSON.parse(options.body)).toEqual({ storage: 'pantry' });
+  expect(JSON.parse(options.body)).toEqual({ storage: 'pantry', reestimate_expiry: true });
   expect(options.headers.get('Authorization')).toBe('Bearer test-token');
   expect(options.headers.get('Content-Type')).toBe('application/json');
 });
@@ -25,7 +25,7 @@ test('mock updates persist, retain unrelated fields and leave Impact unchanged',
   const { items: [item] } = await api.createItems({ items: [{ name: 'Apple', storage: 'fridge' }] });
   const before = await api.getImpact();
   const { item: moved } = await api.updateItem(item.id, { storage: 'pantry' });
-  expect(moved).toEqual({ ...item, storage: 'pantry' });
+  expect(moved).toEqual({ ...item, storage: 'pantry', predicted_expiry: new Date(Date.now() + 30 * 86_400_000).toISOString().slice(0, 10) });
   expect(await api.getItems({ storage: 'fridge' })).toEqual({ items: [] });
   expect(await api.getItems({ storage: 'pantry' })).toEqual({ items: [moved] });
   expect(await api.getImpact()).toEqual(before);

@@ -309,6 +309,39 @@ describe('Fridge', () => {
     expect(update).toHaveBeenLastCalledWith(item.id, { storage: 'fridge' });
   });
 
+  test('user-dated moves show an off switch and send the flag when enabled', async () => {
+    const api = await seededClient();
+    const { items } = await api.getItems({ storage: 'fridge' }) as ItemsResponse;
+    const item = items.find((item) => item.name === 'Apples')!;
+    const update = jest.spyOn(api, 'updateItem');
+    const screen = await renderFridge(api);
+    await screen.findByTestId(`fridge.item.${item.id}`);
+    await fireEvent.press(screen.getByTestId(`fridge.move.${item.id}`));
+    const toggle = screen.getByTestId('fridge.move.reestimate');
+    expect(toggle).toHaveProp('accessibilityLabel', 'Re-estimate expiry for the new spot');
+    expect(toggle).toHaveProp('value', false);
+    expect(toggle.parent).toHaveStyle({ minHeight: 44, minWidth: 44 });
+    expect(screen.queryByTestId('fridge.move.expiryNote')).toBeNull();
+    await fireEvent(toggle, 'valueChange', true);
+    await fireEvent.press(screen.getByTestId('fridge.move.freezer'));
+    await waitFor(() => expect(screen.queryByTestId('fridge.move.sheet')).toBeNull());
+    expect(update).toHaveBeenCalledWith(item.id, { storage: 'freezer', reestimate_expiry: true });
+  });
+
+  test('estimated items show the expiry caption and move without a flag', async () => {
+    const api = await seededClient();
+    const { items: [item] } = await api.createItems({ items: [{ name: 'Milk', category: 'dairy' }] });
+    const update = jest.spyOn(api, 'updateItem');
+    const screen = await renderFridge(api);
+    await screen.findByTestId(`fridge.item.${item.id}`);
+    await fireEvent.press(screen.getByTestId(`fridge.move.${item.id}`));
+    expect(screen.getByTestId('fridge.move.expiryNote')).toHaveTextContent('Expiry updates for the new spot.');
+    expect(screen.queryByTestId('fridge.move.reestimate')).toBeNull();
+    await fireEvent.press(screen.getByTestId('fridge.move.freezer'));
+    await waitFor(() => expect(screen.queryByTestId('fridge.move.sheet')).toBeNull());
+    expect(update).toHaveBeenCalledWith(item.id, { storage: 'freezer' });
+  });
+
   test('a move error keeps the item and retries the selected destination', async () => {
     const api = await seededClient();
     const { items } = await api.getItems({ storage: 'fridge' }) as ItemsResponse;

@@ -22,6 +22,7 @@ SHELF_LIFE_DAYS = {
     "other": (7, 30, 90),
 }
 _IDX = {"fridge": 0, "pantry": 1, "freezer": 2}
+THAW_CAP_DAYS = {"meat": 2, "seafood": 2, "leftovers": 3}
 
 
 def default_days(category: str, storage: str) -> int:
@@ -31,6 +32,26 @@ def default_days(category: str, storage: str) -> int:
 
 def default_expiry(category: str, storage: str, start: date | None = None) -> date:
     return (start or date.today()) + timedelta(days=default_days(category, storage))
+
+
+def reestimate(category: str, old_storage: str, new_storage: str,
+               old_expiry: date | None, today: date | None = None) -> date:
+    today = today or date.today()
+    if old_expiry is None:
+        return default_expiry(category, new_storage, today)
+    if new_storage == "freezer":
+        if old_expiry < today:
+            return old_expiry
+        return default_expiry(category, "freezer", today)
+    if old_storage == "freezer":
+        days = default_days(category, new_storage)
+        return today + timedelta(days=min(days, THAW_CAP_DAYS.get(category, days)))
+    left = (old_expiry - today).days
+    if left <= 0:
+        return old_expiry
+    fraction = min(left / default_days(category, old_storage), 1.0)
+    days = max(1, round(fraction * default_days(category, new_storage)))
+    return today + timedelta(days=days)
 
 
 def predict(category: str, storage: str, start: date | None = None):

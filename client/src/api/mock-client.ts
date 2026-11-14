@@ -19,6 +19,7 @@ import type {
   ImpactTotals,
   Item,
   ItemCandidate,
+  ItemCategory,
   ItemSectionsResponse,
   ItemsQuery,
   ItemsResponse,
@@ -34,6 +35,7 @@ import type {
   RemoveItemInput,
   RequestsQuery,
   ShareListing,
+  Storage,
   Tip,
   UpdateItemInput,
   UpdateShareInput,
@@ -206,8 +208,19 @@ export class MockApiClient implements ApiClient {
     const item = this.findItem(id);
     if (item.removed_at) throw new ApiError(404, 'not_found', 'Item not found.');
     if (item.owner_id !== user.id) throw new ApiError(403, 'forbidden', 'That item belongs to another user.');
-    Object.assign(item, patch);
-    if (patch.predicted_expiry !== undefined) item.expiry_source = 'user';
+    if ('reestimate_expiry' in patch && typeof patch.reestimate_expiry !== 'boolean') {
+      fail(400, 'validation_error', 'reestimate_expiry must be a boolean.');
+    }
+    const { reestimate_expiry, ...fields } = patch;
+    const oldStorage = item.storage;
+    const oldExpiry = item.predicted_expiry;
+    Object.assign(item, fields);
+    if ('predicted_expiry' in patch) {
+      if (item.predicted_expiry !== oldExpiry) item.expiry_source = 'user';
+    } else if ('storage' in patch && item.storage !== oldStorage && (item.expiry_source !== 'user' || reestimate_expiry === true)) {
+      item.predicted_expiry = reestimateExpiry(item.category, oldStorage, item.storage, oldExpiry);
+      item.expiry_source = 'default';
+    }
     if (patch.freshness !== undefined) item.freshness_checked_at = patch.freshness === null ? null : new Date().toISOString();
     if (patch.est_weight_kg === undefined && (patch.quantity !== undefined || patch.unit !== undefined || patch.category !== undefined)) {
       item.est_weight_kg = 0.2 * item.quantity;
@@ -958,6 +971,40 @@ function round(value: number): number {
 
 function dateFromNow(days: number): string {
   return new Date(Date.now() + days * 86_400_000).toISOString().slice(0, 10);
+}
+
+// Same category -> (fridge, pantry, freezer) days as backend/app/services/expiry.py.
+const SHELF_LIFE_DAYS: Record<ItemCategory, [number, number, number]> = {
+  produce_leafy: [5, 2, 240],
+  produce_hardy: [21, 7, 300],
+  dairy: [10, 1, 90],
+  meat: [3, 1, 180],
+  seafood: [2, 1, 120],
+  bakery: [10, 4, 90],
+  eggs: [28, 7, 120],
+  leftovers: [4, 1, 90],
+  pantry_dry: [180, 365, 365],
+  frozen: [2, 1, 270],
+  other: [7, 30, 90],
+};
+const THAW_CAP_DAYS: Partial<Record<ItemCategory, number>> = { meat: 2, seafood: 2, leftovers: 3 };
+
+function reestimateExpiry(category: ItemCategory, oldStorage: Storage, newStorage: Storage, oldExpiry: string | null): string {
+  const today = dateFromNow(0);
+  const addDays = (days: number) => new Date(Date.parse(today) + days * 86_400_000).toISOString().slice(0, 10);
+  const row = SHELF_LIFE_DAYS[category] ?? SHELF_LIFE_DAYS.other;
+  const indices = { fridge: 0, pantry: 1, freezer: 2 };
+  const newDays = row[indices[newStorage]];
+  if (oldExpiry === null) return addDays(newDays);
+  if (newStorage === 'freezer') return oldExpiry < today ? oldExpiry : addDays(newDays);
+  if (oldStorage === 'freezer') return addDays(Math.min(newDays, THAW_CAP_DAYS[category] ?? newDays));
+  const left = (Date.parse(oldExpiry) - Date.parse(today)) / 86_400_000;
+  if (left <= 0) return oldExpiry;
+  const days = Math.min(left / row[indices[oldStorage]], 1) * newDays;
+  // Python round() rounds exact halves to the nearest even integer.
+  const floor = Math.floor(days);
+  const rounded = days - floor === 0.5 ? floor + floor % 2 : Math.round(days);
+  return addDays(Math.max(1, rounded));
 }
 
 function compareItems(a: Item, b: Item): number {

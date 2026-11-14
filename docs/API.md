@@ -156,10 +156,14 @@ seafood, bakery, eggs, leftovers, pantry_dry, frozen, other`; `storage` ∈ `fri
   `expiry_source` sent without `predicted_expiry` is ignored (the backend predicts and sets it).
   `freshness`, `confidence` and `nutrition` from the candidate are stored (see above).
 - ✅ `PATCH /items/:id` — body may contain `name, quantity, unit, storage, category, food_group,
-  predicted_expiry, est_price, est_weight_kg, freshness` (unknown fields → 400, so `confidence` and
+  predicted_expiry, est_price, est_weight_kg, freshness, reestimate_expiry` (unknown fields → 400, so `confidence` and
   `nutrition` are not editable). `freshness` set → stored and `freshness_checked_at` = now; `freshness: null` clears **both**
   (null means "never assessed"). Changing the expiry sets
   `expiry_source=user`. Changing quantity/unit/category re-estimates `est_weight_kg` unless sent.
+  Changing storage without an explicit `predicted_expiry` re-estimates expiry using the final category
+  and sets `expiry_source=default`; user dates stay unchanged unless `reestimate_expiry: true` (boolean only → `400 validation_error` otherwise).
+  Freezing uses the freezer default unless already expired, thawing uses the destination default capped at 2 days for meat/seafood or 3 for leftovers, and fridge ↔ pantry preserves the remaining life fraction (expired dates stay unchanged).
+  The flag alone or the same storage is a no-op; an explicit `predicted_expiry` wins.
   → `200 {item}`; `403` other user's item; `404` unknown or already removed.
 - ✅ `POST /items/:id/remove` — **the core endpoint**
   ```json
