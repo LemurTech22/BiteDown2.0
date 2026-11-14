@@ -990,8 +990,10 @@ const SHELF_LIFE_DAYS: Record<ItemCategory, [number, number, number]> = {
 const THAW_CAP_DAYS: Partial<Record<ItemCategory, number>> = { meat: 2, seafood: 2, leftovers: 3 };
 
 function reestimateExpiry(category: ItemCategory, oldStorage: Storage, newStorage: Storage, oldExpiry: string | null): string {
-  const today = dateFromNow(0);
-  const addDays = (days: number) => new Date(Date.parse(today) + days * 86_400_000).toISOString().slice(0, 10);
+  const now = new Date();
+  const localDate = (date: Date) => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+  const today = localDate(now);
+  const addDays = (days: number) => localDate(new Date(now.getFullYear(), now.getMonth(), now.getDate() + days));
   const row = SHELF_LIFE_DAYS[category] ?? SHELF_LIFE_DAYS.other;
   const indices = { fridge: 0, pantry: 1, freezer: 2 };
   const newDays = row[indices[newStorage]];

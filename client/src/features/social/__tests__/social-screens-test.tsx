@@ -173,7 +173,7 @@ describe('Shared food', () => {
     expect(screen.getByTestId(`foodPantry.mine.expiry.${item.id}`)).toBeTruthy();
     expect(screen.queryByTestId(`foodPantry.claim.${listing.id}`)).toBeNull();
     expect(getItems).toHaveBeenCalledWith();
-    await fireEvent.press(screen.getByRole('button', { name: `${item.name}, shared by you` }));
+    await fireEvent.press(screen.getByRole('button', { name: new RegExp(`^${item.name}, .+, shared by you, Not claimed yet$`) }));
     expect(router.push).toHaveBeenCalledWith({ pathname: '/item/[id]', params: { id: item.id } });
     await fireEvent.press(screen.getByTestId('foodPantry.claim.listing-seed-0'));
     await screen.findByTestId('foodPantry.claimed.listing-seed-0');

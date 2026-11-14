@@ -309,7 +309,8 @@ describe('Fridge', () => {
     expect(update).toHaveBeenLastCalledWith(item.id, { storage: 'fridge' });
   });
 
-  test('user-dated moves show an off switch and send the flag when enabled', async () => {
+  test.each(['ios', 'web'] as const)('%s user-dated moves have one full-row switch and send the flag when enabled', async (platform) => {
+    jest.replaceProperty(Platform, 'OS', platform);
     const api = await seededClient();
     const { items } = await api.getItems({ storage: 'fridge' }) as ItemsResponse;
     const item = items.find((item) => item.name === 'Apples')!;
@@ -319,10 +320,22 @@ describe('Fridge', () => {
     await fireEvent.press(screen.getByTestId(`fridge.move.${item.id}`));
     const toggle = screen.getByTestId('fridge.move.reestimate');
     expect(toggle).toHaveProp('accessibilityLabel', 'Re-estimate expiry for the new spot');
-    expect(toggle).toHaveProp('value', false);
-    expect(toggle.parent).toHaveStyle({ minHeight: 44, minWidth: 44 });
+    expect(screen.getByRole('switch', { name: 'Re-estimate expiry for the new spot', checked: false })).toBe(toggle);
+    expect(toggle).toHaveStyle({ minHeight: 44 });
+    expect(screen.getAllByRole('switch')).toHaveLength(1);
+    const visualTarget = toggle.children[1];
+    if (typeof visualTarget === 'string') throw new Error('Expected a visual switch wrapper');
+    expect(visualTarget).toHaveProp('aria-hidden', true);
+    expect(visualTarget).toHaveProp('pointerEvents', 'none');
+    if (platform === 'web') expect(visualTarget).toHaveProp('inert', true);
     expect(screen.queryByTestId('fridge.move.expiryNote')).toBeNull();
-    await fireEvent(toggle, 'valueChange', true);
+    await fireEvent.press(screen.getByText('Re-estimate expiry for the new spot'));
+    expect(screen.getByRole('switch')).toHaveProp('accessibilityState', { checked: true, disabled: false });
+    // Direct taps on the visual area reach the same row through pointerEvents="none".
+    await fireEvent.press(visualTarget);
+    expect(screen.getByRole('switch')).toHaveProp('accessibilityState', { checked: false, disabled: false });
+    await fireEvent.press(toggle);
+    expect(screen.getByRole('switch')).toHaveProp('accessibilityState', { checked: true, disabled: false });
     await fireEvent.press(screen.getByTestId('fridge.move.freezer'));
     await waitFor(() => expect(screen.queryByTestId('fridge.move.sheet')).toBeNull());
     expect(update).toHaveBeenCalledWith(item.id, { storage: 'freezer', reestimate_expiry: true });
@@ -371,10 +384,15 @@ describe('Fridge', () => {
     await fireEvent.press(screen.getByTestId(`fridge.move.${item.id}`));
     await fireEvent.press(screen.getByTestId('fridge.move.pantry'));
     expect(screen.getByTestId('fridge.move.skeleton')).toBeTruthy();
+    const toggle = screen.getByRole('switch');
+    expect(toggle).toHaveProp('accessibilityState', { checked: false, disabled: true });
+    await fireEvent.press(toggle);
+    expect(screen.getByRole('switch')).toHaveProp('accessibilityState', { checked: false, disabled: true });
     await fireEvent(screen.getByTestId('fridge.move.sheet'), 'requestClose');
     expect(screen.getByTestId('fridge.move.skeleton')).toBeTruthy();
     expect(update).toHaveBeenCalledTimes(1);
     await act(() => rejectMove(new ApiError(503, 'unavailable', 'Move failed.')));
+    expect(screen.getByRole('switch')).toBeEnabled();
     await fireEvent.press(screen.getByTestId('fridge.move.cancel'));
     expect(screen.getByTestId(`fridge.item.${item.id}`)).toBeTruthy();
     expect(screen.queryByTestId('fridge.move.sheet')).toBeNull();

@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react';
-import { Modal, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
+import { Modal, Platform, Pressable, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { useApi, type Item, type Storage } from '@/api';
@@ -59,12 +59,17 @@ export function MoveSheet({ item, onClose, onMoved }: {
         <ScrollView contentContainerStyle={styles.content}>
           <View accessibilityViewIsModal style={styles.sheet}>
             <Text accessibilityRole="header" style={styles.title}>Move {item.name} to…</Text>
-            {item.expiry_source === 'user' ? <View style={styles.switchRow}>
+            {item.expiry_source === 'user' ? <Pressable style={styles.switchRow}
+              accessibilityRole="switch" accessibilityState={{ checked: reestimate, disabled: pending }}
+              accessibilityLabel="Re-estimate expiry for the new spot" testID="fridge.move.reestimate"
+              disabled={pending} onPress={() => setReestimate((value) => !value)}>
               <Text style={styles.switchLabel}>Re-estimate expiry for the new spot</Text>
-              <View style={styles.switchTarget}><Switch accessibilityLabel="Re-estimate expiry for the new spot"
-                testID="fridge.move.reestimate" value={reestimate} disabled={pending} onValueChange={setReestimate}
+              <View style={styles.switchTarget} pointerEvents="none" aria-hidden
+                {...(Platform.OS === 'web' ? { inert: true } : {})}>
+                <Switch accessible={false} importantForAccessibility="no-hide-descendants"
+                value={reestimate} disabled={pending} onValueChange={(value) => { if (!pending) setReestimate(value); }}
                 trackColor={{ false: theme.colors.track, true: theme.colors.forest }} thumbColor={theme.colors.surface} /></View>
-            </View> : <Text style={styles.meta} testID="fridge.move.expiryNote">Expiry updates for the new spot.</Text>}
+            </Pressable> : <Text style={styles.meta} testID="fridge.move.expiryNote">Expiry updates for the new spot.</Text>}
             {pending ? <SkeletonRows testID="fridge.move.skeleton" /> : STORAGES.filter((option) => option.value !== item.storage)
               .map((option) => <AppButton key={option.value} label={option.label}
                 accessibilityLabel={`Move ${item.name} to ${option.label}`}
@@ -86,7 +91,7 @@ function createStyles(theme: AppTheme) {
     content: { flexGrow: 1, justifyContent: 'flex-end' },
     sheet: { padding: theme.spacing.gutter, gap: theme.spacing.sheetSection },
     title: { ...theme.type.sheetTitle, color: theme.colors.ink },
-    switchRow: { flexDirection: 'row', alignItems: 'center', gap: theme.spacing.sm },
+    switchRow: { minHeight: theme.sizes.touchTarget, flexDirection: 'row', alignItems: 'center', gap: theme.spacing.sm },
     switchLabel: { ...theme.type.bodySmall, color: theme.colors.inkSecondary, flex: 1 },
     switchTarget: { minHeight: theme.sizes.touchTarget, minWidth: theme.sizes.touchTarget, alignItems: 'center', justifyContent: 'center' },
     meta: { ...theme.type.meta, color: theme.colors.muted },

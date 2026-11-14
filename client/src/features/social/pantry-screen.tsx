@@ -69,7 +69,8 @@ export function PantryScreen() {
     {pending ? <SkeletonRows testID="foodPantry.claim.skeleton" /> : null}
     {state.status === 'ready' && filter === 'All' && mine.length > 0 ? <View style={styles.section}>
       <Text accessibilityRole="header" testID="foodPantry.mine.header" style={styles.heading}>You&apos;re sharing</Text>
-      {mine.map((item) => <Pressable key={item.id} accessibilityRole="button" accessibilityLabel={`${item.name}, shared by you`}
+      {mine.map((item) => <Pressable key={item.id} accessibilityRole="button"
+        accessibilityLabel={`${item.name}, ${quantityLabel(item, units)}, shared by you, ${item.share?.claimed_by ? `Claimed by ${item.share.claimed_by.name}` : 'Not claimed yet'}`}
         testID={`foodPantry.mine.${item.id}`} style={[styles.card, styles.row, { minHeight: theme.sizes.touchTarget }]}
         onPress={() => router.push({ pathname: '/item/[id]', params: { id: item.id } })}>
         <View style={{ flex: 1, gap: theme.spacing.xs }}>

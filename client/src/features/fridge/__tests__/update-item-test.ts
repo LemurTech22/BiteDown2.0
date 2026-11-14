@@ -1,5 +1,7 @@
 import { ApiError, LiveApiClient, MockApiClient } from '@/api';
 
+afterEach(() => jest.useRealTimers());
+
 test('updateItem sends an authenticated JSON PATCH to the encoded item URL', async () => {
   const response = { item: { id: 'item/id', storage: 'pantry' } };
   const fetcher = jest.fn().mockResolvedValue({ ok: true, text: async () => JSON.stringify(response) });
@@ -20,18 +22,32 @@ test('updateItem sends an authenticated JSON PATCH to the encoded item URL', asy
 });
 
 test('mock updates persist, retain unrelated fields and leave Impact unchanged', async () => {
+  jest.useFakeTimers().setSystemTime(new Date(2026, 10, 13, 23, 30));
   const api = new MockApiClient();
   await api.signup({ email: 'move@example.com', password: 'test-password', display_name: 'Contributor' });
   const { items: [item] } = await api.createItems({ items: [{ name: 'Apple', storage: 'fridge' }] });
   const before = await api.getImpact();
   const { item: moved } = await api.updateItem(item.id, { storage: 'pantry' });
-  expect(moved).toEqual({ ...item, storage: 'pantry', predicted_expiry: new Date(Date.now() + 30 * 86_400_000).toISOString().slice(0, 10) });
+  expect(moved).toEqual({ ...item, storage: 'pantry', predicted_expiry: '2026-12-13' });
   expect(await api.getItems({ storage: 'fridge' })).toEqual({ items: [] });
   expect(await api.getItems({ storage: 'pantry' })).toEqual({ items: [moved] });
   expect(await api.getImpact()).toEqual(before);
   moved.name = 'Changed copy';
   expect((await api.updateItem(item.id, { predicted_expiry: '2027-01-01' })).item)
     .toEqual({ ...item, storage: 'pantry', predicted_expiry: '2027-01-01', expiry_source: 'user' });
+});
+
+test.each([
+  [new Date(2026, 2, 7, 23, 30), '2026-03-08', '2026-03-08'],
+  [new Date(2026, 9, 31, 23, 30), '2026-11-01', '2026-11-01'],
+  [new Date(2026, 11, 31, 23, 30), '2027-01-01', '2027-01-01'],
+])('re-estimates from the local calendar day at %s', async (today, expiry, expected) => {
+  jest.useFakeTimers().setSystemTime(today);
+  const api = new MockApiClient();
+  await api.signup({ email: 'local@example.com', password: 'test-password', display_name: 'Contributor' });
+  const { items: [item] } = await api.createItems({ items: [{ name: 'Greens', category: 'produce_leafy',
+    storage: 'fridge', predicted_expiry: expiry, expiry_source: 'default' }] });
+  expect((await api.updateItem(item.id, { storage: 'pantry' })).item.predicted_expiry).toBe(expected);
 });
 
 test('mock rejects unknown, removed and other contributors’ items', async () => {
