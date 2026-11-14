@@ -1,10 +1,9 @@
 import { Text, View } from 'react-native';
 
 import type { Item } from '@/api';
-import { AppIcon } from '@/components/ui/app-icon';
 import { connectStyles } from '@/features/connect/connect-ui';
 import { FOOD_GROUPS } from '@/features/fridge/fridge-utils';
-import { groupIcon } from '@/features/fridge/item-row';
+import { ItemThumb } from '@/components/ui/item-thumb';
 import { useTheme } from '@/theme';
 
 export function expiryLabel(item: Item, now = new Date()) {
@@ -33,9 +32,7 @@ export function GroupPantryRow({ item, currentUserId }: { item: Item; currentUse
   const ink = urgent ? theme.colors.urgentInk : soon ? theme.colors.useSoonInk : theme.colors.forest;
   const backgroundColor = urgent ? theme.colors.urgentBg : soon ? theme.colors.useSoonBg : theme.colors.limeTint;
   return <View style={[styles.card, styles.row]} testID={`groupDetail.item.${item.id}`}>
-    <View style={[styles.avatar, { borderRadius: theme.radii.input, backgroundColor: theme.foodGroups[item.food_group].tile }]}>
-      <AppIcon name={groupIcon(item.food_group)} color={theme.foodGroups[item.food_group].stroke} />
-    </View>
+    <ItemThumb name={item.name} foodGroup={item.food_group} photoUrl={item.photo_url} />
     <View style={styles.copy}>
       <Text style={styles.name}>{item.name}</Text>
       <Text style={styles.meta}>Added by {item.owner_id === currentUserId ? 'you' : item.added_by ?? 'a member'} · {FOOD_GROUPS.find((group) => group.value === item.food_group)?.label}</Text>

@@ -2,28 +2,15 @@ import { router } from 'expo-router';
 import { useState } from 'react';
 import { PanResponder, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 
-import type { FoodGroup, Item } from '@/api/types';
-import { AppIcon, type IconName } from '@/components/ui/app-icon';
+import type { Item } from '@/api/types';
+import { AppIcon } from '@/components/ui/app-icon';
+import { ItemThumb } from '@/components/ui/item-thumb';
 import { ExpiryBadge } from '@/features/fridge/expiry-badge';
 import { quantityLabel } from '@/features/fridge/fridge-utils';
 import { type AppTheme, useTheme } from '@/theme';
 import type { Units } from '@/settings/preferences';
 
-const GROUP_ICONS: Record<FoodGroup, IconName> = {
-  protein: 'food-drumstick-outline',
-  veggies: 'carrot',
-  fruit: 'food-apple-outline',
-  dairy: 'cup-outline',
-  grains: 'bread-slice-outline',
-  pantry: 'package-variant-closed',
-  leftovers: 'food-takeout-box-outline',
-  frozen: 'snowflake',
-  other: 'dots-horizontal-circle-outline',
-};
-
-export function groupIcon(foodGroup: FoodGroup): IconName {
-  return GROUP_ICONS[foodGroup];
-}
+export { groupIcon } from '@/features/food-art/group-icon';
 
 export function ItemRow({ item, last, onRemove, onMove, selecting = false, selected = false, onSelect, disabled = false, units = 'us', onOpen }: {
   item: Item; last: boolean; onRemove: () => void; onMove: () => void;
@@ -33,7 +20,6 @@ export function ItemRow({ item, last, onRemove, onMove, selecting = false, selec
   const theme = useTheme();
   const web = Platform.OS === 'web';
   const [actionsOpen, setActionsOpen] = useState(false);
-  const groupColors = theme.foodGroups[item.food_group];
   const styles = createStyles(theme);
   const freshness = item.freshness === 'fresh' ? 'Fresh' : item.freshness === 'semi_fresh' ? 'Use soon' : item.freshness === 'spoiled' ? 'Looks off' : 'Not checked';
   const label = `View ${item.name}, ${quantityLabel(item, units)}, expiry ${item.predicted_expiry ?? 'unknown'}, freshness ${freshness}`;
@@ -70,9 +56,7 @@ export function ItemRow({ item, last, onRemove, onMove, selecting = false, selec
           else if (nativeEvent.actionName === 'remove') remove();
         }}
         onPress={() => { setActionsOpen(false); if (onOpen) onOpen(); else router.push(`/item/${item.id}`); }} style={styles.main}>
-      <View style={[styles.iconTile, { backgroundColor: groupColors.tile }]}>
-        <AppIcon name={groupIcon(item.food_group)} color={groupColors.stroke} size={theme.sizes.icon} />
-      </View>
+      <ItemThumb name={item.name} foodGroup={item.food_group} photoUrl={item.photo_url} />
       <View style={styles.copy}>
         <Text style={styles.name}>{item.name}</Text>
         <Text style={styles.meta}>{quantityLabel(item, units)}</Text>
@@ -120,14 +104,6 @@ function createStyles(theme: AppTheme) {
     checkTarget: { minHeight: theme.sizes.touchTarget, minWidth: theme.sizes.touchTarget, alignItems: 'center', justifyContent: 'center' },
     checkbox: { width: theme.sizes.iconLarge, height: theme.sizes.iconLarge, borderRadius: theme.radii.round, borderWidth: theme.sizes.focusRing, borderColor: theme.colors.muted, alignItems: 'center', justifyContent: 'center' },
     checked: { backgroundColor: theme.colors.forest, borderColor: theme.colors.forest },
-    iconTile: {
-      alignItems: 'center',
-      borderRadius: theme.radii.input,
-      height: theme.sizes.itemIcon,
-      justifyContent: 'center',
-      width: theme.sizes.itemIcon,
-      flexShrink: 0,
-    },
     copy: { flex: 1, gap: theme.spacing.xxs, minWidth: 0 },
     status: { alignSelf: 'flex-start', maxWidth: '100%' },
     name: { ...theme.type.rowTitle, color: theme.colors.ink },

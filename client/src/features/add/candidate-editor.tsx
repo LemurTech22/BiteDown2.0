@@ -2,6 +2,7 @@ import { StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { type CreateItemInput, type ItemCandidate } from '@/api';
 import { AppButton } from '@/components/ui/app-button';
+import { ItemThumb } from '@/components/ui/item-thumb';
 import { type AppTheme, useTheme } from '@/theme';
 
 import { ChoiceControl } from './choice-control';
@@ -36,14 +37,16 @@ export function toCreateItem(draft: CandidateDraft, mode: 'fridge' | 'single'): 
     est_price: candidate.est_price,
     est_weight_kg: Number(draft.quantity) === candidate.quantity ? candidate.est_weight_kg : undefined,
     freshness: candidate.freshness, confidence: candidate.confidence, nutrition: candidate.nutrition,
+    photo_token: candidate.photo_token,
   };
 }
 
-export function CandidateEditor({ draft, disabled, onChange, onDrop }: {
+export function CandidateEditor({ draft, disabled, onChange, onDrop, showThumb = true }: {
   draft: CandidateDraft;
   disabled: boolean;
   onChange: (patch: Partial<CandidateDraft>) => void;
   onDrop: () => void;
+  showThumb?: boolean;
 }) {
   const theme = useTheme();
   const styles = createStyles(theme);
@@ -54,6 +57,7 @@ export function CandidateEditor({ draft, disabled, onChange, onDrop }: {
       draft.candidate.confidence != null && draft.candidate.confidence < 0.5 ? 'Not sure' : null;
   return (
     <View style={styles.card} testID={`add.candidate.${id}`}>
+      {showThumb ? <ItemThumb name={draft.name} foodGroup={draft.candidate.food_group} photoUrl={draft.candidate.photo_preview_url} /> : null}
       <Text style={styles.meta}>Predicted expiry: {draft.candidate.predicted_expiry}</Text>
       {status ? <Text style={[styles.status, status === 'Use soon' && styles.useSoon]}>{status}</Text> : null}
       {(['name', 'quantity', 'expiry'] as const).map((field) => {

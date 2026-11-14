@@ -195,15 +195,38 @@ describe('add by photo', () => {
   test('library photo preserves prediction source and drops unwanted candidates', async () => {
     const { api, screen } = await setup();
     const response = await api.fromPhoto({ uri: 'mock', mode: 'fridge' });
-    jest.spyOn(api, 'fromPhoto').mockResolvedValue({ ...response, candidates: [...response.candidates, { ...response.candidates[0], name: 'Drop me' }] });
+    jest.spyOn(api, 'fromPhoto').mockResolvedValue({ ...response, candidates: [...response.candidates, { ...response.candidates[0], name: 'Drop me', photo_token: 'dropped-token' }] });
     const createItems = jest.spyOn(api, 'createItems');
     await fireEvent.press(screen.getByTestId('add.library.button'));
     expect(await screen.findByDisplayValue('Drop me')).toBeTruthy();
+    expect(within(screen.getByTestId('add.candidate.0')).getByTestId('itemThumb.photo', { includeHiddenElements: true }).props.source[0].uri)
+      .toBe(response.candidates[0].photo_preview_url);
     await fireEvent.press(screen.getByTestId('add.drop.1'));
     await fireEvent.press(screen.getByTestId('add.save.button'));
     await waitFor(() => expect(createItems).toHaveBeenCalledTimes(1));
-    expect(createItems.mock.calls[0][0].items).toEqual([expect.objectContaining({ name: 'Mock apples', expiry_source: 'default', source: 'photo' })]);
+    expect(createItems.mock.calls[0][0].items).toEqual([expect.objectContaining({ name: 'Mock apples', expiry_source: 'default', source: 'photo', photo_token: response.candidates[0].photo_token })]);
     expect(picker.requestCameraPermissionsAsync).not.toHaveBeenCalled();
+  });
+
+  test('each kept photo candidate sends its own token even after name and quantity edits', async () => {
+    const { api, screen } = await setup();
+    const { candidates: [first] } = await api.fromPhoto({ uri: 'file:///first.jpg', mode: 'fridge' });
+    const { candidates: [second] } = await api.fromPhoto({ uri: 'file:///second.jpg', mode: 'fridge' });
+    jest.spyOn(api, 'fromPhoto').mockResolvedValue({ source: 'yolo', candidates: [first, { ...second, name: 'Second apple' }] });
+    const createItems = jest.spyOn(api, 'createItems');
+    await fireEvent.press(screen.getByTestId('add.library.button'));
+    await screen.findByDisplayValue('Second apple');
+    await fireEvent.changeText(screen.getByTestId('add.name.0'), 'My apple');
+    await fireEvent.changeText(screen.getByTestId('add.quantity.1'), '2');
+    await fireEvent.press(screen.getByTestId('add.save.button'));
+    await waitFor(() => expect(createItems).toHaveBeenCalledTimes(1));
+    expect(createItems.mock.calls[0][0].items).toEqual([
+      expect.objectContaining({ name: 'My apple', photo_token: first.photo_token }),
+      expect.objectContaining({ name: 'Second apple', quantity: 2, photo_token: second.photo_token }),
+    ]);
+    expect(await createItems.mock.results[0].value).toMatchObject({ items: [
+      { photo_url: 'file:///first.jpg' }, { photo_url: 'file:///second.jpg' },
+    ] });
   });
 
   test('camera denied offers Settings, retry, and a library fallback', async () => {

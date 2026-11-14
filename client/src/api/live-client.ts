@@ -284,9 +284,10 @@ export class LiveApiClient implements ApiClient {
       if (token) headers.set('Authorization', `Bearer ${token}`);
     }
     if (typeof options.body === 'string') headers.set('Content-Type', 'application/json');
+    const baseUrl = normalizeBaseUrl(this.options.getBaseUrl());
 
     try {
-      const response = await this.fetcher(`${normalizeBaseUrl(this.options.getBaseUrl())}${path}`, {
+      const response = await this.fetcher(`${baseUrl}${path}`, {
         method: options.method ?? 'GET',
         headers,
         body: options.body,
@@ -302,7 +303,7 @@ export class LiveApiClient implements ApiClient {
         }
         throw new ApiError(response.status, code, message);
       }
-      return payload as T;
+      return resolvePhotoUrls(payload, baseUrl) as T;
     } catch (error) {
       if (error instanceof ApiError && error.status !== 0) throw error;
       if (__DEV__) console.warn(`[api] ${options.method ?? 'GET'} ${path} failed:`, error);
@@ -319,6 +320,16 @@ export class LiveApiClient implements ApiClient {
       clearTimeout(timeout);
     }
   }
+}
+
+// Covers items in lists, sections, mutation responses, and compact shared listings.
+function resolvePhotoUrls(value: unknown, baseUrl: string): unknown {
+  if (Array.isArray(value)) return value.map((entry) => resolvePhotoUrls(entry, baseUrl));
+  if (!value || typeof value !== 'object') return value;
+  return Object.fromEntries(Object.entries(value).map(([key, entry]) => [key,
+    (key === 'photo_url' || key === 'photo_preview_url') && typeof entry === 'string' && entry.startsWith('/')
+      ? `${baseUrl}${entry}` : resolvePhotoUrls(entry, baseUrl),
+  ]));
 }
 
 function parseJson(text: string): unknown {

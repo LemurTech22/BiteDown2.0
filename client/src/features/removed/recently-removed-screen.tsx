@@ -5,6 +5,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { useApi, type Item } from '@/api';
 import { RESTORE_WINDOW_MS } from '@/api/removal-window';
+import { ItemThumb } from '@/components/ui/item-thumb';
 import { AppButton } from '@/components/ui/app-button';
 import { SkeletonRows } from '@/components/ui/skeleton-rows';
 import { StateView } from '@/components/ui/state-view';
@@ -95,6 +96,7 @@ export function RecentlyRemovedScreen() {
         message="Food you use, share or throw out appears here for 7 days." testID="removed.empty" /> : null}
       {status === 'success' && items.map((item) => <View key={item.id} style={styles.row} testID={`removed.item.${item.id}`}>
         <View style={styles.rowContent}>
+          <ItemThumb name={item.name} foodGroup={item.food_group} photoUrl={item.photo_url} />
           <View style={styles.copy}>
             <Text style={styles.name}>{item.name}</Text>
             <Text style={styles.meta}>{quantityLabel(item, units)}</Text>

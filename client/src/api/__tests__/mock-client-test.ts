@@ -2,6 +2,31 @@ import { MockApiClient } from '@/api/mock-client';
 import { RESTORE_WINDOW_MS } from '@/api/removal-window';
 import type { ExpirySource, ItemCategory, Storage, UpdateItemInput } from '@/api/types';
 
+test('photo candidates preview the picked image and their tokens attach it only once', async () => {
+  const api = new MockApiClient();
+  await api.signup({ email: 'photo@example.com', password: 'password123', display_name: 'Demo' });
+  const uri = 'file:///my-real-food.jpg';
+  const { candidates: [candidate] } = await api.fromPhoto({ uri, mode: 'single' });
+  expect(candidate.photo_token).toEqual(expect.any(String));
+  expect(candidate.photo_preview_url).toBe(uri);
+  const { items: [photo, reused, plain] } = await api.createItems({ items: [candidate, candidate, { name: 'Rice' }] });
+  expect(photo.photo_url).toBe(uri);
+  expect(reused.photo_url).toBeNull();
+  expect(plain.photo_url).toBeNull();
+  expect((await api.removeItem(photo.id, { outcome: 'used' })).item.photo_url).toBe(uri);
+  expect((await api.restoreItem(photo.id)).item.photo_url).toBe(uri);
+});
+
+test('demo photo tokens belong to the user who picked the photo', async () => {
+  const api = new MockApiClient();
+  await api.signup({ email: 'owner@example.com', password: 'password123', display_name: 'Owner' });
+  const { candidates: [candidate] } = await api.fromPhoto({ uri: 'file:///private.jpg', mode: 'fridge' });
+  await api.signup({ email: 'other@example.com', password: 'password123', display_name: 'Other' });
+  expect((await api.createItems({ items: [candidate] })).items[0].photo_url).toBeNull();
+  await api.login({ email: 'owner@example.com', password: 'password123' });
+  expect((await api.createItems({ items: [candidate] })).items[0].photo_url).toBe('file:///private.jpg');
+});
+
 describe.each(['single', 'batch'] as const)('%s seven-day restore window', (kind) => {
   beforeEach(() => jest.useFakeTimers().setSystemTime(new Date('2026-11-13T12:00:00Z')));
   afterEach(() => jest.useRealTimers());
