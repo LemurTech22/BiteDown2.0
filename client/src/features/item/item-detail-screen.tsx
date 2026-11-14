@@ -60,7 +60,7 @@ export function ItemDetailScreen() {
   const request = useRef(0);
   const working = useRef(false);
   const retry = useRef<(() => Promise<void>) | null>(null);
-  const { entries, remember, undo } = useRemovalUndo((restored) => { setItem(restored); setDraft(toDraft(restored)); });
+  const { entries, remember, undo, dismiss } = useRemovalUndo((restored) => { setItem(restored); setDraft(toDraft(restored)); });
   const load = useCallback(async () => {
     const version = ++request.current;
     setLoading(true); setLoadError('');
@@ -149,7 +149,7 @@ export function ItemDetailScreen() {
         actionLabel="Try again" actionTestID="item.error.retry" onAction={() => void load()} /> : !item || !draft ? <StateView title="Item not found" message="This item is no longer available."
         icon="fridge-outline" testID="item.empty.state" actionLabel="Try again" actionTestID="item.empty.retry" onAction={() => void load()} /> : item.removed_at ? <>
           <Text style={styles.body} testID="item.removed.state">{item.name} removed</Text>
-          {entries.map((entry) => <UndoToast key={entry.item.id} entry={entry} onUndo={() => void undo(entry)} />)}
+          {entries.map((entry) => <UndoToast key={entry.item.id} entry={entry} onUndo={() => void undo(entry)} onDismiss={() => dismiss(entry.item.id)} />)}
         </> : <>
         <View style={styles.card}>
           <ItemField label="Food name" testID="item.name.input" value={draft.name} maxLength={200} editable={!pending} onChangeText={(name) => change({ name })} />

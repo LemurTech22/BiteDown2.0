@@ -4,7 +4,7 @@ import { AppState, type AppStateStatus } from 'react-native';
 
 import { ApiError, ApiProvider, MockApiClient, type Item, type ItemsResponse } from '@/api';
 import { FridgeScreen } from '@/features/fridge/fridge-screen';
-import { UNDO_WINDOW_MS } from '@/features/remove/use-removal-undo';
+import { RESTORE_WINDOW_MS, UNDO_TOAST_MS } from '@/features/remove/use-removal-undo';
 import { useReducedMotion } from '@/hooks/use-reduced-motion';
 import { PreferencesProvider } from '@/settings/preferences';
 
@@ -198,24 +198,22 @@ describe('Remove and Undo', () => {
     expect(restore).toHaveBeenCalledTimes(2);
   });
 
-  test('each removal retains Undo until its own ten-minute deadline', async () => {
+  test('a new removal replaces the visible panel and hides after eight seconds', async () => {
     const { screen, item, secondItem } = await setup();
     jest.useFakeTimers();
     await fireEvent.press(screen.getByTestId(`fridge.remove.${item.id}`));
     await fireEvent.press(screen.getByTestId('remove.outcome.used'));
-    await act(async () => { jest.advanceTimersByTime(60 * 1000); });
+    await act(async () => { jest.advanceTimersByTime(1000); });
     await fireEvent.press(screen.getByTestId(`fridge.remove.${secondItem.id}`));
     await fireEvent.press(screen.getByTestId('remove.outcome.used'));
     expect(screen.getByText('Nothing in your fridge yet')).toBeTruthy();
 
-    await act(async () => { jest.advanceTimersByTime(UNDO_WINDOW_MS - 60 * 1000 - 1); });
-    expect(screen.getByTestId(`remove.undo.${item.id}`)).toBeTruthy();
+    expect(screen.queryByTestId(`remove.undo.${item.id}`)).toBeNull();
+    await act(async () => { jest.advanceTimersByTime(UNDO_TOAST_MS - 1); });
     expect(screen.getByTestId(`remove.undo.${secondItem.id}`)).toBeTruthy();
     await act(async () => { jest.advanceTimersByTime(1); });
     expect(screen.queryByTestId(`remove.undo.${item.id}`)).toBeNull();
-    expect(screen.getByTestId(`remove.undo.${secondItem.id}`)).toBeTruthy();
-    await fireEvent.press(screen.getByTestId(`remove.undo.${secondItem.id}`));
-    expect(screen.getByTestId(`fridge.item.${secondItem.id}`)).toBeTruthy();
+    expect(screen.queryByTestId(`remove.undo.${secondItem.id}`)).toBeNull();
   });
 
   test('a list response started before Undo cannot hide the restored item', async () => {
@@ -256,14 +254,11 @@ describe('Remove and Undo', () => {
     const originalRemove = api.removeItem.bind(api);
     jest.spyOn(api, 'removeItem').mockImplementationOnce(async (id, input) => {
       const response = await originalRemove(id, input);
-      response.item.removed_at = new Date(Date.now() - 9 * 60 * 1000).toISOString();
+      response.item.removed_at = new Date(Date.now() - RESTORE_WINDOW_MS).toISOString();
       return response;
     });
     await fireEvent.press(screen.getByTestId(`fridge.remove.${item.id}`));
     await fireEvent.press(screen.getByTestId('remove.outcome.used'));
-    await act(async () => { jest.advanceTimersByTime(60 * 1000 - 1); });
-    expect(screen.getByTestId(`remove.undo.${item.id}`)).toBeTruthy();
-    await act(async () => { jest.advanceTimersByTime(1); });
     expect(screen.queryByTestId(`remove.undo.${item.id}`)).toBeNull();
   });
 
@@ -278,7 +273,7 @@ describe('Remove and Undo', () => {
     await fireEvent.press(screen.getByTestId(`fridge.remove.${item.id}`));
     await fireEvent.press(screen.getByTestId('remove.outcome.used'));
     expect(screen.getByTestId(`remove.undo.${item.id}`)).toBeTruthy();
-    jest.setSystemTime(Date.now() + UNDO_WINDOW_MS);
+    jest.setSystemTime(Date.now() + UNDO_TOAST_MS);
     await act(async () => foreground?.('active'));
     expect(screen.queryByTestId(`remove.undo.${item.id}`)).toBeNull();
   });

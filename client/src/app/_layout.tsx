@@ -29,6 +29,7 @@ function RootStack() {
         <Stack.Screen name="group/[code]" options={{ headerShown: false }} />
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
         <Stack.Screen name="add-modal" options={{ headerShown: false, presentation: 'modal' }} />
+        <Stack.Screen name="removed" options={{ title: 'Recently removed' }} />
         <Stack.Screen name="debug" options={{ title: 'Server settings' }} />
         <Stack.Screen name="item/[id]" options={{ title: "Item detail", headerShown: false }} />
         <Stack.Screen name="add-text" options={{ title: "Type or say it", presentation: 'modal', headerShown: false }} />

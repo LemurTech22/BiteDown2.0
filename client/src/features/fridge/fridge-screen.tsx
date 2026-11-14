@@ -1,7 +1,7 @@
 import { router, useFocusEffect } from 'expo-router';
 import * as Haptics from 'expo-haptics';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Modal, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { isApiError, useApi } from '@/api';
@@ -18,7 +18,7 @@ import { MoveSheet, storageLabel } from '@/features/fridge/move-sheet';
 import { StorageSegmented } from '@/features/fridge/storage-segmented';
 import { RemoveSheet } from '@/features/remove/remove-sheet';
 import { UndoToast } from '@/features/remove/undo-toast';
-import { UNDO_WINDOW_MS, useRemovalUndo } from '@/features/remove/use-removal-undo';
+import { RESTORE_WINDOW_MS, UNDO_TOAST_MS, useRemovalUndo } from '@/features/remove/use-removal-undo';
 import { type AppTheme, useTheme } from '@/theme';
 import { useReducedMotion } from '@/hooks/use-reduced-motion';
 import { usePreferences } from '@/settings/preferences';
@@ -57,7 +57,7 @@ export function FridgeScreen() {
   });
   const requestSequence = useRef(0);
   const mutations = useRef({ version: 0, items: new Map<string, { version: number; item: Item }>() });
-  const { entries, remember, undo } = useRemovalUndo(applyItem);
+  const { entries, remember, undo, dismiss } = useRemovalUndo(applyItem);
   const styles = createStyles(theme);
 
   useEffect(() => {
@@ -124,8 +124,9 @@ export function FridgeScreen() {
       }
       items.forEach(applyItem);
       if (items.length > 0) {
-        const entry: BatchUndo = { id: ++batchSequence.current, itemIds: items.map((item) => item.id), outcome, expiresAt: Date.now() + UNDO_WINDOW_MS, pending: false, error: '' };
-        setBatches((current) => [...current, entry]);
+        const entry: BatchUndo = { id: ++batchSequence.current, itemIds: items.map((item) => item.id), outcome, expiresAt: Math.min(...items.map((item) => Date.parse(item.removed_at!))) + RESTORE_WINDOW_MS, toastExpiresAt: Date.now() + UNDO_TOAST_MS, pending: false, error: '' };
+        dismiss();
+        setBatches([entry]);
       }
       if (remaining.length > 0) {
         setSelected(remaining);
@@ -176,13 +177,18 @@ export function FridgeScreen() {
     <SafeAreaView style={styles.screen} edges={selecting ? ['top', 'bottom'] : ['top']}>
       <View style={styles.header}>
         <Text accessibilityRole="header" style={styles.title}>Your food</Text>
-        {selecting ? <AppButton label="Done" testID="fridge.selection.done" variant="outline" disabled={batchPending} onPress={done} /> : null}
+        <View style={styles.headerActions}>
+          <Pressable accessibilityRole="button" accessibilityLabel="Recently removed" testID="fridge.recentlyRemoved" onPress={() => router.push('/removed')} style={styles.history}>
+            <AppIcon name="history" color={theme.colors.forest} size={theme.sizes.icon} />
+          </Pressable>
+          {selecting ? <AppButton label="Done" testID="fridge.selection.done" variant="outline" disabled={batchPending} onPress={done} />
+            : state.items.length > 0 ? <AppButton label="Select" testID="fridge.selection.start" variant="outline" onPress={() => { setSelected([]); setSelecting(true); }} /> : null}
+        </View>
       </View>
       {selecting ? <Text accessibilityLiveRegion="polite" style={styles.confirmation} testID="fridge.selection.count">{selected.length} selected</Text> : null}
       <StorageSegmented value={storage} onChange={(value) => { if (!batchWorking.current) { setStorage(value); setSelected([]); setSearch(''); setBatchError(''); } }} />
       {state.items.length > 0 && !selecting ? <View style={styles.searchRow}>
         <TextInput accessibilityLabel="Search food" placeholder="Search" placeholderTextColor={theme.colors.muted} testID="fridge.search.input" value={search} onChangeText={setSearch} style={styles.search} />
-        <AppButton label="Select" testID="fridge.selection.start" variant="outline" onPress={() => { setSelected([]); setSelecting(true); }} />
       </View> : null}
       {moved ? <FadeIn testID="fridge.move.confirmation">
         <Text accessibilityLiveRegion="polite" style={styles.confirmation}>Moved to {storageLabel(moved.storage)}</Text>
@@ -259,11 +265,11 @@ export function FridgeScreen() {
         <AppButton label="Shared them" testID="fridge.batch.donated" variant="outline" disabled={batchPending || selected.length === 0} onPress={() => void removeSelected('donated')} />
       </View> : null}
       {batches.map((entry) => <BatchUndoToast key={entry.id} entry={entry} onUndo={() => void undoBatch(entry)}
-        onExpire={() => setBatches((current) => current.filter((batch) => batch.id !== entry.id))} />)}
+        onDismiss={() => setBatches((current) => current.filter((batch) => batch.id !== entry.id))} />)}
       {entries.length > 0 ? (
         <ScrollView style={styles.toasts} contentContainerStyle={styles.toastContent}>
           {entries.map((entry) => (
-            <UndoToast key={entry.item.id} entry={entry} onUndo={() => void undo(entry)} />
+            <UndoToast key={entry.item.id} entry={entry} onUndo={() => void undo(entry)} onDismiss={() => dismiss(entry.item.id)} />
           ))}
         </ScrollView>
       ) : null}
@@ -273,7 +279,7 @@ export function FridgeScreen() {
           item={removing}
           units={units}
           onClose={() => setRemoving(null)}
-          onRemoved={(item) => { applyItem(item); remember(item); }}
+          onRemoved={(item) => { applyItem(item); setBatches([]); remember(item); }}
         />
       ) : null}
       {moving ? <MoveSheet key={moving.id} item={moving} onClose={() => setMoving(null)}
@@ -299,6 +305,8 @@ function createStyles(theme: AppTheme) {
       paddingHorizontal: theme.spacing.gutter,
     },
     header: { paddingTop: theme.spacing.lg, flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: theme.spacing.sm },
+    headerActions: { flexDirection: 'row', alignItems: 'center', gap: theme.spacing.sm },
+    history: { minWidth: theme.sizes.touchTarget, minHeight: theme.sizes.touchTarget, alignItems: 'center', justifyContent: 'center' },
     searchRow: { flexDirection: 'row', alignItems: 'center', gap: theme.spacing.sm },
     search: { ...theme.type.body, color: theme.colors.ink, backgroundColor: theme.colors.surface, borderRadius: theme.radii.input, minHeight: theme.sizes.input, padding: theme.spacing.md, flex: 1 },
     batchBar: { gap: theme.spacing.sm, paddingBottom: theme.spacing.sm },

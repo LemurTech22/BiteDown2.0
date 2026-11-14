@@ -194,9 +194,10 @@ seafood, bakery, eggs, leftovers, pantry_dry, frozen, other`; `storage` ∈ `fri
   stay `403`; non-members of the group get `403`. `PATCH` stays owner-only. If the item's open
   listing was claimed and `recipient_id` is omitted, the claimer becomes `recipient_id`.
 
-- ✅ `POST /items/:id/restore` (no body) → `200 {item}`. Undoes a removal made less than **10 minutes**
-  ago (same permission as remove: owner, or any member for a group-pantry item). `409 not_removed` if
-  the item is active, `409 restore_window_expired` after 10 minutes, `403`/`404` as for remove. One
+- ✅ `POST /items/:id/restore` (no body) → `200 {item}`. Undoes a removal made less than **7 days**
+  ago (was 10 minutes until 2026-11-13; the client's Undo panel and "Recently removed" both use it) (same permission
+  as remove: owner, or any member for a group-pantry item). `409 not_removed` if
+  the item is active, `409 restore_window_expired` after 7 days, `403`/`404` as for remove. One
   transaction under the row lock: clears `removed_at`, `outcome`, `waste_reason`,
   `removed_after_expiry`; **deletes the item's `remove` event** (by id + time) so `/impact`, `/tips` and
   any other event query are automatically correct; and if the removal fulfilled a listing
@@ -220,7 +221,7 @@ seafood, bakery, eggs, leftovers, pantry_dry, frozen, other`; `storage` ∈ `fri
   writes nothing. Constant query count regardless of batch size.
 - ✅ `POST /items/restore-batch` `{"item_ids": [...]}` (same id rules) → `200 {items}`. All or nothing:
   `404` as above, `409 not_removed` if any item is active, `409 restore_window_expired` if any removal is
-  older than 10 minutes. Otherwise mirrors `POST /items/:id/restore` per item (deletes its `remove`
+  older than 7 days. Otherwise mirrors `POST /items/:id/restore` per item (deletes its `remove`
   event, reopens a listing that removal fulfilled). `remove-batch` then `restore-batch` leaves `/impact`
   exactly as before. Items removed singly can be restored in a batch and vice versa.
 

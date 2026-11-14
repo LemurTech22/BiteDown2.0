@@ -38,6 +38,7 @@ test('uses custom headers for feature screens, keeps Debug native, and preserves
   }
   expect(options('debug').headerShown).not.toBe(false);
   expect(options('debug').title).toBe('Server settings');
+  expect(options('removed')).toEqual({ title: 'Recently removed' });
   for (const route of ['add-modal', 'add-text', 'add-barcode', 'add-receipt', 'social/request-new', 'social/scan']) {
     expect(options(route).presentation).toBe('modal');
   }

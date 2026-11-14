@@ -1,3 +1,4 @@
+import { RESTORE_WINDOW_MS } from './removal-window';
 import { ApiError } from './errors';
 import type {
   AddFriendInput,
@@ -289,8 +290,8 @@ export class MockApiClient implements ApiClient {
     const item = this.findItem(id);
     this.requireRemovable(item);
     if (!item.removed_at || !item.outcome) throw new ApiError(409, 'not_removed', 'That item is still active.');
-    if (Date.now() - Date.parse(item.removed_at) >= 10 * 60 * 1000) {
-      throw new ApiError(409, 'restore_window_expired', 'The 10-minute undo window has expired.');
+    if (Date.now() - Date.parse(item.removed_at) >= RESTORE_WINDOW_MS) {
+      throw new ApiError(409, 'restore_window_expired', 'Items can only be restored within 7 days of removal.');
     }
     const listing = this.socialByUser.get(this.requireUser().id)?.listings.find((entry) => entry.item_id === id && entry.status === 'fulfilled' && entry.fulfilled_at === item.removed_at);
     if (listing) {
@@ -340,8 +341,8 @@ export class MockApiClient implements ApiClient {
     this.requireUser();
     const batch = this.batchItems(itemIds);
     if (batch.some((item) => !item.removed_at)) fail(409, 'not_removed', 'One or more items have not been removed.');
-    if (batch.some((item) => Date.now() - Date.parse(item.removed_at!) >= 10 * 60 * 1000)) {
-      fail(409, 'restore_window_expired', 'The 10-minute undo window has expired.');
+    if (batch.some((item) => Date.now() - Date.parse(item.removed_at!) >= RESTORE_WINDOW_MS)) {
+      fail(409, 'restore_window_expired', 'Items can only be restored within 7 days of removal.');
     }
     const snapshot = copy(this.items);
     const eventSnapshot = copy(this.events);

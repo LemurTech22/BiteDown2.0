@@ -1,5 +1,32 @@
 import { MockApiClient } from '@/api/mock-client';
+import { RESTORE_WINDOW_MS } from '@/api/removal-window';
 import type { ExpirySource, ItemCategory, Storage, UpdateItemInput } from '@/api/types';
+
+describe.each(['single', 'batch'] as const)('%s seven-day restore window', (kind) => {
+  beforeEach(() => jest.useFakeTimers().setSystemTime(new Date('2026-11-13T12:00:00Z')));
+  afterEach(() => jest.useRealTimers());
+
+  test.each([RESTORE_WINDOW_MS - 1, RESTORE_WINDOW_MS])('restore at age %s ms', async (age) => {
+    const api = new MockApiClient();
+    await api.signup({ email: 'restore@example.com', password: 'password123', display_name: 'Demo' });
+    const { items } = await api.createItems({ items: [{ name: 'Apples', est_price: 4, est_weight_kg: 1 }, { name: 'Rice' }] });
+    const before = await api.getImpact('all');
+    const now = Date.now();
+    await api.removeBatch({ item_ids: items.map((item) => item.id), outcome: 'used' });
+    jest.setSystemTime(now + age);
+    const restore = () => kind === 'single' ? api.restoreItem(items[0].id) : api.restoreBatch(items.map((item) => item.id));
+    if (age === RESTORE_WINDOW_MS) {
+      await expect(restore()).rejects.toMatchObject({ code: 'restore_window_expired', message: 'Items can only be restored within 7 days of removal.' });
+      expect((await api.getItems({ include_removed: true }) as { items: { removed_at: string }[] }).items.every((item) => item.removed_at)).toBe(true);
+    } else {
+      await restore();
+      if (kind === 'single') await api.restoreItem(items[1].id);
+      jest.setSystemTime(now);
+      expect(await api.getImpact('all')).toEqual(before);
+      expect(await api.getItems()).toEqual({ items });
+    }
+  });
+});
 
 describe('storage expiry re-estimation', () => {
   beforeEach(() => jest.useFakeTimers().setSystemTime(new Date('2026-11-13T12:00:00Z')));

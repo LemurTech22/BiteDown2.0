@@ -352,7 +352,7 @@ def remove_item(item_id):
     return jsonify(item=_owner_view(item))
 
 
-RESTORE_WINDOW = timedelta(minutes=10)
+RESTORE_WINDOW = timedelta(days=7)  # owner ruling 2026-11-13: "Recently removed" puts food back for 7 days
 
 
 @bp.post("/<item_id>/restore")
@@ -371,7 +371,7 @@ def restore_item(item_id):
         raise ApiError(409, "not_removed", "Item has not been removed.")
     now = datetime.now(timezone.utc)
     if now - item.removed_at > RESTORE_WINDOW:
-        raise ApiError(409, "restore_window_expired", "Items can only be restored within 10 minutes of removal.")
+        raise ApiError(409, "restore_window_expired", "Items can only be restored within 7 days of removal.")
     removed_at = item.removed_at
     # The event is written a few ms after removed_at; the time bound prunes hypertable chunks.
     ev = (FoodEvent.query.filter(FoodEvent.item_id == item.id, FoodEvent.event_type == "remove",
@@ -490,7 +490,7 @@ def restore_batch():
         raise ApiError(409, "not_removed", "One or more items have not been removed.")
     now = datetime.now(timezone.utc)
     if any(now - i.removed_at > RESTORE_WINDOW for i in items):
-        raise ApiError(409, "restore_window_expired", "Items can only be restored within 10 minutes of removal.")
+        raise ApiError(409, "restore_window_expired", "Items can only be restored within 7 days of removal.")
 
     removed_at = {i.id: i.removed_at for i in items}
     since = min(removed_at.values()) - timedelta(minutes=1)

@@ -75,6 +75,49 @@ describe('Fridge', () => {
   beforeEach(() => jest.clearAllMocks());
   afterEach(() => { jest.restoreAllMocks(); jest.useRealTimers(); });
 
+  test('Recently removed header entry is accessible and navigates even with empty food', async () => {
+    const api = await seededClient();
+    const screen = await renderFridge(api);
+    await screen.findByText('Apples');
+    const entry = screen.getByTestId('fridge.recentlyRemoved');
+    expect(entry).toHaveProp('accessibilityLabel', 'Recently removed');
+    expect(entry).toHaveStyle({ minWidth: 44, minHeight: 44 });
+    await fireEvent.press(entry);
+    expect(router.push).toHaveBeenCalledWith('/removed');
+    await fireEvent.press(screen.getByTestId('fridge.storage.freezer'));
+    await screen.findByText('Nothing in your freezer yet');
+    expect(screen.getByTestId('fridge.recentlyRemoved')).toBeTruthy();
+  });
+
+  test('single and batch removals replace one another and newer batches replace older batches', async () => {
+    const api = await seededClient();
+    const { items } = await api.getItems({ storage: 'fridge' }) as ItemsResponse;
+    const screen = await renderFridge(api);
+    await screen.findByText('Apples');
+    await fireEvent.press(screen.getByTestId(`fridge.remove.${items[0].id}`));
+    await fireEvent.press(screen.getByTestId('remove.outcome.used'));
+    expect(screen.getByTestId(`remove.toast.${items[0].id}`)).toBeTruthy();
+    await fireEvent.press(screen.getByTestId('fridge.selection.start'));
+    await fireEvent.press(screen.getByTestId(`fridge.select.${items[1].id}`));
+    await fireEvent.press(screen.getByTestId('fridge.batch.used'));
+    expect(screen.queryByTestId(`remove.toast.${items[0].id}`)).toBeNull();
+    expect(screen.getByTestId('fridge.batchToast.1')).toBeTruthy();
+    await fireEvent.press(screen.getByTestId('fridge.selection.start'));
+    await fireEvent.press(screen.getByTestId(`fridge.select.${items[2].id}`));
+    await fireEvent.press(screen.getByTestId('fridge.batch.used'));
+    expect(screen.queryByTestId('fridge.batchToast.1')).toBeNull();
+    expect(screen.getByTestId('fridge.batchToast.2')).toBeTruthy();
+    await fireEvent.press(screen.getByTestId('fridge.storage.pantry'));
+    const { items: [rice] } = await api.getItems({ storage: 'pantry' }) as ItemsResponse;
+    await screen.findByText('Rice');
+    await fireEvent.press(screen.getByTestId(`fridge.remove.${rice.id}`));
+    await fireEvent.press(screen.getByTestId('remove.outcome.used'));
+    expect(screen.queryByTestId('fridge.batchToast.2')).toBeNull();
+    expect(screen.getByTestId(`remove.toast.${rice.id}`)).toBeTruthy();
+    await fireEvent.press(screen.getByTestId(`undo.dismiss.${rice.id}`));
+    expect(screen.queryByTestId(`remove.toast.${rice.id}`)).toBeNull();
+  });
+
   test('web shows one 44 pt Move button next to Remove and respects disabled and selection modes', async () => {
     jest.replaceProperty(Platform, 'OS', 'web');
     const api = await seededClient();

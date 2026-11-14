@@ -2,6 +2,16 @@
 
 Newest first. Each entry: date, decision, why, alternatives considered.
 
+## 2026-11-13: Undo panel and Recently removed (owner rulings)
+- **Undo panels hide after 8 s** or on a Dismiss button, one at a time; they stay while Undo is pending or failed and
+  never auto-hide under a screen reader. Why: the panel lived for the whole 10-minute restore window and could not be
+  closed, so it covered the list. Alternatives: 5 s with no close; keep 10 min and add a close button.
+- **Recently removed + Put back.** A Fridge screen lists the last 7 days of removals. Put back is the normal restore,
+  so Impact returns exactly to what it was. The restore window (`POST /items/:id/restore`, `restore-batch`) goes from
+  10 minutes to **7 days**. Why: an accidental removal found later should be fixable without re-photographing the food
+  or leaving a false removal in Impact. Alternative: "Add again" (a new copy), rejected because the mistaken removal
+  would stay counted. The iOS app is unchanged and keeps its own short Undo.
+
 ## 2026-11-13: GitHub CI retired (owner ruling)
 - **No more GitHub Actions CI.** The orchestrator (Claude) runs the checks CI ran and records them in the `docs/QA.md`
   sign-off log: the backend suite (not slow, Gemini `.env` overrides blanked), client `tsc`, lint and Jest, and the iOS
