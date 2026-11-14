@@ -1,5 +1,31 @@
 # Backend QA
 
+## 2026-11-13: checkpoint 18 QA
+
+Scope: `git diff db62ed7..322431e`, expiry service and PATCH route, against the 2026-11-13
+sharing/storage/wording decision and `docs/API.md`. Added `tests/test_qa_cp18_expiry.py`
+(23 tests); feature code and existing tests were not changed.
+
+| Area | Checked / result |
+|---|---|
+| Storage rule | 528 service comparisons: all 11 categories and six directed storage pairs, with null dates and remaining days -2/0/1/2/7/30/400. Freezing uses the destination default except past dates; due today may be frozen. Thawing uses the destination default with meat/seafood/leftovers caps, including past freezer dates. Fridge/pantry moves retain the capped life fraction, minimum one day, half-even rounding; past/today dates stay. PASS. |
+| Missing expiry | Null service inputs use the destination default, including uncapped thawing, matching the existing null-date test. Current stored expiry is NOT NULL, so this is service-level coverage rather than a nullable API/database round trip. PASS. |
+| PATCH | User dates retained with omitted/false flag and re-estimated with true for all six pairs; explicit date wins (including an unchanged date); final category used. Same storage and flag alone are no-ops. Invalid non-boolean flags return 400 validation_error, including alongside an explicit date, without changing the item. PASS. |
+| Mock parity | Same noon calendar-day matrix passes in client QA. Local/UTC day disagreement is recorded as CL-2 in `docs/qa/client.md`; backend uses the host's local `date.today()` and returns `2027-05-12` for Nov 13 + 180 days. |
+
+Bugs: no new backend defects found; BE-52 through BE-59 remain unused.
+
+Run from `backend/`, clearing `GEMINI_FALLBACK_MODELS`, `GEMINI_TIMEOUT_S` and `GEMINI_MODEL` in the
+process environment: `../.venv/Scripts/python.exe -B -m pytest tests/test_items.py tests/test_qa_cp18_*.py -q -p no:cacheprovider`.
+PowerShell expanded the QA glob to the new file before invocation; `-B` disables bytecode writes.
+**72 passed in 60.31 s**, exit 0, against the test database through the existing harness.
+No full backend suite or live upstream calls were run.
+
+iOS build is not verified here. This backend verdict covers the expiry/PATCH contract; the combined
+checkpoint remains blocked by client findings CL-1 and CL-2.
+
+**Verdict: PASS**
+
 Suite: `backend/tests/` (run from `backend/`: `.venv/bin/pytest --cov=app --cov-report=term-missing`).
 Schema is built by running the real Alembic migration against `TEST_DATABASE_URL` (`fwr_test`); tables are
 truncated before each test. A Postgres advisory lock serialises whole pytest sessions (concurrent runs share
