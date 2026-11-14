@@ -1,5 +1,6 @@
 """Fridge photo candidates merge before enrichment; all detectors and Gemini calls are stubbed."""
 import io
+import re
 
 import pytest
 from PIL import Image
@@ -44,6 +45,21 @@ def photo(client, user, **fields):
     return response.get_json()
 
 
+def assert_candidates(client, body, expected, mode="fridge"):
+    actual = body["candidates"]
+    assert len(actual) == len(expected)
+    for row, normalized in zip(actual, expected):
+        assert set(row) == set(normalized) | {"photo_token", "photo_preview_url"}
+        assert {k: v for k, v in row.items() if k not in ("photo_token", "photo_preview_url")} == normalized
+        if body["source"] == "yolo" or mode == "single":
+            assert re.fullmatch(r"[0-9a-f]{32}", row["photo_token"])
+            assert row["photo_preview_url"].startswith(f"/photos/staged/{row['photo_token']}?sig=")
+            preview = client.get(row["photo_preview_url"])
+            assert preview.status_code == 200 and preview.mimetype == "image/jpeg"
+        else:
+            assert row["photo_token"] is None and row["photo_preview_url"] is None
+
+
 def test_duplicates_sum_quantity_keep_first_fields_and_order(client, user, detector):
     first = det(" Apple ", quantity=2, confidence=0.6, est_price=1.25)
     milk = det("Milk", category="dairy", food_group="dairy")
@@ -54,7 +70,7 @@ def test_duplicates_sum_quantity_keep_first_fields_and_order(client, user, detec
     expected = candidates.normalize(first, source)
     expected.update(quantity=5.5, confidence=0.95)
     assert body["source"] == source
-    assert body["candidates"] == [expected, candidates.normalize(milk, source)]
+    assert_candidates(client, body, [expected, candidates.normalize(milk, source)])
 
 
 def test_different_freshness_stays_separate_after_normalization(client, user, detector):
@@ -67,14 +83,14 @@ def test_different_freshness_stays_separate_after_normalization(client, user, de
 @pytest.mark.parametrize("extra", [{"unit": "kg"}, {"storage": "pantry"}])
 def test_different_unit_or_storage_stays_separate(client, user, detector, extra):
     source = detector(det(), det(**extra))
-    assert photo(client, user, mode="fridge")["candidates"] == candidates.normalize_all(
-        [det(), det(**extra)], source)
+    assert_candidates(client, photo(client, user, mode="fridge"),
+                      candidates.normalize_all([det(), det(**extra)], source))
 
 
 def test_single_mode_does_not_merge(client, user, detector):
     raws = [det(" Apple ", quantity=2), det("apple", quantity=3, confidence=0.95)]
     source = detector(*raws)
-    assert photo(client, user, mode="single")["candidates"] == candidates.normalize_all(raws, source)
+    assert_candidates(client, photo(client, user, mode="single"), candidates.normalize_all(raws, source), mode="single")
 
 
 @pytest.mark.parametrize("confidences,expected", [((None, 0.9), 0.9), ((0.9, None), 0.9), ((None, None), None)])

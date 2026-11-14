@@ -125,9 +125,20 @@ def test_only_the_enrichment_differs_from_the_plain_response(app, client, user, 
     assert set(rich) - set(plain) == {"enrichment"}
 
     def untouched(c):
-        return {k: v for k, v in c.items() if k not in ("predicted_expiry", "expiry_source")}
+        return {k: v for k, v in c.items() if k not in (
+            "predicted_expiry", "expiry_source", "photo_token", "photo_preview_url")}
+    assert len(plain["candidates"]) == len(rich["candidates"]) == 2
     for a, b in zip(plain["candidates"], rich["candidates"]):
         assert untouched(b) == untouched(a)
+        assert a["photo_token"] != b["photo_token"]
+        previews = []
+        for candidate in (a, b):
+            assert re.fullmatch(r"[0-9a-f]{32}", candidate["photo_token"])
+            assert candidate["photo_preview_url"].startswith(f"/photos/staged/{candidate['photo_token']}?sig=")
+            preview = client.get(candidate["photo_preview_url"])
+            assert preview.status_code == 200 and preview.mimetype == "image/jpeg"
+            previews.append(preview.data)
+        assert previews[0] == previews[1], "enrichment must not change the saved crop"
 
 
 # ---- YOLO path: crops ------------------------------------------------------------------------------

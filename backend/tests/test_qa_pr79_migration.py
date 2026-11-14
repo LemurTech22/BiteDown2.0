@@ -11,7 +11,7 @@ from sqlalchemy import text
 from app.extensions import db
 
 MIG = str(Path(__file__).resolve().parents[1] / "migrations")
-PREV, REV, HEAD = "0006_request_audiences", "0007_items_nutrition", "0008_share_pickup"
+PREV, REV, HEAD = "0006_request_audiences", "0007_items_nutrition", "0009_item_photos"
 NUT = '{"basis":"per_100g","kcal":52,"protein_g":0.3,"carbs_g":13.8,"fat_g":0.2,"estimated":true}'
 
 
@@ -62,7 +62,7 @@ def test_single_alembic_head_and_linear_chain(app):
         chain.append(rev.revision)
         assert isinstance(rev.down_revision, (str, type(None))), "no merge points / tuples in the chain"
         rev = sd.get_revision(rev.down_revision) if rev.down_revision else None
-    assert chain[:3] == [HEAD, REV, PREV] and len(chain) == len(set(chain))
+    assert chain[:4] == [HEAD, "0008_share_pickup", REV, PREV] and len(chain) == len(set(chain))
 
 
 def test_upgrade_with_existing_data_gives_null_and_loses_nothing(app, at_head):
@@ -78,6 +78,8 @@ def test_upgrade_with_existing_data_gives_null_and_loses_nothing(app, at_head):
         _reset()
         assert _col() is not None
         assert q("SELECT count(*) FROM items WHERE nutrition IS NULL").scalar() == 5
+        assert q("SELECT count(*) FROM items WHERE photo_key IS NULL").scalar() == 5
+        assert q("SELECT count(*) FROM staged_photos").scalar() == 0
         assert q("SELECT count(*) FROM items WHERE nutrition IS NOT NULL").scalar() == 0
         # the JSON 'null' literal must not appear either (none_as_null)
         assert q("SELECT count(*) FROM items WHERE jsonb_typeof(nutrition) IS NOT NULL").scalar() == 0
