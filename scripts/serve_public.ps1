@@ -43,7 +43,9 @@ function Start-Cloudflare {
   $proc = Start-Process $cloudflared -ArgumentList 'tunnel', '--no-autoupdate', '--protocol', 'http2', '--url', "http://localhost:$Port" `
     -RedirectStandardError $log -RedirectStandardOutput "$log.out" -PassThru -WindowStyle Hidden
   for ($i = 0; $i -lt 60; $i++) {
-    $m = Select-String -Path $log -Pattern 'https://[a-z0-9-]+\.trycloudflare\.com' -ErrorAction SilentlyContinue | Select-Object -First 1
+    # Not api.trycloudflare.com: with no internet cloudflared logs "failed to request quick Tunnel: Post
+    # https://api.trycloudflare.com/tunnel", and taking that for the tunnel address once got it published.
+    $m = Select-String -Path $log -Pattern 'https://(?!api\.)[a-z0-9-]+\.trycloudflare\.com' -ErrorAction SilentlyContinue | Select-Object -First 1
     if ($m) { return @{ Url = $m.Matches[0].Value; Process = $proc } }
     if ($proc.HasExited) { throw "cloudflared exited; see $log" }
     Start-Sleep 1
