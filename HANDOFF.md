@@ -2,7 +2,7 @@
 
 _The app is **BiteDown** (owner, 2026-10-10; see `docs/DECISIONS.md`). Internal names such as `FoodWasteReducer` stay._
 
-_Last updated: 2026-11-13 (checkpoint 18, sharing, storage moves and "pantry" wording; see below). Older text from 2026-10-11: **`food-main` (VPS) orchestrates**: it plans, rules, reviews and merges,
+_Last updated: 2026-11-14 (checkpoint 19: Undo polish, item photos started, owner takes the ML track; see below). Older text from 2026-10-11: **`food-main` (VPS) orchestrates**: it plans, rules, reviews and merges,
 and owns the canvas and the orchestrator docs. **`food-main-mac` (the Mac) does all the building**: builder + QA
 sub-agents (**Sonnet**, owner preference), Xcode and simulators, Docker and every test run, plus any
 `.github/workflows` push. The owner also lets the Mac merge a PR when it judges it ready, and edit the canvas when
@@ -11,6 +11,27 @@ teammate PRs, canvas rounds when handed the canvas (round 3 is done, and the can
 checkpoints. **Since checkpoint 10:** `food-modal-test` (iOS simulator test pass) and the "PR merge review" session own
 merges on the Mac; `food-main` reviews the Auth PR. All of them update this file and the affected `docs/` at
 every checkpoint (`CLAUDE.md` Rules). Rules: [`CLAUDE.md`](CLAUDE.md)._
+
+## Checkpoint 19 (2026-11-14, Windows PC): Undo polish, item photos started, ML track. Read this first
+Rulings in `docs/DECISIONS.md` 2026-11-14. On `feat/expo-android` (PR #1):
+- `0c093b9` 8 s dismissible Undo panels + Recently removed with Put back (7-day restore window), QA'd 2026-11-13;
+  `55b1dd5` fixes the 7-day boundary bug, logged as **BE-53** (BE-52 collided with #123).
+- `d26aaac` Undo timer pauses on hover / focus / press (resumes with the time left, at least 2 s); panels float over the
+  Fridge list in one box-none overlay (fixes the list jump, CL-13, CL-14); sheets stay in the 520 px column on desktop
+  web; Remove icon is check-circle; spacing on Recently removed's message. `68f6559` QA PASS (CL-12 ruled by design).
+**Verified:** client tsc and lint clean, Jest 41 suites / 619 (QA run). Orchestrator live web check in demo mode
+(`EXPO_PUBLIC_DEMO_MODE=true`, mock API; Docker Desktop was stopped): every fix behaves; one early hover run closed the
+panel and did not reproduce. Not checked on Android or iOS devices. Recorded in `docs/QA.md`.
+**Note:** start Metro without `CI=1` when checking live: CI mode turns off file watching, so the page keeps old code.
+**PR #1 merge:** no conflicts with `main` (its fork point is `main`'s head `f349092`, #126). Still needs the owner's
+ruling on the iOS label change with no Mac run, and LemurTech22's agreement.
+**In flight:**
+- **Item photos** (`feat/item-photos`, worktree `../wt/item-photos`, stacked on `55b1dd5`): backend first (photo store,
+  migration `0009_item_photos`, crop staging in `from-photo`, `photo_token` on `POST /items`, signed `photo_url`, photo
+  endpoints, cleanup on account delete). Then the client (`ItemThumb`: photo, then food illustration, then group icon).
+  Needs a compose volume + `PHOTO_DIR` in `.env.example` (orchestrator). Rebase onto `feat/expo-android` before the client part.
+- **ML track: now the owner's** (was LemurTech22's). Step 1: score `fwr_20261011` from `export.zip` (re-export on Colab
+  with `RUN_ID=fwr_20261011`, a few minutes). Then tune `SPOILED_THRESHOLD` on val, then a full (non-FAST) run.
 
 ## Checkpoint 18 (2026-11-13, Windows PC): sharing, storage moves, "pantry" wording. Read this first
 Owner rulings, recorded in `docs/DECISIONS.md` 2026-11-13. Four commits on `feat/expo-android`, not pushed yet. Codex
@@ -280,7 +301,7 @@ are merged. **Gemini:** no live calls from agents or QA (quota, #100).
 | ML-69 fix: classifier RAM cache OOM-killed Colab (#88, Jose) | merged | ML QA PASS; needed before a fresh Colab FAST run from `main` |
 | **First trained model** `fwr_20261011` (FAST: detector 30 ep ≈ 26 min, classifier 10 ep ≈ 17 min on a T4) | trained, **not scored: its metrics must not be quoted until the ML gate in `docs/QA.md` runs on it** (the Drive copy of `predictions.jsonl` was truncated) | weights: Drive `fwr_runs/fwr_20261011/data_a4729025_fast/export/`, local `../mldata/models/fwr_fast_20261011` (`current` →). The Drive `predictions.jsonl` was truncated by Drive sync; score from `export.zip` |
 | Compose `ml` service (opt-in profile, no host port, CPU, OCR off) + `OCR_BACKEND=off` (Jose) | merged (#89) | ML QA PASS (ML-70–72 fixed, incl. the serve image that never built); photo → YOLO → Gemini enrichment → `POST /items` verified end to end in containers on 2026-10-11 |
-| ML training, YOLO gate, `ml/serve` weights, GLM-OCR | **teammate LemurTech22's track**; Colab can run | don't schedule agents for it unless the owner asks |
+| ML training, YOLO gate, `ml/serve` weights, GLM-OCR | **the owner's track since 2026-11-14** (was teammate LemurTech22's); Colab can run | agents work on it when the owner asks; see checkpoint 19 |
 | Design | 38 screens + dark artboards, plus friend QR + pickup spot (FriendScan, FriendAdded, PickupSpot; canvas v55, #99); round 4 is v54 (#91) | `docs/design/`; design QA READY WITH FIXES, fixes applied |
 
 ## Next steps
@@ -298,7 +319,7 @@ are merged. **Gemini:** no live calls from agents or QA (quota, #100).
    - **#95** (Truc): independent QA FAIL. It waits on Truc's fixes for BE-29/30, then food-orch re-verifies with the full suites.
    - **#104** (backend QA sweep) and **#105** (iOS QA sweep), by duwudlekat. They supersede the closed #97 and need independent QA plus a collision check with the screen PRs. #105's sign-in must be DEBUG-only.
    - **#106** (Truc, README for vision and receipts): docs review.
-6. **Teammate (LemurTech22):** ML QA scores `fwr_20261011` on the held-out split
+6. **Owner (ML track since 2026-11-14, was LemurTech22):** ML QA scores `fwr_20261011` on the held-out split
    (`ml/eval/detection_metrics.py` + `check_thresholds.py` on the `export.zip` predictions) before photos switch from the Gemini
    fallback to YOLO in the demo. Early spot check: names right, some fresh items called spoiled (they then skip Gemini enrichment
    and land in Toss/Keep). ML-64, ML-65, ML-67 and ML-68 go to Jose via `food-main`.

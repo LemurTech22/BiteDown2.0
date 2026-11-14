@@ -2,6 +2,25 @@
 
 Newest first. Each entry: date, decision, why, alternatives considered.
 
+## 2026-11-14: Item photos, ML ownership, Undo polish (owner and orchestrator rulings)
+- **Item photos (owner).** Food added from a photo keeps a **per-item crop** (≤ 512 px JPEG, cut with the detector's box),
+  shown on its row and detail. Food added without a photo (typed, voice, receipt, barcode) shows a **food illustration**
+  matched by name, then the food-group icon. **Friends and group members who can see a shared item see its photo**
+  (same visibility rules as the listing). Why: users relate to their real food; the photo was analysed and discarded.
+  Alternatives: the whole fridge photo per item; an Add photo button instead of illustrations; owner-only photos.
+  Supersedes the 2026-10 "per-item photo history is deferred" note in `docs/design/SCREENS.md` row 6.
+- **ML track (owner).** The owner takes over the data + model track from teammate LemurTech22 to improve the YOLO model.
+  First step: score `fwr_20261011` (never scored; the Drive copy of `predictions.jsonl` was truncated). Training stays on
+  Colab (the local RTX 3050 Ti has 4 GB VRAM); the local GPU can score and tune thresholds once data and weights are here.
+- **Undo panel polish (owner).** The Undo timer pauses while the panel is hovered, focused or pressed, and resumes with the
+  time left (at least 2 s). Panels float over the Fridge list instead of resizing it. Bottom sheets stay in the app column
+  on desktop web. The Fridge row's Remove icon is a check-circle (the up-arrow read as Share/Export).
+- **CL-12 ruled by design (orchestrator).** The web timer runs even with a screen reader, because react-native-web
+  cannot detect one (`isScreenReaderEnabled()` always resolves `true`). Focus pauses the panel and Recently removed is the
+  untimed path for 7 days. Native apps still keep the panel while a screen reader is on.
+- **QA ID collision (orchestrator).** The 7-day restore boundary bug is **BE-53**, not BE-52: BE-52 was used on `main` by
+  #123 (`d774f0a`) but never logged in `docs/QA.md`. Commit `55b1dd5` keeps its pushed message.
+
 ## 2026-11-13: Undo panel and Recently removed (owner rulings)
 - **Undo panels hide after 8 s** or on a Dismiss button, one at a time; they stay while Undo is pending or failed and
   never auto-hide under a screen reader. Why: the panel lived for the whole 10-minute restore window and could not be

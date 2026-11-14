@@ -43,7 +43,7 @@ outcome is how waste is measured. Product: [`docs/IDEA.md`](docs/IDEA.md). Statu
 | `backend/tests/**`, `backend/pytest.ini` | Backend QA |
 | `ios/App/**`, `ios/project.yml` | iOS builder |
 | `ios/Tests/**`, `ios/TestPlans/**`, `docs/qa/ios.md` | iOS QA |
-| `ml/yolo/**`, `ml/ocr/**`, `ml/serve/**`, `pipeline/**`, `docs/ML.md`, `docs/PIPELINE.md` | ML / pipeline builder (the data + model track is owned by teammate LemurTech22; other sessions don't build there unless the owner asks) |
+| `ml/yolo/**`, `ml/ocr/**`, `ml/serve/**`, `pipeline/**`, `docs/ML.md`, `docs/PIPELINE.md` | ML / pipeline builder (the data + model track is the owner's since 2026-11-14, previously teammate LemurTech22's; agents build there when the owner asks) |
 | `ml/eval/**`, `pipeline/tests/qa_*` | ML / pipeline QA |
 | `docs/qa/<area>.md` | That area's QA |
 | `docs/design/**` and the design canvas | Orchestrator (single writer) |
