@@ -23,6 +23,7 @@ def create_app(config: dict | None = None) -> Flask:
     except ValueError:
         app.config["GEMINI_TIMEOUT_S"] = 30.0
     app.config["ML_SERVICE_URL"] = os.environ.get("ML_SERVICE_URL", "")
+    app.config["PHOTO_DIR"] = os.environ.get("PHOTO_DIR") or os.path.join(app.instance_path, "photos")
     # Comma-separated Google OAuth iOS client ids accepted as the ID-token `aud` (POST /auth/oauth/google).
     app.config["GOOGLE_IOS_CLIENT_IDS"] = os.environ.get("GOOGLE_IOS_CLIENT_IDS", "")
     app.config["MAX_CONTENT_LENGTH"] = 10 * 1024 * 1024
@@ -36,12 +37,12 @@ def create_app(config: dict | None = None) -> Flask:
 
     from . import models  # noqa: F401  (register tables for Alembic)
     from .errors import register_error_handlers
-    from .routes import auth, friends, groups, health, insights, items, people, requests, share
+    from .routes import auth, friends, groups, health, insights, items, people, photos, requests, share
 
     from .cors import register_cors
 
     register_error_handlers(app)
     register_cors(app)
-    for mod in (health, auth, items, share, insights, friends, groups, requests, people):
+    for mod in (health, auth, items, photos, share, insights, friends, groups, requests, people):
         app.register_blueprint(mod.bp)
     return app

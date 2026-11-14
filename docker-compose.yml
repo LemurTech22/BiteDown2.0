@@ -29,6 +29,10 @@ services:
     environment:
       # Inside the compose network the DB is "db:5432", not localhost:5433.
       DATABASE_URL: postgresql+psycopg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+      # Item photo crops (docs/API.md "Item photos"). A named volume, so rebuilding the image keeps them.
+      PHOTO_DIR: /data/photos
+    volumes:
+      - photo-data:/data/photos
     ports:
       - "127.0.0.1:${API_PORT:-5055}:5055"
     depends_on:
@@ -64,3 +68,4 @@ services:
 
 volumes:
   db-data:
+  photo-data:

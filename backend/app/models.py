@@ -83,6 +83,7 @@ class Item(db.Model):
     confidence = db.Column(db.Float, nullable=True)
     # Per-100 g nutrition (services/nutrition.py). none_as_null: Python None is SQL NULL, never JSON 'null'.
     nutrition = db.Column(JSONB(none_as_null=True), nullable=True)
+    photo_key = db.Column(db.String(32), nullable=True)
 
     __table_args__ = (
         CheckConstraint("freshness IS NULL OR freshness IN ('fresh','semi_fresh','spoiled')",
@@ -100,6 +101,14 @@ class Item(db.Model):
                         name="ck_items_nutrition_object"),
         Index("ix_items_owner_removed_expiry", "owner_id", "removed_at", "predicted_expiry"),
     )
+
+
+class StagedPhoto(db.Model):
+    __tablename__ = "staged_photos"
+    token = db.Column(db.String(32), primary_key=True)
+    owner_id = db.Column(UUID(as_uuid=True), db.ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    photo_key = db.Column(db.String(32), nullable=False)
+    created_at = db.Column(db.DateTime(timezone=True), nullable=False, server_default=func.now())
 
 
 class ShareListing(db.Model):

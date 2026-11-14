@@ -7,7 +7,7 @@ from ..auth import require_auth
 from ..errors import ApiError, not_found, validation_error
 from ..extensions import db
 from ..models import FoodEvent, Item, ShareListing, User
-from ..services import social
+from ..services import item_photos, social
 from ._util import (iso, json_body, parse_pickup, parse_uuid, path_uuid, pickup_view, serialize_listing,
                     set_pickup)
 
@@ -93,7 +93,8 @@ def food_pantry():
             "pickup": pickup_view(l) if l.claimed_by == me else None,
             "pickup_set": pickup_view(l) is not None,
             "item": {"name": item.name, "category": item.category, "quantity": float(item.quantity),
-                     "unit": item.unit, "predicted_expiry": item.predicted_expiry.isoformat()},
+                     "unit": item.unit, "predicted_expiry": item.predicted_expiry.isoformat(),
+                     "photo_url": item_photos.item_url(item)},
         })
     return jsonify(listings=out)
 

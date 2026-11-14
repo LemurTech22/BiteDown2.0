@@ -10,6 +10,7 @@ Migration `0004_items_wave2` adds `items.freshness`, `freshness_checked_at`, `co
 `share_listings` (`pickup_note`, `pickup_lat`, `pickup_lng`, `pickup_place`) and the `friend_codes` table. Social tables
 (`friendships`, `groups`, `group_members`, `requests`, plus `share_listings.claimed_by`
 and the `items.group_id` / `share_listings.group_id` FKs to `groups`) are in migration `0002_social`.
+Migration `0009_item_photos` adds nullable `items.photo_key` and the `staged_photos` table.
 
 ## Relational tables
 ### users
@@ -46,6 +47,7 @@ Downgrade to 0004 drops the table and sets null `password_hash` to the unusable 
 | est_weight_kg | numeric, null | for CO₂; estimated from quantity/unit when absent |
 | est_price | numeric(10,2), null | |
 | source | text | `photo` \| `single_photo` \| `text` \| `barcode` \| `receipt` \| `manual` |
+| photo_key | varchar(32), null | opaque random lowercase 32-hex local JPEG key (0009); never exposed directly in item JSON; `photo_url` is signed for one hour |
 | added_at | timestamptz | |
 | predicted_expiry | date | |
 | expiry_source | text | `default` \| `gemini` \| `ml` \| `user` (app-validated; no DB CHECK) |
@@ -78,6 +80,23 @@ drops the constraint and the column (nutrition data is lost; nothing else depend
 Also CHECKs on `storage`, `outcome` and `waste_reason` value sets (`ck_items_*`).
 Index: `(owner_id, removed_at, predicted_expiry)`.
 `quantity` defaults 1, `unit` defaults `piece`; `predicted_expiry` is NOT NULL (always predicted).
+
+### staged_photos (migration `0009_item_photos`)
+
+| Column | Type | Notes |
+|---|---|---|
+| token | varchar(32) pk | random lowercase 32-hex claim token returned by from-photo |
+| owner_id | uuid → users, `ON DELETE CASCADE` | only this owner may claim it |
+| photo_key | varchar(32) NOT NULL | random key of the saved JPEG |
+| created_at | timestamptz NOT NULL | default `now()` |
+
+Claims require age <24 hours and consume the row in the same transaction that inserts the item;
+the key moves to `items.photo_key` and the file stays. Each valid from-photo call purges the
+caller's staged rows at least 24 hours old and deletes their files after commit. Local files are
+stored under `PHOTO_DIR` (default `<instance_path>/photos`) as `<key[:2]>/<key>.jpg`; they contain
+upright JPEG q80 crops with longest side <=512 px and no metadata. Removal/restore keeps the key
+and file. Account deletion removes all owned item and staged files only after its DB commit.
+Downgrade 0009 drops the table and column; it does not delete local files.
 
 ### Social (migration `0002_social`)
 - `friendships(user_id → users, friend_id → users, status pending|accepted, created_at)` — pk
