@@ -43,6 +43,7 @@ test('keeps one top-safe Item detail header and all food group and storage choic
   await screen.findByDisplayValue('Baby spinach');
   expect(screen.getByTestId('item.screen.root')).toHaveProp('edges', expect.objectContaining({ top: 'additive' }));
   expect(screen.getAllByText('Item detail')).toHaveLength(1);
+  expect(screen.getByLabelText('Food group: Staples')).toBeTruthy();
   for (const { label } of FOOD_GROUPS) expect(screen.getByLabelText(`Food group: ${label}`)).toBeTruthy();
   expect(screen.getByText('Stored in')).toBeTruthy();
   for (const label of ['Fridge', 'Pantry', 'Freezer']) expect(screen.getByLabelText(`Storage: ${label}`)).toBeTruthy();
@@ -103,6 +104,8 @@ test('shares to friends, shows unclaimed status, and stops sharing', async () =>
   const remove = jest.spyOn(api, 'deleteShare');
   const screen = await show(api);
   await screen.findByDisplayValue('Baby spinach');
+  expect(screen.getByText('Share with friends')).toBeTruthy();
+  expect(screen.getByLabelText('Share with friends')).toBeTruthy();
   await fireEvent(screen.getByTestId('item.share.toggle'), 'valueChange', true);
   expect(await screen.findByText('Not claimed yet')).toBeTruthy();
   expect(screen.getByText('Visible to: Friends')).toBeTruthy();
@@ -202,6 +205,7 @@ test('claimed owner handoff preselects Shared it and claimer; normal Remove stay
   const remove = jest.spyOn(api, 'removeItem');
   const screen = await show(api);
   await screen.findByText('Claimed by Ana Rivera');
+  expect(screen.getByText('Shared with friends')).toBeTruthy();
   await fireEvent.press(screen.getByTestId('item.pickup.maps'));
   expect(maps).toHaveBeenCalledWith('https://maps.apple.com/?ll=29.7,-95.3&q=Home');
   await fireEvent.press(screen.getByTestId('item.remove.button'));

@@ -2,6 +2,23 @@
 
 Newest first. Each entry: date, decision, why, alternatives considered.
 
+## 2026-11-13: Sharing, storage moves and "pantry" wording (owner rulings)
+- **Shared food lists your own open shares.** The Expo screen adds a "You're sharing" section (All filter only),
+  built from `GET /items` (`share.status == "open"`). `GET /share` still excludes the caller's own listings, so the
+  Social widget and iOS are unchanged. Why: an item shared from Item detail never showed anywhere for its owner, which
+  read as a broken toggle. Alternatives: return own listings from `GET /share` with a `mine` flag (changes the
+  contract for iOS and the widget), or a hint only.
+- **A storage change re-estimates expiry** (`PATCH /items/:id`, rule in `docs/API.md`): freezing uses the freezer
+  default (expired dates stay), thawing uses the destination default capped at 2 days for meat and seafood and 3 for
+  leftovers, and fridge <-> pantry keeps the fraction of life left. User-typed dates stay unless
+  `reestimate_expiry: true`, which the Move sheet offers as a switch. Why: a date carried over unchanged was wrong in
+  both directions. Alternatives: always reset to the new storage's default (lets fridge/pantry moves reset the clock).
+- **"Pantry" means only room-temperature storage.** User-visible labels change; API values, routes and
+  accessibility identifiers don't: food group `pantry` reads "Staples", the social Food Pantry reads "Shared food"
+  (toggle "Share with friends", owner card "Shared with friends"), and the group pantry reads "Group food". Applied
+  in the Expo and iOS apps and `docs/design/SCREENS.md`. The canvas is updated on merge. Server error messages
+  still say "group pantry". Why: one word had four meanings, and "Share to Food Pantry" read as a storage move.
+
 ## 2026-11-13 — Showcase hardening: Gemini models, capacity, photo merge (orchestrator)
 - **Gemini primary model is `gemini-3.5-flash-lite`**, with `GEMINI_FALLBACK_MODELS=gemini-3.1-flash-lite,gemini-3.5-flash`
   and `GEMINI_TIMEOUT_S=20`. Why: probes on 2026-11-12/13 measured `3.5-flash-lite` at about 1 s, `3.1-flash-lite`

@@ -41,10 +41,10 @@ export function SocialScreen() {
     {state.status === 'loading' ? <SkeletonRows testID="social.loading.skeleton" /> : null}
     {state.status === 'error' ? <SocialError screen="social" message={state.error} onRetry={() => void state.reload()} /> : null}
     {state.status === 'ready' && state.data ? <>
-      <Pressable accessibilityRole="button" accessibilityLabel="Food Pantry, shared by friends and groups"
+      <Pressable accessibilityRole="button" accessibilityLabel="Shared food, from friends and groups"
         testID="social.pantry.widget" style={widgetStyles.widget} onPress={() => router.push('/social/pantry')}>
         <View style={[styles.row, { justifyContent: 'space-between' }]}>
-          <View style={{ flex: 1 }}><Text style={widgetStyles.widgetTitle}>Food Pantry</Text>
+          <View style={{ flex: 1 }}><Text style={widgetStyles.widgetTitle}>Shared food</Text>
             <Text style={widgetStyles.widgetMeta}>Shared by friends and groups</Text></View>
           <AppIcon name="chevron-right" color={theme.colors.onLime} />
         </View>

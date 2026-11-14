@@ -54,7 +54,7 @@ export function PantryScreen() {
   }
   const listings = state.data?.listings.filter((entry) => filter === 'All' || entry.source.type === (filter === 'Friends' ? 'friend' : 'group')) ?? [];
   const mine = state.data?.mine ?? [];
-  return <SocialPage title="Food Pantry" screen="foodPantry" subtitle="Shared by friends and groups">
+  return <SocialPage title="Shared food" screen="foodPantry" subtitle="Shared by friends and groups">
     <View accessibilityRole="tablist" accessibilityLabel="Source" style={[styles.row, {
       backgroundColor: theme.colors.track, padding: theme.spacing.xs, borderRadius: theme.radii.control,
     }]}>{FILTERS.map((value) => <Pressable key={value} accessibilityRole="tab" accessibilityLabel={value}

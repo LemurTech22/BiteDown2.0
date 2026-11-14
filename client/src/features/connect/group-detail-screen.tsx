@@ -108,16 +108,16 @@ export function GroupDetailScreen() {
         <Text style={styles.meta}>{data.group.member_count} {data.group.member_count === 1 ? 'member' : 'members'}{joinedDate ? ` · you joined ${joinedDate}` : ''}</Text>
         <View style={styles.row} accessibilityRole="tablist">
           {(['pantry', 'requests'] as const).map((value) => <Pressable key={value} accessibilityRole="tab"
-            accessibilityLabel={value === 'pantry' ? 'Group pantry' : 'Requests'} accessibilityState={{ selected: tab === value }}
+            accessibilityLabel={value === 'pantry' ? 'Group food' : 'Requests'} accessibilityState={{ selected: tab === value }}
             testID={`groupDetail.tab.${value}`} style={[styles.toggle, { flexGrow: 1 }, tab === value && { backgroundColor: theme.colors.limeTint }]}
             onPress={() => { setTab(value); if (value === 'requests') void loadRequests(); }}>
-            <Text style={styles.name}>{value === 'pantry' ? 'Group pantry' : 'Requests'}</Text>
+            <Text style={styles.name}>{value === 'pantry' ? 'Group food' : 'Requests'}</Text>
           </Pressable>)}
         </View>
         {tab === 'pantry' ? <>
-          {data.items.length === 0 ? <StateView icon="food-apple-outline" title="Nothing in the group pantry yet"
+          {data.items.length === 0 ? <StateView icon="food-apple-outline" title="No group food yet"
             message="" testID="groupDetail.pantry.empty" /> : data.items.map((item) => <GroupPantryRow item={item} currentUserId={user?.id} key={item.id} />)}
-          <AppButton label="+ Add to group pantry" testID="groupDetail.pantry.add"
+          <AppButton label="+ Add group food" testID="groupDetail.pantry.add"
             onPress={() => router.push({ pathname: '/add-text', params: { group_id: id } })} />
         </> : requestsError ? <StateView icon="cloud-off-outline" title="Couldn’t load requests" message={requestsError}
           testID="groupDetail.requests.error" actionLabel="Try again" actionTestID="groupDetail.requests.retry" onAction={() => void loadRequests()} /> :

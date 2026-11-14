@@ -13,7 +13,7 @@ export const FOOD_GROUPS: { value: FoodGroup; label: string }[] = [
   { value: 'fruit', label: 'Fruit' },
   { value: 'dairy', label: 'Dairy' },
   { value: 'grains', label: 'Grains' },
-  { value: 'pantry', label: 'Pantry' },
+  { value: 'pantry', label: 'Staples' },
   { value: 'leftovers', label: 'Leftovers' },
   { value: 'frozen', label: 'Frozen' },
   { value: 'other', label: 'Other' },

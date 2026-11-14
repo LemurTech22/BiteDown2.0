@@ -333,7 +333,8 @@ describe('Group detail', () => {
     expect(screen.queryByTestId('groupDetail.invite.qr')).toBeNull();
     await fireEvent.press(screen.getByTestId('groupDetail.invite.share'));
     expect(share).toHaveBeenCalledWith({ message: 'Join Flat 4B on BiteDown: bitedown://group/F4AT8BCD' });
-    await fireEvent.press(screen.getByTestId('groupDetail.pantry.add'));
+    expect(screen.getByLabelText('Group food')).toBeTruthy();
+    await fireEvent.press(screen.getByText('+ Add group food'));
     expect(router.push).toHaveBeenCalledWith({ pathname: '/add-text', params: { group_id: 'group-flat' } });
   });
 
@@ -363,7 +364,7 @@ describe('Group detail', () => {
     const screen = await render(<ApiProvider client={api}><GroupDetailScreen /></ApiProvider>);
     expect(await screen.findByTestId('groupDetail.error.state')).toBeTruthy();
     await fireEvent.press(screen.getByTestId('groupDetail.error.retry'));
-    expect(await screen.findByTestId('groupDetail.pantry.empty')).toBeTruthy();
+    expect(await screen.findByText('No group food yet')).toBeTruthy();
   });
 
   test('filters requests to the group and retries request errors', async () => {

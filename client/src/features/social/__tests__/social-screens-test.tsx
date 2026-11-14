@@ -54,7 +54,8 @@ describe('Social board and Offer confirmation', () => {
   test('routes the pantry, Yours, ask and connect actions and never offers to your own note', async () => {
     const api = await seededClient();
     const screen = await mount(api, <SocialScreen />);
-    await screen.findByTestId('social.pantry.widget');
+    await screen.findByLabelText('Shared food, from friends and groups');
+    expect(screen.getByText('Shared food')).toBeTruthy();
     expect(screen.queryByTestId('social.offer.request-mine')).toBeNull();
     await fireEvent.press(screen.getByTestId('social.pantry.widget'));
     await fireEvent.press(screen.getByTestId('social.yours.button'));
@@ -155,7 +156,7 @@ describe('Social board and Offer confirmation', () => {
   });
 });
 
-describe('Food Pantry', () => {
+describe('Shared food', () => {
   test('shows your open share, opens its item and keeps it after claiming another listing', async () => {
     const api = await seededClient();
     const { items: [item] } = await api.createItems({ items: [{ name: 'Own rice', quantity: 1, unit: 'kg', predicted_expiry: '2026-11-20' }] });
@@ -164,6 +165,7 @@ describe('Food Pantry', () => {
     const getItems = jest.spyOn(api, 'getItems');
     const screen = await mount(api, <PantryScreen />);
     expect(await screen.findByTestId(`foodPantry.mine.${item.id}`)).toBeTruthy();
+    expect(screen.getByText('Shared food')).toBeTruthy();
     expect(screen.getByTestId('foodPantry.mine.header')).toHaveTextContent("You're sharing");
     expect(screen.getByTestId('foodPantry.mine.header')).toHaveProp('accessibilityRole', 'header');
     expect(screen.getByText('Own rice, 2.2 lb')).toBeTruthy();

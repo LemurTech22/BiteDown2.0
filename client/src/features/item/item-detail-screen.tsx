@@ -186,8 +186,8 @@ export function ItemDetailScreen() {
           {SPOILAGE_SIGNS[item.food_group].map((sign) => <Text key={sign} style={styles.body}>• {sign}</Text>)}
           <Text style={styles.meta}>These are signs, not a safety guarantee.</Text></View>
         {!item.group_id ? <View style={styles.card}>
-          <View style={styles.header}><Text accessibilityRole="header" style={styles.heading}>{claimer ? 'On your Food Pantry' : 'Share to Food Pantry'}</Text>
-            {!claimer ? <View style={styles.switchTarget}><Switch accessibilityLabel="Share to Food Pantry" testID="item.share.toggle" value={Boolean(share)} disabled={pending}
+          <View style={styles.header}><Text accessibilityRole="header" style={styles.heading}>{claimer ? 'Shared with friends' : 'Share with friends'}</Text>
+            {!claimer ? <View style={styles.switchTarget}><Switch accessibilityLabel="Share with friends" testID="item.share.toggle" value={Boolean(share)} disabled={pending}
               onValueChange={() => void perform(toggleShare)} trackColor={{ false: theme.colors.track, true: theme.colors.forest }} thumbColor={theme.colors.surface} /></View> : null}</View>
           {share ? <><Text style={styles.body}>{claimer ? 'Shared with' : 'Visible to:'} {[(share.audience.friends ? 'Friends' : ''), ...share.audience.groups.map((group) => group.name)].filter(Boolean).join(', ')}</Text>
             <Text accessibilityLiveRegion="polite" style={styles.chip} testID="item.share.status">{claimer ? `Claimed by ${claimer.name}` : 'Not claimed yet'}</Text>

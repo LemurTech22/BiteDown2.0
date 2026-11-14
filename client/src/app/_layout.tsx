@@ -37,7 +37,7 @@ function RootStack() {
         <Stack.Screen name="recipes/index" options={{ title: "Recipes", headerShown: false }} />
         <Stack.Screen name="recipes/[id]" options={{ title: "Recipe detail", headerShown: false }} />
         <Stack.Screen name="settings" options={{ title: "Profile & settings", headerShown: false }} />
-        <Stack.Screen name="social/pantry" options={{ title: "Food Pantry", headerShown: false }} />
+        <Stack.Screen name="social/pantry" options={{ title: "Shared food", headerShown: false }} />
         <Stack.Screen name="social/request-new" options={{ title: "Ask for something", presentation: 'modal', headerShown: false }} />
         <Stack.Screen name="social/my-requests" options={{ title: "Your requests", headerShown: false }} />
         <Stack.Screen name="social/claimed/[id]" options={{ title: "Claimed item", headerShown: false }} />
