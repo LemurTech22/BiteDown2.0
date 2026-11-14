@@ -555,6 +555,10 @@ def _sniff_image(data: bytes) -> str:
     try:
         img = Image.open(io.BytesIO(data))  # reads the header only
         fmt = img.format
+        # Pillow only *warns* between MAX_IMAGE_PIXELS and twice that, and a warning is not an exception, so check the
+        # size here (BE-54). Not warnings.simplefilter("error"): that changes process-global state under gunicorn threads.
+        if Image.MAX_IMAGE_PIXELS and img.width * img.height > Image.MAX_IMAGE_PIXELS:
+            raise Image.DecompressionBombError("too many pixels")
         img.verify()
     except (Image.DecompressionBombError, Image.DecompressionBombWarning):
         raise validation_error("image has too many pixels.")

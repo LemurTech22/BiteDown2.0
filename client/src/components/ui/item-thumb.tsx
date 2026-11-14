@@ -24,6 +24,8 @@ export function ItemThumb({ name, foodGroup, photoUrl, size }: {
   const dimension = size ?? theme.sizes.itemIcon;
   const [failedPhoto, setFailedPhoto] = useState<string | null>(null);
   const [failedIllustration, setFailedIllustration] = useState<FoodIllustration | null>(null);
+  // Fade a photo in only the first time it loads; a refetch with a new signature must not fade again (CL-15).
+  const [loadedPhoto, setLoadedPhoto] = useState<string | null>(null);
   const illustration = matchFoodIllustration(name);
   const showPhoto = Boolean(photoUrl && photoUrl !== failedPhoto);
   const cacheKey = photoUrl ? photoCacheKey(photoUrl) : undefined;
@@ -33,8 +35,8 @@ export function ItemThumb({ name, foodGroup, photoUrl, size }: {
       alignItems: 'center', justifyContent: 'center', flexShrink: 0, backgroundColor: group.tile }}>
     {showPhoto && photoUrl ? <Image key={`photo:${cacheKey}`} testID="itemThumb.photo" source={{ uri: photoUrl, cacheKey }}
       accessible={false} alt="" contentFit="cover" cachePolicy="memory-disk" recyclingKey={cacheKey}
-      transition={reducedMotion ? 0 : theme.motion.quickMs} style={StyleSheet.absoluteFill}
-      onError={() => setFailedPhoto(photoUrl)} /> : illustration && illustration !== failedIllustration ?
+      transition={reducedMotion || loadedPhoto === cacheKey ? 0 : theme.motion.quickMs} style={StyleSheet.absoluteFill}
+      onLoad={() => setLoadedPhoto(cacheKey ?? null)} onError={() => setFailedPhoto(photoUrl)} /> : illustration && illustration !== failedIllustration ?
       <Image key={`illustration:${illustration}`} testID="itemThumb.illustration" source={FOOD_ILLUSTRATIONS[illustration]}
         accessible={false} alt="" contentFit="contain" transition={0} recyclingKey={illustration}
         style={{ width: dimension - theme.spacing.sm, height: dimension - theme.spacing.sm }}
