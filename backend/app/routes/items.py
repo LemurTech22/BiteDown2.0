@@ -370,7 +370,7 @@ def restore_item(item_id):
     if item.removed_at is None:
         raise ApiError(409, "not_removed", "Item has not been removed.")
     now = datetime.now(timezone.utc)
-    if now - item.removed_at > RESTORE_WINDOW:
+    if now - item.removed_at >= RESTORE_WINDOW:  # "less than 7 days" (BE-52)
         raise ApiError(409, "restore_window_expired", "Items can only be restored within 7 days of removal.")
     removed_at = item.removed_at
     # The event is written a few ms after removed_at; the time bound prunes hypertable chunks.
@@ -489,7 +489,7 @@ def restore_batch():
     if any(i.removed_at is None for i in items):
         raise ApiError(409, "not_removed", "One or more items have not been removed.")
     now = datetime.now(timezone.utc)
-    if any(now - i.removed_at > RESTORE_WINDOW for i in items):
+    if any(now - i.removed_at >= RESTORE_WINDOW for i in items):
         raise ApiError(409, "restore_window_expired", "Items can only be restored within 7 days of removal.")
 
     removed_at = {i.id: i.removed_at for i in items}
