@@ -2,7 +2,7 @@
 
 _The app is **BiteDown** (owner, 2026-10-10; see `docs/DECISIONS.md`). Internal names such as `FoodWasteReducer` stay._
 
-_Last updated: 2026-11-13 (checkpoint 17, final pre-showcase hardening; see below). Older text from 2026-10-11: **`food-main` (VPS) orchestrates**: it plans, rules, reviews and merges,
+_Last updated: 2026-11-13 (checkpoint 18, sharing, storage moves and "pantry" wording; see below). Older text from 2026-10-11: **`food-main` (VPS) orchestrates**: it plans, rules, reviews and merges,
 and owns the canvas and the orchestrator docs. **`food-main-mac` (the Mac) does all the building**: builder + QA
 sub-agents (**Sonnet**, owner preference), Xcode and simulators, Docker and every test run, plus any
 `.github/workflows` push. The owner also lets the Mac merge a PR when it judges it ready, and edit the canvas when
@@ -12,7 +12,28 @@ checkpoints. **Since checkpoint 10:** `food-modal-test` (iOS simulator test pass
 merges on the Mac; `food-main` reviews the Auth PR. All of them update this file and the affected `docs/` at
 every checkpoint (`CLAUDE.md` Rules). Rules: [`CLAUDE.md`](CLAUDE.md)._
 
-## Checkpoint 17 (2026-11-13, Windows PC): final pre-showcase hardening. Read this first
+## Checkpoint 18 (2026-11-13, Windows PC): sharing, storage moves, "pantry" wording. Read this first
+Owner rulings, recorded in `docs/DECISIONS.md` 2026-11-13. Four commits on `feat/expo-android`, not pushed yet. Codex
+wrote each one and Claude reviewed it:
+- `df58ab6` Shared food (formerly Food Pantry) lists your own open shares under "You're sharing", built from
+  `GET /items`. `GET /share` is unchanged.
+- `a076d92` `PATCH /items/:id` re-estimates expiry on a storage change (rule in `docs/API.md`). The Move sheet offers a
+  "Re-estimate expiry" switch for user-typed dates. The mock client mirrors the rule.
+- `fcc916c` Expo labels: food group "Staples", "Shared food", "Share with friends", "Group food". Storage keeps
+  "Pantry". API values, routes and testIDs are unchanged. `docs/design/SCREENS.md` follows.
+- `afde97d` Same labels in the iOS app (`ios/App`, `ios/Tests`).
+
+**Verified:** client tsc and lint clean, Jest 30 suites / 454 tests. Backend `test_items.py` 49 passed. Full backend
+suite (not slow): 3031 passed, 50 failed. Every failure is a Gemini or receipt test, because the tests load the local
+`.env` and its `GEMINI_FALLBACK_MODELS` chain makes 3 calls where they expect 1. With the Gemini variables blanked, 2
+failures remain in those files: `test_app_reads_env` (reacts to the blanked override) and BE-22 crop peak memory.
+None touch items or expiry. Test isolation from `.env` is a Backend QA follow-up.
+**Not verified:** iOS build and tests (no Xcode here; iOS CI on push is the first check), the emulator run of the three
+client changes, and a formal QA pass.
+**Next:** run them on the emulator, push to PR #1, QA pass, then update the design canvas (FoodPantry, ItemDetail,
+ItemShared, GroupDetail, Social widget, food-group labels) and mirror it into `docs/design/screens/`.
+
+## Checkpoint 17 (2026-11-13, Windows PC): final pre-showcase hardening
 **Event:** live demo at a food bank volunteering event, 2026-11-13 morning. **Runbook: [`docs/SHOWCASE.md`](docs/SHOWCASE.md)**
 (night-before and morning checklists, failure-to-fix table, demo account). Rulings: `docs/DECISIONS.md` 2026-11-13.
 Checks: `docs/qa/client.md` 2026-11-13 (orchestrator checks + Codex/OpenCode audits; not a formal QA PASS).
