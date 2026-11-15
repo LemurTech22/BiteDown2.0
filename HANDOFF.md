@@ -36,7 +36,7 @@ ruling on the iOS label change with no Mac run, and LemurTech22's agreement.
   `client/node_modules` is a junction to the main checkout's.
 - **Save acknowledgement** (PR #1, QA PASS): a successful Item detail save closed the screen with "Saved changes to <name>";
   per-visit guard for slow saves (CL-17..19).
-- **Read-and-confirm redesign** (`feat/confirm-ui`, stacked on PR #2, QA PASS, CL-20..22 fixed): Item detail summary card +
+- **Read-and-confirm redesign** (**PR #3**, `feat/confirm-ui`, stacked on PR #2, QA PASS, CL-20..22 fixed): Item detail summary card +
   tap-to-change sheets, one-line review rows with "Check this", plain-RN date sheet. Replaces PR #1's Save button flow.
 - **New design canvas** (owner chose option 2): publish a Design artifact in the owner's account from `docs/design/screens/`
   plus redesigned ItemDetail and PhotoReview boards, then point `CLAUDE.md` and `docs/design/README.md` at it.
