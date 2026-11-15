@@ -300,3 +300,42 @@ Results are Jest/component and mock-service checks. No live API, browser interac
 Android/iOS build, device haptic, native hit test, screen-reader playback or large-text
 layout was exercised. The stale route-ID case simulates component reuse; actual router
 reuse behavior on a device is unverified. No feature fix was applied.
+
+### Re-check (2026-11-14)
+
+**Verdict: FAIL.** The three original CL-17 regressions now pass, but two residual
+lifecycle defects reproduce as CL-18 and CL-19.
+
+Read the current worktree's `shown = useRef({ mounted, id })` guard and ID-change
+reset in `item-detail-screen.tsx`. Revision identity remains unverified; no Git
+commands were run. Extended only `client/src/features/item/__tests__/qa-save-notice-test.tsx`
+from 12 to 18 cases and appended this re-check. Feature code and builder tests were
+not edited. The earlier FAIL and unused-ID statements above describe the original run.
+
+| ID | Status | Evidence / remaining defect |
+|---|---|---|
+| CL-17 | **Fixed/verified for the three original cases.** | Resolving Save after Back and detail unmount produces no further navigation, notice or haptic, both with history and with `/fridge` fallback. Resolving the old Save while the reused component shows Apples preserves Apples and produces no navigation, notice or haptic. The success guard returns before the Save state setters. `perform()` still reaches its unguarded `finally` state setter; complete post-unmount setter suppression is not established. |
+| CL-18 | **Open, high.** `client/src/features/item/item-detail-screen.tsx:66`–`:70`, `:110`–`:121`. | Start a delayed Save on item A with name "Earlier saved name", route the retained detail component to B, then back to A before resolving the request. Resolve the old A Save: it replaces the current form name, publishes "Saved changes to Earlier saved name", emits a success haptic and navigates back. Checking only the current ID accepts a request from an earlier visit when that ID matches again; visit invalidation is missing. One failing regression at `qa-save-notice-test.tsx:264`. |
+| CL-19 | **Open, medium.** `client/src/features/item/item-detail-screen.tsx:92`–`:99`. | Start a delayed Save, then unmount detail or reuse it for Apples; reject the old request. Unmount still emits an error haptic. Apples receives an unrelated "Old item save failed" inline error / Try again and an error haptic. Neither case navigates or publishes a success notice. Rejection bypasses the success-only guard and reaches the unguarded `perform()` catch/finally. Two failing regressions at `qa-save-notice-test.tsx:294`. |
+
+| Requested confirmation | Result |
+|---|---|
+| Save twice on the same item after returning | **PASS** for completed requests: save A, switch the same component to B and save B, return to A and save A again. Three updates, three notices/haptics and three departures, tested with history and without. Repeated taps during each closing interval cannot resubmit. The separate pending-request round trip fails as CL-18 above. |
+| `closing` resets when ID changes | **PASS:** both B's Save and A's second Save succeed on the retained component after an earlier successful Save set `closing`. Source resets it in the `[id]` effect at line 69. |
+| Remove / Share / Check again | **PASS:** added Remove → Used it → Undo coverage preserves detail without Save navigation/notice, restores the form and leaves Save enabled. Existing QA covers pending Share/Check again blocking Save, no Save notice/departure on completion and a later explicit Save after Check again. Unchanged builder tests for sharing on/off, photo patch/retry/cancel, removal/handoff and pickup also pass in the full run. |
+| Other original Save / notice coverage | **PASS:** all 12 original QA cases pass, including success/double press, inline failure/retry, pickup isolation, removed items and long-name notice. Existing notice coverage also passes in the full run. |
+
+Run from `client/`, after adding all six new cases:
+
+| Command | Result |
+|---|---|
+| `npx jest src/features/item/__tests__/qa-save-notice-test.tsx --runInBand` | FAIL, exit 1: 1 suite failed; 18 tests total (15 passed, 3 failed); 0 snapshots. Then expanded failure assertions to report all stale effects together; no cases added or removed. |
+| `npx tsc --noEmit` | PASS, exit 0, with final QA test contents. |
+| `npm run lint` | PASS, exit 0, with final QA test contents. |
+| `npx jest --runInBand` | Run exactly once for this re-check, with final QA test contents. FAIL, exit 1: **43 suites total (42 passed, 1 failed); 647 tests total (644 passed, 3 failed); 0 skipped, 0 snapshots.** QA Save suite: **18 total (15 passed, 3 failed)**. All **629 tests outside this QA file pass**. Only CL-18 (one case) and CL-19 (two cases) fail. |
+
+Next steps: the feature owner invalidates Saves across route visits, including return
+to the same ID, and guards stale rejection/state cleanup; then re-run these regressions.
+No feature fix was applied. Evidence is source, Jest/component and mock-service only.
+Actual router reuse, live API, browser/device interaction, Android/iOS builds, device
+haptics, native hit testing, screen-reader playback and large-text layout remain unverified.

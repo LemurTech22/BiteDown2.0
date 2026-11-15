@@ -230,4 +230,109 @@ test('CL-17: a delayed Save cannot replace the item on a reused detail screen or
   expect(screen.getByTestId('item.name.input')).toHaveProp('value', 'Apples');
   expectNoDeparture();
   expect(screen.queryByTestId('app.notice')).toBeNull();
+  expect(Haptics.notificationAsync).not.toHaveBeenCalled();
+});
+
+test.each([true, false])('Save works again after saving another route ID and returning to the same item (history: %s)', async (history) => {
+  const { api, item, tree, show } = await setup();
+  jest.mocked(router.canGoBack).mockReturnValue(history);
+  const { items: [second] } = await api.createItems({ items: [{ name: 'Apples', category: 'produce_hardy', food_group: 'fruit', quantity: 3, unit: 'piece' }] });
+  const update = jest.spyOn(api, 'updateItem');
+  const screen = await show();
+  for (const [id, loadedName, editedName] of [
+    [item.id, item.name, 'Spinach first save'],
+    [second.id, second.name, 'Apples saved'],
+    [item.id, 'Spinach first save', 'Spinach second save'],
+  ]) {
+    mockId = id;
+    await screen.rerender(tree());
+    await screen.findByDisplayValue(loadedName);
+    await fireEvent.changeText(screen.getByTestId('item.name.input'), editedName);
+    await fireEvent.press(screen.getByTestId('item.save.button'));
+    await waitFor(() => expect(screen.getByTestId('app.notice')).toHaveTextContent(`Saved changes to ${editedName}`));
+    expect(update).toHaveBeenLastCalledWith(id, expect.objectContaining({ name: editedName }));
+    // A second tap before teardown still cannot resubmit this visit's Save.
+    await fireEvent.press(screen.getByTestId('item.save.button'));
+  }
+  expect(update).toHaveBeenCalledTimes(3);
+  expect(router.back).toHaveBeenCalledTimes(history ? 3 : 0);
+  expect(router.replace).toHaveBeenCalledTimes(history ? 0 : 3);
+  if (!history) expect(router.replace).toHaveBeenLastCalledWith('/fridge');
+  expect(Haptics.notificationAsync).toHaveBeenCalledTimes(3);
+});
+
+test('CL-18: a Save from an earlier visit stays silent after routing away and back to the same item', async () => {
+  const { api, item, tree, show } = await setup();
+  const { items: [second] } = await api.createItems({ items: [{ name: 'Apples', category: 'produce_hardy', food_group: 'fruit', quantity: 3, unit: 'piece' }] });
+  const gate = deferred<{ item: Item }>();
+  const update = jest.spyOn(api, 'updateItem').mockReturnValueOnce(gate.promise);
+  const screen = await show();
+  await fireEvent.changeText(screen.getByTestId('item.name.input'), 'Earlier saved name');
+  await fireEvent.press(screen.getByTestId('item.save.button'));
+  mockId = second.id;
+  await screen.rerender(tree());
+  await screen.findByDisplayValue(second.name);
+  mockId = item.id;
+  await screen.rerender(tree());
+  await screen.findByDisplayValue(item.name);
+  await act(() => gate.resolve({ item: { ...item, name: 'Earlier saved name' } }));
+  expect({
+    name: screen.getByTestId('item.name.input').props.value,
+    notice: screen.queryByTestId('app.notice')?.props.children ?? null,
+    haptics: jest.mocked(Haptics.notificationAsync).mock.calls,
+    back: jest.mocked(router.back).mock.calls,
+    replace: jest.mocked(router.replace).mock.calls,
+  }).toEqual({ name: item.name, notice: null, haptics: [], back: [], replace: [] });
+  // Once the old request settles, a deliberate Save on the new visit must work.
+  await fireEvent.changeText(screen.getByTestId('item.name.input'), 'Current visit name');
+  await fireEvent.press(screen.getByTestId('item.save.button'));
+  expect(await screen.findByTestId('app.notice')).toHaveTextContent('Saved changes to Current visit name');
+  expect(update).toHaveBeenCalledTimes(2);
+  expect(router.back).toHaveBeenCalledTimes(1);
+});
+
+test.each(['unmounted', 'another item'])('CL-19: a rejected Save stays silent after detail is %s', async (destination) => {
+  const { api, tree, show } = await setup();
+  const { items: [second] } = await api.createItems({ items: [{ name: 'Apples', category: 'produce_hardy', food_group: 'fruit', quantity: 3, unit: 'piece' }] });
+  const gate = deferred<{ item: Item }>();
+  jest.spyOn(api, 'updateItem').mockReturnValueOnce(gate.promise);
+  const screen = await show();
+  await fireEvent.press(screen.getByTestId('item.save.button'));
+  if (destination === 'unmounted') {
+    await screen.rerender(tree(false));
+  } else {
+    mockId = second.id;
+    await screen.rerender(tree());
+    await screen.findByDisplayValue(second.name);
+  }
+  await act(() => gate.reject(new Error('Old item save failed')));
+  expectNoDeparture();
+  expect(screen.queryByTestId('app.notice')).toBeNull();
+  expect({
+    staleError: Boolean(screen.queryByTestId('item.mutation.error')),
+    haptics: jest.mocked(Haptics.notificationAsync).mock.calls,
+  }).toEqual({ staleError: false, haptics: [] });
+});
+
+test('Remove still removes and undoes in detail without Save navigation or notice', async () => {
+  const { api, item, show } = await setup();
+  const remove = jest.spyOn(api, 'removeItem');
+  const restore = jest.spyOn(api, 'restoreItem');
+  const update = jest.spyOn(api, 'updateItem');
+  const screen = await show();
+  await fireEvent.press(screen.getByTestId('item.remove.button'));
+  await fireEvent.press(screen.getByTestId('remove.outcome.used'));
+  await screen.findByTestId('item.removed.state');
+  expect(remove).toHaveBeenCalledWith(item.id, { outcome: 'used' });
+  expect(screen.queryByTestId('remove.sheet.modal')).toBeNull();
+  expect(screen.queryByTestId('item.save.button')).toBeNull();
+  expectNoDeparture();
+  expect(screen.queryByTestId('app.notice')).toBeNull();
+  await fireEvent.press(screen.getByTestId(`remove.undo.${item.id}`));
+  await screen.findByDisplayValue(item.name);
+  expect(restore).toHaveBeenCalledWith(item.id);
+  expect(update).not.toHaveBeenCalled();
+  expectNoDeparture();
+  expect(screen.queryByTestId('app.notice')).toBeNull();
+  expect(screen.getByTestId('item.save.button')).not.toBeDisabled();
 });
