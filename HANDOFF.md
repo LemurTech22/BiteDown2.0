@@ -26,10 +26,14 @@ panel and did not reproduce. Not checked on Android or iOS devices. Recorded in 
 **PR #1 merge:** no conflicts with `main` (its fork point is `main`'s head `f349092`, #126). Still needs the owner's
 ruling on the iOS label change with no Mac run, and LemurTech22's agreement.
 **In flight:**
-- **Item photos** (`feat/item-photos`, worktree `../wt/item-photos`, stacked on `55b1dd5`): backend first (photo store,
-  migration `0009_item_photos`, crop staging in `from-photo`, `photo_token` on `POST /items`, signed `photo_url`, photo
-  endpoints, cleanup on account delete). Then the client (`ItemThumb`: photo, then food illustration, then group icon).
-  Needs a compose volume + `PHOTO_DIR` in `.env.example` (orchestrator). Rebase onto `feat/expo-android` before the client part.
+- **Item photos** (`feat/item-photos`, worktree `../wt/item-photos`, rebased onto `ecb6fc9`): **built and QA PASS**
+  (backend: BE-54 fixed; client: CL-15, CL-16 fixed; see `docs/QA.md`). Backend: photo store (`PHOTO_DIR`, compose
+  `photo-data` volume), migration `0009_item_photos`, crop staging in `from-photo` (`photo_token`, `photo_preview_url`),
+  `photo_token` on `POST /items`, signed 1 h `photo_url`, bearer-free photo endpoints, file cleanup on account delete.
+  Client: `ItemThumb` (photo, else a Fluent Emoji Flat illustration matched by name, 87 SVGs in `client/assets/food`, MIT,
+  else the group icon). Not pushed yet; the PR goes into `feat/expo-android`. **After pulling it:** `docker compose up -d
+  --build api` (migration 0009 runs on start). iOS doesn't show photos yet (additive field, nothing breaks). The worktree's
+  `client/node_modules` is a junction to the main checkout's.
 - **ML track: now the owner's** (was LemurTech22's). Step 1: score `fwr_20261011` from `export.zip` (re-export on Colab
   with `RUN_ID=fwr_20261011`, a few minutes). Then tune `SPOILED_THRESHOLD` on val, then a full (non-FAST) run.
 
