@@ -64,11 +64,20 @@ export function ItemDetailScreen() {
     return () => { active = false; request.current += 1; };
   }, [load]);
 
+  // One number per visit: it changes when this screen shows another item (even A -> B -> A) and on unmount. A save
+  // started on an earlier visit must not touch state, haptics, notices or the open sheet when it settles (CL-17..19).
+  const visit = useRef(0);
+  useEffect(() => {
+    visit.current += 1;
+    return () => { visit.current += 1; };
+  }, [id]);
   async function perform(action: () => Promise<void>) {
     if (working.current) return;
+    const started = visit.current;
     working.current = true; retry.current = action; setPending(true); setError('');
     try { await action(); }
     catch (cause) {
+      if (visit.current !== started) return;  // failed after the user left this visit: no stale error or haptic (CL-19)
       setError(cause instanceof Error ? cause.message : 'Couldn’t update this item. Try again.');
       void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error).catch(() => {});
     } finally { working.current = false; setPending(false); }
@@ -79,12 +88,15 @@ export function ItemDetailScreen() {
     // Reconfirming an estimate must not turn it into a user-entered date.
     if (changes.predicted_expiry === item.predicted_expiry) delete changes.predicted_expiry;
     if (changes.freshness === item.freshness) delete changes.freshness;
+    const started = visit.current;
     try {
       const { item: updated } = await api.updateItem(item.id, changes);
+      if (visit.current !== started) return;  // saved on the server, but the user left this visit (CL-17, CL-18)
       setItem(updated);
       void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
       notice.show(`Saved changes to ${updated.name}`);
     } catch (cause) {
+      if (visit.current !== started) return;
       void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error).catch(() => {});
       throw cause;
     }
