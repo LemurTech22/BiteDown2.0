@@ -61,13 +61,13 @@ export function ItemDetailScreen() {
   const request = useRef(0);
   const working = useRef(false);
   const closing = useRef(false);
-  // Which item this screen shows right now, and whether it is still mounted: a Save that resolves after the user left,
-  // or after the route reused this screen for another item, must not overwrite state or navigate (CL-17).
-  const shown = useRef({ mounted: true, id });
+  // One number per visit: it changes whenever this screen shows another item (even A -> B -> A) and on unmount. A Save
+  // started on an earlier visit must not touch state, haptics, notices or navigation when it settles (CL-17, CL-18, CL-19).
+  const visit = useRef(0);
   useEffect(() => {
-    shown.current = { mounted: true, id };
+    visit.current += 1;
     closing.current = false;
-    return () => { shown.current = { ...shown.current, mounted: false }; };
+    return () => { visit.current += 1; };
   }, [id]);
   const retry = useRef<(() => Promise<void>) | null>(null);
   const { entries, remember, undo, dismiss } = useRemovalUndo((restored) => { setItem(restored); setDraft(toDraft(restored)); });
@@ -91,9 +91,11 @@ export function ItemDetailScreen() {
 
   async function perform(action: () => Promise<void>) {
     if (working.current || closing.current) return;
+    const started = visit.current;
     working.current = true; retry.current = action; setPending(true); setError('');
     try { await action(); }
     catch (cause) {
+      if (visit.current !== started) return;  // failed after the user left this visit: no stale error or haptic
       setError(cause instanceof Error ? cause.message : 'Couldn’t update this item. Try again.');
       void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error).catch(() => {});
     } finally { working.current = false; setPending(false); }
@@ -107,9 +109,9 @@ export function ItemDetailScreen() {
     const patch: UpdateItemInput = { name: draft.name.trim(), quantity: Number(draft.quantity), unit: draft.unit.trim(), storage: draft.storage, food_group: draft.foodGroup };
     if (draft.expiry && draft.expiry !== item.predicted_expiry) patch.predicted_expiry = draft.expiry;
     if (draft.freshness !== (item.freshness ?? 'unknown')) patch.freshness = draft.freshness === 'unknown' ? null : draft.freshness;
-    const savedId = item.id;
-    const { item: updated } = await api.updateItem(savedId, patch);
-    if (!shown.current.mounted || shown.current.id !== savedId) {
+    const started = visit.current;
+    const { item: updated } = await api.updateItem(item.id, patch);
+    if (visit.current !== started) {
       return;  // saved on the server; the user already left this screen, so stay silent (the list shows the change)
     }
     setItem(updated); setDraft(toDraft(updated));
