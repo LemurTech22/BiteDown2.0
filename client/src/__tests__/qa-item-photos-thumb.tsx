@@ -1,6 +1,7 @@
 import { fireEvent, render } from '@testing-library/react-native';
 
 import { ItemThumb, photoCacheKey } from '@/components/ui/item-thumb';
+import { loadedPhotos, rememberLoaded } from '@/components/ui/loaded-photos';
 import { FOOD_ILLUSTRATIONS, matchFoodIllustration } from '@/features/food-art/food-illustrations';
 import { useReducedMotion } from '@/hooks/use-reduced-motion';
 import { createTheme, useTheme } from '@/theme';
@@ -22,6 +23,22 @@ beforeEach(() => {
   jest.mocked(useTheme).mockReturnValue(createTheme('light'));
 });
 afterEach(() => jest.restoreAllMocks());
+
+test.each([1, 2])('global setup starts test %s with an empty photo session', () => {
+  expect(loadedPhotos.size).toBe(0);
+  rememberLoaded('qa-session-isolation');
+  expect(loadedPhotos.has('qa-session-isolation')).toBe(true);
+});
+
+test('test-file theme and motion mocks remain replaceable after global setup', async () => {
+  expect(jest.isMockFunction(useTheme)).toBe(true);
+  expect(jest.isMockFunction(useReducedMotion)).toBe(true);
+  const screen = await render(<ItemThumb name="Apples" foodGroup="fruit" photoUrl={`${path}?sig=a`} />);
+  expect(screen.getByTestId('itemThumb.photo', hidden).props.transition.duration).toBe(0);
+  jest.mocked(useReducedMotion).mockReturnValue(false);
+  await screen.rerender(<ItemThumb name="Apples" foodGroup="fruit" photoUrl={`${path}?sig=b`} />);
+  expect(screen.getByTestId('itemThumb.photo', hidden).props.transition.duration).toBe(createTheme('light').motion.quickMs);
+});
 
 test.each(['?sig=old', '?v=1&sig=new#fragment', '#fragment', ''])('cache identity strips query/fragment %s without constructing URL', (suffix) => {
   const constructor = jest.spyOn(globalThis, 'URL').mockImplementation(() => { throw new Error('Native URL API unavailable'); });
@@ -90,6 +107,40 @@ test('CL-16: returning to an already loaded cache key does not fade it again', a
   await fireEvent(screen.getByTestId('itemThumb.photo', hidden), 'load', { nativeEvent: { source: {} } });
   await screen.rerender(<ItemThumb name="Apples" foodGroup="fruit" photoUrl={`${path}?sig=b`} />);
   expect(screen.getByTestId('itemThumb.photo', hidden).props.transition.duration).toBe(0);
+});
+
+test.each(['a', 'fresh'])('CL-16: remounting a loaded photo with signature %s does not fade again', async (sig) => {
+  jest.mocked(useReducedMotion).mockReturnValue(false);
+  const first = await render(<ItemThumb name="Apples" foodGroup="fruit" photoUrl={`${path}?sig=a`} />);
+  expect(first.getByTestId('itemThumb.photo', hidden).props.transition.duration).toBe(createTheme('light').motion.quickMs);
+  await fireEvent(first.getByTestId('itemThumb.photo', hidden), 'load', { nativeEvent: { source: {} } });
+  await first.unmount();
+  const next = await render(<ItemThumb name="Apples" foodGroup="fruit" photoUrl={`${path}?sig=${sig}`} />);
+  expect(next.getByTestId('itemThumb.photo', hidden).props.transition.duration).toBe(0);
+  await fireEvent(next.getByTestId('itemThumb.photo', hidden), 'load', { nativeEvent: { source: {} } });
+  expect(next.getByTestId('itemThumb.photo', hidden).props.transition.duration).toBe(0);
+});
+
+test('photo session evicts only the oldest key at 501 and an evicted photo fades once again', async () => {
+  jest.mocked(useReducedMotion).mockReturnValue(false);
+  const keys = Array.from({ length: 501 }, (_, index) => `https://api.test/items/eviction-${index}/photo`);
+  for (const key of keys.slice(0, 500)) expect(rememberLoaded(key)).toBe(true);
+  expect(loadedPhotos.size).toBe(500);
+  // Seeing an existing key again must neither evict another photo nor refresh insertion order.
+  expect(rememberLoaded(keys[0])).toBe(false);
+  expect([...loadedPhotos]).toEqual(keys.slice(0, 500));
+  expect(rememberLoaded(keys[500])).toBe(true);
+  expect([...loadedPhotos]).toEqual(keys.slice(1));
+
+  const screen = await render(<ItemThumb name="Apples" foodGroup="fruit" photoUrl={`${keys[1]}?sig=fresh`} />);
+  expect(screen.getByTestId('itemThumb.photo', hidden).props.transition.duration).toBe(0);
+  await screen.rerender(<ItemThumb name="Apples" foodGroup="fruit" photoUrl={`${keys[0]}?sig=fresh`} />);
+  expect(screen.getByTestId('itemThumb.photo', hidden).props.transition.duration).toBe(createTheme('light').motion.quickMs);
+  await fireEvent(screen.getByTestId('itemThumb.photo', hidden), 'load', { nativeEvent: { source: {} } });
+  expect(screen.getByTestId('itemThumb.photo', hidden).props.transition.duration).toBe(0);
+  expect(loadedPhotos.size).toBe(500);
+  expect(loadedPhotos.has(keys[1])).toBe(false);
+  expect(loadedPhotos.has(keys[0])).toBe(true);
 });
 
 test('Reduce Motion disables every transition across loads, signatures, errors and different photos', async () => {
