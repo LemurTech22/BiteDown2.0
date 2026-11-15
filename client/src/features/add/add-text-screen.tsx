@@ -9,7 +9,7 @@ import { StateView } from '@/components/ui/state-view';
 import { useTheme } from '@/theme';
 
 import { AddScreen, addStyles } from './add-screen';
-import { draftError } from './candidate-editor';
+import { draftError, needsSpoiledDecision } from './candidate-editor';
 import { CandidateReview, type ReviewDraft, reviewDrafts } from './candidate-review';
 import { useCandidateSave } from './use-candidate-save';
 
@@ -47,7 +47,7 @@ export function AddTextScreen() {
 
   return <AddScreen title="Type or say it" screen="addText" footer={drafts && drafts.length > 0 ?
     <AppButton label={`Add ${selected.length} ${selected.length === 1 ? 'item' : 'items'}`} testID="addText.save.button" loading={saving}
-      disabled={!selected.length || selected.some((draft) => Boolean(draftError(draft)))} onPress={() => void save(selected)} /> : null}>
+      disabled={!selected.length || drafts.some(needsSpoiledDecision) || selected.some((draft) => Boolean(draftError(draft)))} onPress={() => void save(selected)} /> : null}>
     <View style={styles.section}>
       <Text style={styles.label}>What did you get?</Text>
       <TextInput ref={input} multiline accessibilityLabel="What did you get?" testID="addText.input.text"

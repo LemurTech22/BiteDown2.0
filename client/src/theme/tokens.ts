@@ -139,6 +139,7 @@ export const sizes = {
   primaryButton: 56,
   removalOption: 68,
   itemIcon: 40,
+  itemDetailThumb: 88,
   input: 50,
   googleButton: 50,
   quantityStepper: 40,

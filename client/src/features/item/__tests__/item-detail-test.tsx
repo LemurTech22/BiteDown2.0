@@ -41,91 +41,150 @@ beforeEach(() => {
 });
 afterEach(() => jest.restoreAllMocks());
 
-test('keeps one top-safe Item detail header and all food group and storage choices', async () => {
+test('summary rows open only their own editor and all choices remain available', async () => {
   const { api } = await seed();
   const screen = await show(api);
-  await screen.findByDisplayValue('Baby spinach');
+  await screen.findByText('Baby spinach');
   expect(screen.getByTestId('item.screen.root')).toHaveProp('edges', expect.objectContaining({ top: 'additive' }));
   expect(screen.getAllByText('Item detail')).toHaveLength(1);
-  expect(screen.getByLabelText('Food group: Staples')).toBeTruthy();
-  for (const { label } of FOOD_GROUPS) expect(screen.getByLabelText(`Food group: ${label}`)).toBeTruthy();
-  expect(screen.getByText('Stored in')).toBeTruthy();
-  for (const label of ['Fridge', 'Pantry', 'Freezer']) expect(screen.getByLabelText(`Storage: ${label}`)).toBeTruthy();
+  expect(screen.queryByTestId('item.save.button')).toBeNull();
+  expect(screen.queryByTestId('item.name.input')).toBeNull();
+  expect(screen.getByTestId('item.storage.row')).toHaveProp('accessibilityLabel', 'Stored in, Fridge');
+  for (const field of ['storage', 'expiry', 'freshness', 'group', 'amount']) {
+    await fireEvent.press(screen.getByTestId(`item.${field}.row`));
+    expect(screen.getByTestId('item.edit.sheet')).toHaveProp('animationType', 'fade');
+    if (field === 'group') for (const { label } of FOOD_GROUPS) expect(screen.getByRole('radio', { name: label })).toBeTruthy();
+    if (field === 'storage') {
+      expect(screen.getAllByRole('radio')).toHaveLength(3);
+      expect(screen.getByRole('radio', { name: 'Fridge' })).toHaveProp('accessibilityState', { checked: true, disabled: false });
+    }
+    if (field === 'freshness') expect(screen.getAllByRole('radio')).toHaveLength(4);
+    if (field === 'expiry') expect(screen.getByTestId('item.edit.date.quick.0')).toBeTruthy();
+    if (field === 'amount') expect(screen.getByDisplayValue('Baby spinach')).toBeTruthy();
+    await fireEvent.press(screen.getByTestId('item.edit.sheet.cancel'));
+    expect(screen.queryByTestId('item.edit.sheet')).toBeNull();
+  }
 });
 
-test('edits fields, labels estimates, and saves user expiry', async () => {
+test('name and amount validate, save once, close the sheet and show a notice without navigating', async () => {
   const { api, item } = await seed();
   const update = jest.spyOn(api, 'updateItem');
   const screen = await show(api);
-  await screen.findByDisplayValue('Baby spinach');
-  expect(screen.getByTestId('item.expiry.estimated')).toBeTruthy();
-  await fireEvent.changeText(screen.getByTestId('item.name.input'), 'Spinach');
-  await fireEvent.changeText(screen.getByTestId('item.quantity.input'), '3');
-  await fireEvent.changeText(screen.getByTestId('item.unit.input'), 'box');
-  await fireEvent.changeText(screen.getByTestId('item.expiry.input'), '2027-02-01');
-  await fireEvent.press(screen.getByTestId('item.storage.freezer'));
-  await fireEvent.press(screen.getByTestId('item.freshness.semi_fresh'));
-  await fireEvent.press(screen.getByTestId('item.save.button'));
+  await screen.findByText('Baby spinach');
+  await fireEvent.press(screen.getByTestId('item.amount.row'));
+  await fireEvent.changeText(screen.getByTestId('item.edit.quantity.input'), '0');
+  expect(screen.getByTestId('item.edit.save')).toBeDisabled();
+  await fireEvent.changeText(screen.getByTestId('item.edit.name.input'), 'Spinach');
+  await fireEvent.changeText(screen.getByTestId('item.edit.quantity.input'), '3');
+  await fireEvent.changeText(screen.getByTestId('item.edit.unit.input'), 'box');
+  await fireEvent.press(screen.getByTestId('item.edit.save'));
   expect(await screen.findByText('Saved changes to Spinach')).toBeTruthy();
-  expect(router.back).toHaveBeenCalledTimes(1);
+  expect(screen.queryByTestId('item.edit.sheet')).toBeNull();
+  expect(update).toHaveBeenCalledTimes(1);
+  expect(update).toHaveBeenCalledWith(item.id, { name: 'Spinach', quantity: 3, unit: 'box' });
+  expect(router.back).not.toHaveBeenCalled();
   expect(router.replace).not.toHaveBeenCalled();
   expect(Haptics.notificationAsync).toHaveBeenCalledWith(Haptics.NotificationFeedbackType.Success);
-  expect(screen.queryByTestId('item.save.success')).toBeNull();
-  expect(update).toHaveBeenCalledWith(item.id, { name: 'Spinach', quantity: 3, unit: 'box', storage: 'freezer', food_group: 'veggies', predicted_expiry: '2027-02-01', freshness: 'semi_fresh' });
-  expect(screen.queryByTestId('item.expiry.estimated')).toBeNull();
 });
 
-test('validates edits and retains them after a failed save', async () => {
-  const { api } = await seed();
+test.each([['freshness', 'semi_fresh', { freshness: 'semi_fresh' }], ['group', 'protein', { food_group: 'protein' }]])(
+  '%s selection saves immediately and closes', async (field, value, patch) => {
+    const { api, item } = await seed();
+    const update = jest.spyOn(api, 'updateItem');
+    const screen = await show(api);
+    await screen.findByText('Baby spinach');
+    await fireEvent.press(screen.getByTestId(`item.${field}.row`));
+    await fireEvent.press(screen.getByTestId(`item.edit.${field}.${value}`));
+    expect(await screen.findByText('Saved changes to Baby spinach')).toBeTruthy();
+    expect(update).toHaveBeenCalledWith(item.id, patch);
+    expect(update).toHaveBeenCalledTimes(1);
+    expect(screen.queryByTestId('item.edit.sheet')).toBeNull();
+  });
+
+test('failed date selection stays open and retries the same patch', async () => {
+  const { api, item } = await seed();
   const update = jest.spyOn(api, 'updateItem').mockRejectedValueOnce(new Error('Save failed'));
   const screen = await show(api);
-  await screen.findByDisplayValue('Baby spinach');
-  await fireEvent.changeText(screen.getByTestId('item.expiry.input'), '2027-02-30');
-  expect(screen.getByTestId('item.save.button')).toBeDisabled();
-  await fireEvent.changeText(screen.getByTestId('item.expiry.input'), '2027-02-28');
-  await fireEvent.press(screen.getByTestId('item.save.button'));
+  await screen.findByText('Baby spinach');
+  expect(screen.getByTestId('item.expiry.row').props.accessibilityLabel).toContain('estimated');
+  await fireEvent.press(screen.getByTestId('item.expiry.row'));
+  await fireEvent.press(screen.getByTestId('item.edit.date.day.2027-01-02'));
   expect(await screen.findByText('Save failed')).toBeTruthy();
-  expect(screen.getByDisplayValue('2027-02-28')).toBeTruthy();
-  expect(router.back).not.toHaveBeenCalled();
-  expect(router.replace).not.toHaveBeenCalled();
+  expect(screen.getByTestId('item.edit.sheet')).toBeTruthy();
   expect(screen.queryByTestId('app.notice')).toBeNull();
-  await fireEvent.press(screen.getByTestId('item.mutation.retry'));
+  await fireEvent.press(screen.getByTestId('item.edit.retry'));
   await screen.findByText('Saved changes to Baby spinach');
-  expect(router.back).toHaveBeenCalledTimes(1);
   expect(update).toHaveBeenCalledTimes(2);
+  expect(update).toHaveBeenLastCalledWith(item.id, { predicted_expiry: '2027-01-02' });
+  expect(screen.queryByTestId('item.edit.sheet')).toBeNull();
+  expect(screen.getByTestId('item.expiry.row').props.accessibilityLabel).not.toContain('estimated');
 });
 
-test('successful save replaces with Fridge when there is no back history', async () => {
-  const { api } = await seed();
-  jest.mocked(router.canGoBack).mockReturnValue(false);
+test.each([false, true])('storage preserves user dates unless re-estimate is %s', async (reestimate) => {
+  const { api, item } = await seed();
+  await api.updateItem(item.id, { predicted_expiry: '2027-01-02' });
+  const update = jest.spyOn(api, 'updateItem');
   const screen = await show(api);
-  await screen.findByDisplayValue('Baby spinach');
-  await fireEvent.press(screen.getByTestId('item.save.button'));
-  expect(await screen.findByText('Saved changes to Baby spinach')).toBeTruthy();
-  expect(router.replace).toHaveBeenCalledTimes(1);
-  expect(router.replace).toHaveBeenCalledWith('/fridge');
-  expect(router.back).not.toHaveBeenCalled();
+  await screen.findByText('Baby spinach');
+  await fireEvent.press(screen.getByTestId('item.storage.row'));
+  if (reestimate) await fireEvent.press(screen.getByTestId('item.edit.reestimate'));
+  await fireEvent.press(screen.getByTestId('item.edit.storage.freezer'));
+  await screen.findByText('Saved changes to Baby spinach');
+  expect(update).toHaveBeenCalledWith(item.id, { storage: 'freezer', ...(reestimate ? { reestimate_expiry: true } : {}) });
 });
 
-test('double Save presses update and navigate only once', async () => {
+test('confirming the existing expiry preserves its estimated source', async () => {
+  const { api, item } = await seed();
+  const update = jest.spyOn(api, 'updateItem');
+  const screen = await show(api);
+  await screen.findByText('Baby spinach');
+  await fireEvent.press(screen.getByTestId('item.expiry.row'));
+  await fireEvent.press(screen.getByTestId('item.edit.date.day.2027-01-01'));
+  await screen.findByText('Saved changes to Baby spinach');
+  expect(update).toHaveBeenCalledWith(item.id, {});
+  expect(screen.getByTestId('item.expiry.row').props.accessibilityLabel).toContain('estimated');
+});
+
+test('estimated storage moves let the server update expiry', async () => {
+  const { api, item } = await seed();
+  const update = jest.spyOn(api, 'updateItem');
+  const screen = await show(api);
+  await screen.findByText('Baby spinach');
+  await fireEvent.press(screen.getByTestId('item.storage.row'));
+  expect(screen.getByText('Expiry updates for the new spot.')).toBeTruthy();
+  await fireEvent.press(screen.getByTestId('item.edit.storage.pantry'));
+  await screen.findByText('Saved changes to Baby spinach');
+  expect(update).toHaveBeenCalledWith(item.id, { storage: 'pantry' });
+});
+
+test('double selection and close while saving cannot save or close twice', async () => {
   const { api, item } = await seed();
   let finish!: (value: { item: Item }) => void;
   const update = jest.spyOn(api, 'updateItem').mockImplementation(() => new Promise((resolve) => { finish = resolve; }));
   const screen = await show(api);
-  await screen.findByDisplayValue('Baby spinach');
-  const button = screen.getByTestId('item.save.button');
+  await screen.findByText('Baby spinach');
+  await fireEvent.press(screen.getByTestId('item.freshness.row'));
+  const button = screen.getByTestId('item.edit.freshness.fresh');
   await fireEvent.press(button);
   await fireEvent.press(button);
+  await fireEvent(screen.getByTestId('item.edit.sheet'), 'requestClose');
+  expect(screen.getByTestId('item.edit.sheet')).toBeTruthy();
   expect(update).toHaveBeenCalledTimes(1);
-  expect(router.back).not.toHaveBeenCalled();
   await act(() => finish({ item }));
   expect(await screen.findByText('Saved changes to Baby spinach')).toBeTruthy();
-  // Navigation may leave the screen mounted briefly after the request resolves.
-  await fireEvent.press(screen.getByTestId('item.save.button'));
-  expect(update).toHaveBeenCalledTimes(1);
-  expect(router.back).toHaveBeenCalledTimes(1);
-  expect(router.replace).not.toHaveBeenCalled();
+  expect(screen.queryByTestId('item.edit.sheet')).toBeNull();
   expect(Haptics.notificationAsync).toHaveBeenCalledTimes(1);
+  expect(router.back).not.toHaveBeenCalled();
+});
+
+test('removed items expose no editing or mutation controls', async () => {
+  const { api, item } = await seed();
+  await api.removeItem(item.id, { outcome: 'used' });
+  const screen = await show(api);
+  await screen.findByTestId('item.removed.state');
+  expect(screen.queryByTestId('item.summary')).toBeNull();
+  expect(screen.queryByTestId('item.remove.button')).toBeNull();
+  expect(screen.queryByTestId('item.share.toggle')).toBeNull();
 });
 
 test('load error retries, and missing items have an empty state', async () => {
@@ -137,7 +196,7 @@ test('load error retries, and missing items have an empty state', async () => {
   await act(() => reject(new Error('Offline')));
   expect(await screen.findByText('Offline')).toBeTruthy();
   await fireEvent.press(screen.getByTestId('item.error.retry'));
-  await screen.findByDisplayValue('Baby spinach');
+  await screen.findByText('Baby spinach');
   await screen.unmount();
   mockId = 'missing';
   expect(await (await show(api)).findByTestId('item.empty.state')).toBeTruthy();
@@ -148,7 +207,7 @@ test('shares to friends, shows unclaimed status, and stops sharing', async () =>
   const create = jest.spyOn(api, 'createShare');
   const remove = jest.spyOn(api, 'deleteShare');
   const screen = await show(api);
-  await screen.findByDisplayValue('Baby spinach');
+  await screen.findByText('Baby spinach');
   expect(screen.getByText('Share with friends')).toBeTruthy();
   expect(screen.getByLabelText('Share with friends')).toBeTruthy();
   await fireEvent(screen.getByTestId('item.share.toggle'), 'valueChange', true);
@@ -169,14 +228,13 @@ test('photo recheck sends single mode and patches freshness only', async () => {
   const update = jest.spyOn(api, 'updateItem');
   const create = jest.spyOn(api, 'createItems');
   const screen = await show(api);
-  await screen.findByDisplayValue('Baby spinach');
-  await fireEvent.changeText(screen.getByTestId('item.name.input'), 'Unsaved name');
+  await screen.findByText('Baby spinach');
   await fireEvent.press(screen.getByTestId('item.photo.button'));
   await fireEvent.press(screen.getByTestId('item.photo.library'));
   await waitFor(() => expect(update).toHaveBeenCalledWith(item.id, { freshness: 'fresh' }));
   expect(fromPhoto).toHaveBeenCalledWith({ uri: 'file:///spinach.jpg', fileName: 'spinach.jpg', mimeType: 'image/jpeg', mode: 'single' });
   expect(create).not.toHaveBeenCalled();
-  expect(screen.getByDisplayValue('Unsaved name')).toBeTruthy();
+  expect(screen.getByText('Baby spinach')).toBeTruthy();
   expect(router.back).not.toHaveBeenCalled();
   expect(router.replace).not.toHaveBeenCalled();
   expect(screen.queryByTestId('app.notice')).toBeNull();
@@ -186,7 +244,7 @@ test('photo error retries the selected photo and cancellation performs no analys
   const { api } = await seed();
   const analyze = jest.spyOn(api, 'fromPhoto').mockRejectedValueOnce(new Error('Scanner busy'));
   const screen = await show(api);
-  await screen.findByDisplayValue('Baby spinach');
+  await screen.findByText('Baby spinach');
   await fireEvent.press(screen.getByTestId('item.photo.button'));
   await fireEvent.press(screen.getByTestId('item.photo.camera'));
   expect(await screen.findByText('Scanner busy')).toBeTruthy();
@@ -205,7 +263,7 @@ test('pickup needs a note or pin, enforces the counter, saves locally, uses save
   const { listing } = await api.createShare({ item_id: item.id });
   const update = jest.spyOn(api, 'updateShare');
   const screen = await show(api);
-  await screen.findByDisplayValue('Baby spinach');
+  await screen.findByText('Baby spinach');
   await fireEvent.press(screen.getByTestId('item.pickup.add'));
   expect(screen.getByTestId('item.pickup.sheet')).toHaveProp('animationType', 'fade');
   expect(screen.getByTestId('item.pickup.done')).toBeDisabled();
@@ -237,7 +295,7 @@ test('location permissions and pickup server errors can be retried', async () =>
   jest.mocked(Location.requestForegroundPermissionsAsync).mockResolvedValue({ granted: true } as Location.LocationPermissionResponse);
   jest.mocked(Location.getCurrentPositionAsync).mockResolvedValue({ coords: { latitude: 29.7, longitude: -95.3 } } as Location.LocationObject);
   const screen = await show(api);
-  await screen.findByDisplayValue('Baby spinach');
+  await screen.findByText('Baby spinach');
   await fireEvent.press(screen.getByTestId('item.pickup.add'));
   await fireEvent.press(screen.getByTestId('item.pickup.location'));
   expect(await screen.findByTestId('item.pickup.error')).toBeTruthy();
@@ -272,14 +330,14 @@ test('claimed owner handoff preselects Shared it and claimer; normal Remove stay
   expect(remove).toHaveBeenCalledWith(item.id, { outcome: 'donated' });
   expect(await screen.findByTestId('item.removed.state')).toBeTruthy();
   await fireEvent.press(screen.getByTestId(`remove.undo.${item.id}`));
-  await screen.findByDisplayValue('Baby spinach');
+  await screen.findByText('Baby spinach');
 });
 
 test('share failures show Try again and retain the item', async () => {
   const { api } = await seed();
   jest.spyOn(api, 'createShare').mockRejectedValueOnce(new Error('Share failed'));
   const screen = await show(api);
-  await screen.findByDisplayValue('Baby spinach');
+  await screen.findByText('Baby spinach');
   await fireEvent(screen.getByTestId('item.share.toggle'), 'valueChange', true);
   expect(await screen.findByText('Share failed')).toBeTruthy();
   await fireEvent.press(screen.getByTestId('item.mutation.retry'));

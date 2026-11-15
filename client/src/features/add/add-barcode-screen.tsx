@@ -11,8 +11,8 @@ import { useTheme } from '@/theme';
 
 import { AddScreen, addStyles } from './add-screen';
 import { CameraDeniedCard } from './camera-denied-card';
-import { CandidateEditor, type CandidateDraft, draftError } from './candidate-editor';
-import { reviewDrafts } from './candidate-review';
+import { draftError, needsSpoiledDecision } from './candidate-editor';
+import { CandidateReview, type ReviewDraft, reviewDrafts } from './candidate-review';
 import { useCandidateSave } from './use-candidate-save';
 
 export function AddBarcodeScreen() {
@@ -21,7 +21,7 @@ export function AddBarcodeScreen() {
   const theme = useTheme();
   const styles = addStyles(theme);
   const [focused, setFocused] = useState(false);
-  const [draft, setDraft] = useState<CandidateDraft | null>(null);
+  const [draft, setDraft] = useState<ReviewDraft | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [notFound, setNotFound] = useState(false);
@@ -61,7 +61,9 @@ export function AddBarcodeScreen() {
     setDraft(null); setLoading(false); setError(''); setNotFound(false); setSaveError('');
   }
 
-  return <AddScreen title="Scan a barcode" screen="addBarcode">
+  return <AddScreen title="Scan a barcode" screen="addBarcode" footer={draft ?
+    <AppButton label={`Add ${draft.selected ? 1 : 0}`} testID="addBarcode.save.button" loading={saving}
+      disabled={!draft.selected || needsSpoiledDecision(draft) || Boolean(draftError(draft))} onPress={() => void save([draft])} /> : null}>
     <AppButton label="Type it instead" testID="add.barcode.manual.button" variant="outline" disabled={saving} onPress={() => router.replace('/add-text')} />
     {!permission ? <SkeletonRows testID="addBarcode.permission.skeleton" /> :
       !permission.granted ? permission.status === 'denied' || !permission.canAskAgain ?
@@ -83,14 +85,11 @@ export function AddBarcodeScreen() {
       testID="addBarcode.lookup.error" actionLabel="Try again" actionTestID="addBarcode.lookup.retry"
       onAction={() => { if (lastCode.current) void lookup(lastCode.current); else if (permission?.granted) scanAgain(); else void allowCamera(); }} /> : null}
     {draft ? <>
-      <Text accessibilityRole="header" style={styles.heading}>{draft.name}</Text>
-      <Text style={styles.body}>Found on Open Food Facts · {draft.candidate.food_group.charAt(0).toUpperCase() + draft.candidate.food_group.slice(1)}</Text>
-      {draft.candidate.brand ? <Text style={styles.body}>{draft.candidate.brand}</Text> : null}
-      {draft.candidate.quantity_text ? <Text style={styles.body}>{draft.candidate.quantity_text}</Text> : null}
-      <CandidateEditor draft={draft} disabled={saving} onChange={(patch) => { setDraft({ ...draft, ...patch }); setSaveError(''); }} onDrop={scanAgain} />
+      <Text style={styles.body}>Found on Open Food Facts</Text>
+      <CandidateReview drafts={[draft]} screen="addBarcode" disabled={saving}
+        onChange={(_id, patch) => { setDraft({ ...draft, ...patch }); setSaveError(''); }} />
       {saveError ? <StateView icon="alert-circle-outline" title="Couldn’t save food" message={saveError} testID="addBarcode.save.error"
         actionLabel="Try again" actionTestID="addBarcode.save.retry" onAction={() => void save([draft])} /> : null}
-      <AppButton label="Add to fridge" testID="addBarcode.save.button" loading={saving} disabled={Boolean(draftError(draft))} onPress={() => void save([draft])} />
     </> : null}
     {loading || draft || notFound || error ? <AppButton label={loading ? 'Cancel' : 'Scan another barcode'} variant="outline"
       testID="addBarcode.reset.button" disabled={saving} onPress={scanAgain} /> : null}

@@ -105,13 +105,16 @@ describe('merge-gate demo path', () => {
     await fireEvent.press(await screen.findByTestId('fridge.empty.add'));
     await waitFor(() => expect(view.getPathname()).toBe('/add-modal'));
     await fireEvent.press(screen.getByTestId('add.camera.button'));
-    expect(await screen.findByDisplayValue('Mock apples')).toBeTruthy();
+    expect(await screen.findByText('Mock apples')).toBeTruthy();
     expect(analyze).toHaveBeenCalledTimes(1);
     expect(analyze).toHaveBeenCalledWith({
       uri: 'file:///demo-food.jpg', fileName: 'demo-food.jpg', mimeType: 'image/jpeg', mode: 'fridge', enrich: ['expiry'],
     });
-    expect(screen.getByText(/Predicted expiry:/)).toBeTruthy();
-    await fireEvent.changeText(screen.getByTestId('add.name.0'), 'Demo apples');
+    expect(screen.getByTestId('add.expiryBadge.0')).toBeTruthy();
+    await fireEvent.press(screen.getByTestId('add.edit.0'));
+    await fireEvent.press(screen.getByTestId('add.editor.0.amount.row'));
+    await fireEvent.changeText(screen.getByTestId('add.editor.0.name.input'), 'Demo apples');
+    await fireEvent.press(screen.getByTestId('add.editor.0.save'));
     await fireEvent.press(screen.getByTestId('add.save.button'));
     await waitFor(() => expect(view.getPathname()).toBe('/fridge'));
     expect(create).toHaveBeenCalledTimes(1);
