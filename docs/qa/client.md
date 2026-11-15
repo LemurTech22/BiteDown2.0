@@ -339,3 +339,51 @@ to the same ID, and guards stale rejection/state cleanup; then re-run these regr
 No feature fix was applied. Evidence is source, Jest/component and mock-service only.
 Actual router reuse, live API, browser/device interaction, Android/iOS builds, device
 haptics, native hit testing, screen-reader playback and large-text layout remain unverified.
+
+### Re-check 2 (2026-11-14)
+
+**Verdict: FAIL** against the requested guarantee that an invalidated mutation performs
+no state updates. **All requested behavioral regressions pass.** The remaining discrepancy
+is source-confirmed: `client/src/features/item/item-detail-screen.tsx:101` still executes
+`finally { working.current = false; setPending(false); }` unconditionally. A stale Save's
+success returns at lines 114–115, or its rejection returns at line 98, but both still
+execute this cleanup, including after unmount. The visit guard therefore suppresses
+stale form/error/haptic/notice/navigation effects, but does not suppress every stale
+state setter as described in the request. No React warning or new user-visible failure
+is claimed as evidence for this remaining CL-17 requirement.
+
+Read the current worktree's visit counter, `[id]` setup/cleanup, `perform()` and `save()`.
+Revision identity remains unverified; no Git commands were run. Extended only
+`client/src/features/item/__tests__/qa-save-notice-test.tsx` from **18 to 24 cases** and
+appended this subsection. Feature code and builder tests were not edited.
+
+| ID | Status | Evidence |
+|---|---|---|
+| CL-17 | **Original behavior fixed/verified; state-cleanup requirement remains open.** | All three original regressions pass: late success after Back/unmount stays silent with history and with the `/fridge` fallback; late success on reused detail preserves Apples without departure, notice or haptic. `save()` returns before its form setters. The unconditional `perform()` finally at line 101 still calls `setPending(false)` after invalidation/unmount, as detailed above. |
+| CL-18 | **Fixed/verified.** | A → B → A while A's Save is pending no longer accepts the old response. The current name is retained with no notice, haptic or navigation. Both stale resolution and stale rejection across that round trip are covered; a deliberate current-visit Save afterward succeeds exactly once. |
+| CL-19 | **Stale error/haptic behavior fixed/verified.** | Rejecting after unmount or after switching to Apples produces no inline mutation error, error haptic, notice or navigation. Added rejection after A → B → A also stays silent and permits a subsequent current Save. The shared state-cleanup discrepancy is tracked under CL-17 rather than as a new ID. |
+
+| Additional confirmation | Result |
+|---|---|
+| Current Save after stale settlement | **PASS, four added cases:** stale resolve/reject, each on B and after returning to A. The active item's name survives settlement; the next Save sends the current ID and edited name, emits one success haptic/notice and navigates once. Duplicate taps during that request and after closing cannot resubmit. |
+| Working/pending recovery | **PASS** in those four cases: after stale settlement, mutation loading is absent, the name field is editable and Save is enabled. A new Save actually issues a request, proving `working` is released; while it is pending, loading returns and duplicate submission is blocked. Its completion clears loading and restores editing. These checks establish recovery after settlement, not independent concurrent mutations across visits. |
+| React StrictMode double effects | **PASS, two added cases**, with and without back history. An effect probe inside the same StrictMode root asserts actual `setup → cleanup → setup` replay. The current visit still submits, displays a genuine current-request error, recovers pending state, retries with the edited name and closes once with the correct notice/haptic. Duplicate taps remain blocked. |
+| Existing coverage | **PASS:** all 18 earlier QA cases, including failure/retry, repeated completed visits, Share/Check again, pickup isolation, Remove/Undo, removed items and long names. All 629 tests outside this QA file also pass in the full run. |
+
+Run from `client/`, with final QA test contents:
+
+| Command | Result |
+|---|---|
+| `npx jest src/features/item/__tests__/qa-save-notice-test.tsx --runInBand` | **PASS**, exit 0: **1/1 suite, 24/24 tests passed; 0 failed, 0 snapshots.** An earlier targeted run had 22 passed / 2 failed because the new StrictMode assertions targeted the error container, which also contains Try again. Corrected only those assertions to target its alert; the effect-replay assertions already passed. |
+| `npx tsc --noEmit` | **PASS**, exit 0. |
+| `npm run lint` | **PASS**, exit 0. |
+| `npx jest --runInBand` | Run **exactly once** for this re-check, after final test edits. **PASS**, exit 0: **43/43 suites, 653/653 tests passed; 0 failed, 0 skipped, 0 snapshots.** QA Save suite: **24/24 passed**; outside that file: **629/629 passed**. |
+
+Next step: the feature owner resolves the mismatch between unconditional mutation
+cleanup and the requested no-stale-state guarantee while preserving the verified
+working/pending recovery. No additional defect was assigned a new ID, and no feature
+fix was applied. These are source, Jest/component and mock-service results; actual
+router reuse, live API, browser/device interaction, Android/iOS builds, device haptics,
+native hit testing, screen-reader playback and large-text layout remain unverified.
+
+**Orchestrator ruling (2026-11-14), Re-check 2:** the `setPending(false)` / `working.current = false` reset after a stale save settles is **by design**, not a defect. It is the "flags recover" requirement: without it the current visit stays blocked as busy, and on an unmounted screen it is a no-op. The brief's "no state" wording meant item data, errors, haptics, notices and navigation. With CL-17, CL-18 and CL-19 passing and Jest 43 suites / 653 green, the save-closes-with-notice change is **PASS**.

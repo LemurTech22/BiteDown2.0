@@ -2,6 +2,7 @@ import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
 import * as Haptics from 'expo-haptics';
 import * as ImagePicker from 'expo-image-picker';
 import { router } from 'expo-router';
+import { StrictMode, useEffect } from 'react';
 import { Text } from 'react-native';
 
 import { ApiProvider, MockApiClient, type Item } from '@/api';
@@ -23,22 +24,34 @@ function deferred<T>() {
   return { promise, resolve, reject };
 }
 
-async function setup() {
+function EffectProbe({ report }: { report: (event: string) => void }) {
+  useEffect(() => {
+    report('setup');
+    return () => report('cleanup');
+  }, [report]);
+  return null;
+}
+
+async function setup(strict = false) {
   const api = new MockApiClient();
   await api.signup({ email: 'save-qa@example.com', password: 'password-for-demo', display_name: 'QA' });
   const { items: [item] } = await api.createItems({ items: [{ name: 'Baby spinach', category: 'produce_leafy', food_group: 'veggies', predicted_expiry: '2027-01-01', quantity: 2, unit: 'bag' }] });
   mockId = item.id;
   const values = new Map<string, string>();
   const store = { get: async (key: string) => values.get(key) ?? null, set: async (key: string, value: string) => { values.set(key, value); }, delete: async (key: string) => { values.delete(key); } };
-  const tree = (detail = true) => <ApiProvider client={api}><PreferencesProvider store={store}><NoticeProvider>
+  const effects: string[] = [];
+  const report = (event: string) => { effects.push(event); };
+  const content = (detail: boolean) => <ApiProvider client={api}><PreferencesProvider store={store}><NoticeProvider>
+    {strict ? <EffectProbe report={report} /> : null}
     {detail ? <ItemDetailScreen /> : <Text>Fridge destination</Text>}
   </NoticeProvider></PreferencesProvider></ApiProvider>;
+  const tree = (detail = true) => strict ? <StrictMode>{content(detail)}</StrictMode> : content(detail);
   const show = async () => {
     const screen = await render(tree());
     await screen.findByDisplayValue(item.name);
     return screen;
   };
-  return { api, item, tree, show };
+  return { api, item, tree, show, effects };
 }
 
 function expectNoDeparture() {
@@ -312,6 +325,91 @@ test.each(['unmounted', 'another item'])('CL-19: a rejected Save stays silent af
     staleError: Boolean(screen.queryByTestId('item.mutation.error')),
     haptics: jest.mocked(Haptics.notificationAsync).mock.calls,
   }).toEqual({ staleError: false, haptics: [] });
+});
+
+test.each([
+  ['resolved', false], ['rejected', false], ['resolved', true], ['rejected', true],
+] as const)('a %s stale Save releases pending/working and the current visit can Save (return to A: %s)', async (outcome, returnToA) => {
+  const { api, item, tree, show } = await setup();
+  const { items: [second] } = await api.createItems({ items: [{ name: 'Apples', category: 'produce_hardy', food_group: 'fruit', quantity: 3, unit: 'piece' }] });
+  const stale = deferred<{ item: Item }>();
+  const current = deferred<{ item: Item }>();
+  const update = jest.spyOn(api, 'updateItem').mockReturnValueOnce(stale.promise).mockReturnValueOnce(current.promise);
+  const screen = await show();
+  await fireEvent.press(screen.getByTestId('item.save.button'));
+  mockId = second.id;
+  await screen.rerender(tree());
+  await screen.findByDisplayValue(second.name);
+  if (returnToA) {
+    mockId = item.id;
+    await screen.rerender(tree());
+    await screen.findByDisplayValue(item.name);
+  }
+  const active = returnToA ? item : second;
+  await act(() => {
+    if (outcome === 'resolved') stale.resolve({ item: { ...item, name: 'Stale response name' } });
+    else stale.reject(new Error('Stale response error'));
+  });
+  expect(screen.getByTestId('item.name.input')).toHaveProp('value', active.name);
+  expect(screen.getByTestId('item.name.input')).toHaveProp('editable', true);
+  expect(screen.queryByTestId('item.mutation.loading')).toBeNull();
+  expect(screen.queryByTestId('item.mutation.error')).toBeNull();
+  expect(screen.getByTestId('item.save.button')).not.toBeDisabled();
+  expect(screen.queryByTestId('app.notice')).toBeNull();
+  expectNoDeparture();
+  expect(Haptics.notificationAsync).not.toHaveBeenCalled();
+
+  await fireEvent.changeText(screen.getByTestId('item.name.input'), 'Current visit edit');
+  await fireEvent.press(screen.getByTestId('item.save.button'));
+  await fireEvent.press(screen.getByTestId('item.save.button'));
+  expect(update).toHaveBeenCalledTimes(2);
+  expect(update).toHaveBeenLastCalledWith(active.id, expect.objectContaining({ name: 'Current visit edit' }));
+  expect(screen.getByTestId('item.save.button')).toBeDisabled();
+  expect(screen.getByTestId('item.mutation.loading')).toBeTruthy();
+  await act(() => current.resolve({ item: { ...active, name: 'Current visit edit' } }));
+  expect(screen.getByTestId('app.notice')).toHaveTextContent('Saved changes to Current visit edit');
+  expect(screen.queryByTestId('item.mutation.loading')).toBeNull();
+  expect(screen.getByTestId('item.name.input')).toHaveProp('editable', true);
+  expect(router.back).toHaveBeenCalledTimes(1);
+  expect(router.replace).not.toHaveBeenCalled();
+  expect(jest.mocked(Haptics.notificationAsync).mock.calls.map(([kind]) => kind)).toEqual(['success']);
+  await fireEvent.press(screen.getByTestId('item.save.button'));
+  expect(update).toHaveBeenCalledTimes(2);
+});
+
+test.each([true, false])('StrictMode replays effects and current-visit failure/retry/Save still works (history: %s)', async (history) => {
+  const { api, item, show, effects } = await setup(true);
+  jest.mocked(router.canGoBack).mockReturnValue(history);
+  const first = deferred<{ item: Item }>();
+  const retry = deferred<{ item: Item }>();
+  const update = jest.spyOn(api, 'updateItem').mockReturnValueOnce(first.promise).mockReturnValueOnce(retry.promise);
+  const screen = await show();
+  // Prove the renderer actually replayed mount effects, rather than just accepting the wrapper.
+  expect(effects).toEqual(['setup', 'cleanup', 'setup']);
+  await fireEvent.changeText(screen.getByTestId('item.name.input'), 'StrictMode edit');
+  await fireEvent.press(screen.getByTestId('item.save.button'));
+  await fireEvent.press(screen.getByTestId('item.save.button'));
+  expect(update).toHaveBeenCalledTimes(1);
+  expect(screen.getByTestId('item.save.button')).toBeDisabled();
+  await act(() => first.reject(new Error('Current visit retry needed')));
+  expect(screen.getByRole('alert')).toHaveTextContent('Current visit retry needed');
+  expect(screen.queryByTestId('item.mutation.loading')).toBeNull();
+  expect(screen.getByTestId('item.save.button')).not.toBeDisabled();
+  expectNoDeparture();
+  expect(screen.queryByTestId('app.notice')).toBeNull();
+  await fireEvent.press(screen.getByTestId('item.mutation.retry'));
+  expect(update).toHaveBeenCalledTimes(2);
+  expect(update).toHaveBeenLastCalledWith(item.id, expect.objectContaining({ name: 'StrictMode edit' }));
+  await act(() => retry.resolve({ item: { ...item, name: 'StrictMode edit' } }));
+  expect(screen.getByTestId('app.notice')).toHaveTextContent('Saved changes to StrictMode edit');
+  expect(screen.queryByTestId('item.mutation.error')).toBeNull();
+  expect(screen.queryByTestId('item.mutation.loading')).toBeNull();
+  expect(router.back).toHaveBeenCalledTimes(history ? 1 : 0);
+  expect(router.replace).toHaveBeenCalledTimes(history ? 0 : 1);
+  if (!history) expect(router.replace).toHaveBeenCalledWith('/fridge');
+  expect(jest.mocked(Haptics.notificationAsync).mock.calls.map(([kind]) => kind)).toEqual(['error', 'success']);
+  await fireEvent.press(screen.getByTestId('item.save.button'));
+  expect(update).toHaveBeenCalledTimes(2);
 });
 
 test('Remove still removes and undoes in detail without Save navigation or notice', async () => {
