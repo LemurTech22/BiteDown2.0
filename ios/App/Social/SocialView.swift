@@ -179,7 +179,7 @@ private struct PantryWidget: View {
             VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
                 HStack {
                     VStack(alignment: .leading, spacing: Theme.Spacing.xxs) {
-                        Text("Food Pantry").font(Theme.Fonts.section).foregroundStyle(Theme.Colors.ink)
+                        Text("Shared food").font(Theme.Fonts.section).foregroundStyle(Theme.Colors.ink)
                         Text(subtitle).font(Theme.Fonts.sheetMeta).foregroundStyle(Theme.Colors.inkSecondary)
                     }
                     Spacer(minLength: 0)
@@ -210,8 +210,8 @@ private struct PantryWidget: View {
     private var label: String {
         switch state {
         case .loaded where !open.isEmpty:
-            "Food Pantry, \(open.count) \(open.count == 1 ? "item" : "items") shared by friends and groups"
-        default: "Food Pantry, \(subtitle)"
+            "Shared food, \(open.count) \(open.count == 1 ? "item" : "items") shared by friends and groups"
+        default: "Shared food, \(subtitle)"
         }
     }
 

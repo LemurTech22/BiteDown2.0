@@ -1,5 +1,68 @@
 # Backend QA
 
+## 2026-11-13: Undo panel + Recently removed QA
+
+Scope: HEAD `0c093b9b4ec73e5022d104fc3fcb9dc51201a500`, read with `git show HEAD`, against
+`docs/DECISIONS.md` (2026-11-13 Undo panel decision), `docs/design/SCREENS.md` rows 34/43,
+the restore bullets in `docs/API.md`, and the domain rules in `CLAUDE.md`.
+Updated only QA tests and this new report section. No feature code or git state was written.
+Checked the existing QA logs before allocating BE-52; BE-53 through BE-59 remain unused. **Renumbered to BE-53 by the orchestrator (2026-11-14):** BE-52 was already used on `main` by #123 (`d774f0a`, receipt test fixtures), which was never logged in `docs/QA.md`. BE-54 through BE-59 remain unused.
+
+| Area | Checked / result |
+|---|---|
+| Single restore window | Replaced the old 11-minute refusal with 7 days + 1 minute. Eleven-minute and 6 days 23 h removals restore successfully for used, donated and thrown-out outcomes. All week/month/all Impact fields return exactly to the baseline with another removal still counted; the target remove event disappears and the neighbouring event remains. PASS. |
+| Batch restore window | A removal at 7 days + 1 minute refuses the whole batch with `409 restore_window_expired`, including a valid 6 days 23 h removal; database state and all Impact responses stay unchanged. The valid item can subsequently be restored alone. Used/donated batches at 6 days 23 h restore all items, remove their events and return every Impact range and database snapshot exactly. PASS. |
+| Multi-day donations | Single and batch donation restores at 6 days 23 h reopen their fulfilled listings, clear fulfilment/recipient, preserve an existing claim in the batch case, make listings visible to the friend again, and return full Impact exactly. Test helpers age item, event and fulfilment timestamps together; event relocation uses delete/reinsert because TimescaleDB cannot update timestamps across chunks. PASS. |
+| Seven-day boundary | Frozen route clock at `removed_at + timedelta(days=7)` returns 200 from both single and batch restore. The single-item contract says **less than 7 days**; the mock rejects this exact age and Recently removed excludes it. FAIL: BE-53. |
+| Existing regressions | Included both restore/batch files and `test_items.py`: validation, permissions, event counts, transaction rollback, listing behaviour, concurrency and item operations retain their existing assertions. All cases except the two new exact-boundary regressions pass. |
+
+### Bugs
+
+| ID | Severity | Location | Reproduction / expected / actual |
+|---|---|---|---|
+| BE-53 | low | `backend/app/routes/items.py:373`, `:492` | Run `test_restore_exactly_seven_days_is_expired[single]` and `[batch]` in `tests/test_wave2_restore.py`. Freeze the route clock exactly seven days after removal. Expected `409 restore_window_expired`, with no changes, matching the single-item API contract and mock/filter cutoff. Actual 200 restores the item because both checks use `>` rather than `>=`. This is the exact equality boundary; 7 days + 1 minute is correctly refused. The regression assertions remain failing and are not skipped. |
+
+### Commands
+
+From `backend/`, set `GEMINI_FALLBACK_MODELS`, `GEMINI_TIMEOUT_S` and `GEMINI_MODEL` to empty
+in the process environment, and `PYTHONDONTWRITEBYTECODE=1`:
+
+`../.venv/Scripts/python.exe -m pytest tests/test_wave2_restore.py tests/test_insights_wave2_batch.py tests/test_items.py -q -p no:cacheprovider --tb=short`
+
+**FAIL**, exit 1: **137 passed, 2 failed in 46.19 s**. Only the BE-53 single/batch boundary
+regressions fail. The requested command was also invoked without `--tb=short` during the initial
+test-helper iteration; the final run above includes the TimescaleDB fixture correction.
+The existing harness used `TEST_DATABASE_URL` and applied the real migrations; no database access
+was performed outside the suite. No full backend suite, live upstream call or device check was run.
+
+**Verdict: FAIL (BE-53)**
+
+## 2026-11-13: checkpoint 18 QA
+
+Scope: `git diff db62ed7..322431e`, expiry service and PATCH route, against the 2026-11-13
+sharing/storage/wording decision and `docs/API.md`. Added `tests/test_qa_cp18_expiry.py`
+(23 tests); feature code and existing tests were not changed.
+
+| Area | Checked / result |
+|---|---|
+| Storage rule | 528 service comparisons: all 11 categories and six directed storage pairs, with null dates and remaining days -2/0/1/2/7/30/400. Freezing uses the destination default except past dates; due today may be frozen. Thawing uses the destination default with meat/seafood/leftovers caps, including past freezer dates. Fridge/pantry moves retain the capped life fraction, minimum one day, half-even rounding; past/today dates stay. PASS. |
+| Missing expiry | Null service inputs use the destination default, including uncapped thawing, matching the existing null-date test. Current stored expiry is NOT NULL, so this is service-level coverage rather than a nullable API/database round trip. PASS. |
+| PATCH | User dates retained with omitted/false flag and re-estimated with true for all six pairs; explicit date wins (including an unchanged date); final category used. Same storage and flag alone are no-ops. Invalid non-boolean flags return 400 validation_error, including alongside an explicit date, without changing the item. PASS. |
+| Mock parity | Same noon calendar-day matrix passes in client QA. Local/UTC day disagreement is recorded as CL-2 in `docs/qa/client.md`; backend uses the host's local `date.today()` and returns `2027-05-12` for Nov 13 + 180 days. |
+
+Bugs: no new backend defects found; BE-52 through BE-59 remain unused.
+
+Run from `backend/`, clearing `GEMINI_FALLBACK_MODELS`, `GEMINI_TIMEOUT_S` and `GEMINI_MODEL` in the
+process environment: `../.venv/Scripts/python.exe -B -m pytest tests/test_items.py tests/test_qa_cp18_*.py -q -p no:cacheprovider`.
+PowerShell expanded the QA glob to the new file before invocation; `-B` disables bytecode writes.
+**72 passed in 60.31 s**, exit 0, against the test database through the existing harness.
+No full backend suite or live upstream calls were run.
+
+iOS build is not verified here. This backend verdict covers the expiry/PATCH contract; the combined
+checkpoint remains blocked by client findings CL-1 and CL-2.
+
+**Verdict: PASS**
+
 Suite: `backend/tests/` (run from `backend/`: `.venv/bin/pytest --cov=app --cov-report=term-missing`).
 Schema is built by running the real Alembic migration against `TEST_DATABASE_URL` (`fwr_test`); tables are
 truncated before each test. A Postgres advisory lock serialises whole pytest sessions (concurrent runs share

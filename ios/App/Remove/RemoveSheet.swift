@@ -161,7 +161,7 @@ struct RemoveSheet: View {
             }
             .offset(x: Theme.Spacing.xs, y: Theme.Spacing.xs)
             .accessibilityElement(children: .ignore)
-            .accessibilityLabel("On your Food Pantry")
+            .accessibilityLabel("Shared with friends")
             .accessibilityIdentifier(AccessibilityID.Remove.listingBadge)
     }
 

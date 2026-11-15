@@ -53,7 +53,7 @@ struct ShareAudienceSheet: View {
                 .padding(.vertical, Theme.Spacing.m)
             }
             .background(Theme.Colors.ground.ignoresSafeArea())
-            .navigationTitle("Share to Food Pantry")
+            .navigationTitle("Share with friends")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {

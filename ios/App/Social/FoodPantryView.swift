@@ -37,7 +37,7 @@ struct FoodPantryView: View {
         .listStyle(.insetGrouped)
         .scrollContentBackground(.hidden)
         .background(Theme.Colors.ground.ignoresSafeArea())
-        .navigationTitle("Food Pantry")
+        .navigationTitle("Shared food")
         .navigationBarTitleDisplayMode(.inline)
         .accessibilityIdentifier(screen)
         .refreshable { await model.loadPantry() }

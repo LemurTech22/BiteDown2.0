@@ -1,0 +1,109 @@
+import type { ExpoConfig } from 'expo/config';
+
+// Expo generates debug-only manifests that allow adb reverse + HTTP. Keep the
+// main manifest disabled so no release variant can inherit cleartext traffic.
+
+const config: ExpoConfig = {
+  name: 'BiteDown',
+  slug: 'bitedown',
+  owner: 'bitedown',
+  version: '1.0.0',
+  orientation: 'portrait',
+  icon: './assets/images/icon.png',
+  scheme: 'bitedown',
+  userInterfaceStyle: 'automatic',
+  backgroundColor: '#F4F8E8',
+  platforms: ['android', 'ios', 'web'],
+  ios: {
+    bundleIdentifier: 'com.coderedorion.bitedown',
+    deploymentTarget: '18.0',
+    icon: './assets/images/icon.png',
+    config: {
+      usesNonExemptEncryption: false,
+    },
+  },
+  android: {
+    permissions: ['android.permission.CAMERA', 'android.permission.ACCESS_COARSE_LOCATION', 'android.permission.ACCESS_FINE_LOCATION'],
+    package: 'com.coderedorion.bitedown',
+    adaptiveIcon: {
+      backgroundColor: '#1F4D2B',
+      foregroundImage: './assets/images/android-icon-foreground.png',
+      backgroundImage: './assets/images/android-icon-background.png',
+      monochromeImage: './assets/images/android-icon-monochrome.png',
+    },
+    predictiveBackGestureEnabled: false,
+  },
+  web: {
+    output: 'single',
+    favicon: './assets/images/favicon.png',
+  },
+  plugins: [
+    'expo-router',
+    [
+      'expo-camera',
+      {
+        cameraPermission: 'Allow BiteDown to scan food barcodes and friend QR codes.',
+        barcodeScannerEnabled: true,
+        recordAudioAndroid: false,
+        microphonePermission: false,
+      },
+    ],
+    [
+      'expo-location',
+      {
+        locationWhenInUsePermission: 'Allow BiteDown to use your location to set a food pickup spot.',
+        locationAlwaysPermission: false,
+        locationAlwaysAndWhenInUsePermission: false,
+        motionUsagePermission: false,
+      },
+    ],
+    [
+      'expo-image-picker',
+      {
+        cameraPermission: 'Allow BiteDown to take food photos to identify items and predict expiry.',
+        photosPermission: 'Allow BiteDown to choose food photos to identify items and predict expiry.',
+        microphonePermission: false,
+      },
+    ],
+    [
+      'expo-splash-screen',
+      {
+        backgroundColor: '#F4F8E8',
+        image: './assets/images/splash-icon.png',
+        imageWidth: 112,
+      },
+    ],
+    [
+      'expo-secure-store',
+      {
+        configureAndroidBackup: true,
+        faceIDPermission: 'Allow BiteDown to keep your sign-in session secure.',
+      },
+    ],
+    [
+      'expo-build-properties',
+      {
+        android: {
+          compileSdkVersion: 37,
+          targetSdkVersion: 36,
+          buildToolsVersion: '37.0.0',
+          usesCleartextTraffic: false,
+        },
+        ios: {
+          deploymentTarget: '18.0',
+        },
+      },
+    ],
+  ],
+  extra: {
+    eas: {
+      projectId: 'd8f7689c-5ada-4580-b610-f9ecee68093b',
+    },
+  },
+  experiments: {
+    typedRoutes: true,
+    reactCompiler: true,
+  },
+};
+
+export default config;

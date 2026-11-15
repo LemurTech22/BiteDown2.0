@@ -79,6 +79,64 @@ def test_patch_removed_item_404(client, user, make_item):
 import pytest
 
 
+@pytest.mark.parametrize("category,old_storage,left,source,patch,expected_days,expected_source", [
+    ("meat", "fridge", 2, "default", {"storage": "freezer"}, 180, "default"),
+    ("meat", "freezer", 100, "default", {"storage": "fridge"}, 2, "default"),
+    ("seafood", "freezer", 100, "ml", {"storage": "fridge"}, 2, "default"),
+    ("leftovers", "freezer", 60, "gemini", {"storage": "fridge"}, 3, "default"),
+    ("meat", "freezer", 100, "default", {"storage": "pantry"}, 1, "default"),
+    ("dairy", "freezer", 60, "default", {"storage": "fridge"}, 10, "default"),
+    ("produce_hardy", "fridge", 9, "default", {"storage": "pantry"}, 3, "default"),
+    ("bakery", "pantry", 1, "default", {"storage": "fridge"}, 2, "default"),
+    ("produce_hardy", "fridge", 30, "default", {"storage": "pantry"}, 7, "default"),
+    ("dairy", "fridge", 1, "default", {"storage": "pantry"}, 1, "default"),
+    ("meat", "fridge", 8, "user", {"storage": "freezer"}, 8, "user"),
+    ("meat", "fridge", 8, "user", {"storage": "freezer", "reestimate_expiry": False}, 8, "user"),
+    ("meat", "fridge", 8, "user", {"storage": "freezer", "reestimate_expiry": True}, 180, "default"),
+    ("meat", "fridge", 8, "user", {"storage": "freezer", "predicted_expiry": iso_in(20),
+                                        "reestimate_expiry": True}, 20, "user"),
+    ("meat", "fridge", 2, "default", {"storage": "freezer", "predicted_expiry": iso_in(20)}, 20, "user"),
+    ("meat", "fridge", -1, "default", {"storage": "freezer"}, -1, "default"),
+    ("meat", "fridge", 0, "default", {"storage": "freezer"}, 180, "default"),
+    ("dairy", "fridge", -1, "default", {"storage": "pantry"}, -1, "default"),
+    ("dairy", "fridge", 0, "default", {"storage": "pantry"}, 0, "default"),
+    ("meat", "freezer", -1, "default", {"storage": "fridge"}, 2, "default"),
+    ("dairy", "fridge", 8, "default", {"storage": "freezer", "category": "meat"}, 180, "default"),
+    ("meat", "fridge", 8, "user", {"reestimate_expiry": True}, 8, "user"),
+    ("meat", "fridge", 8, "user", {"storage": "fridge", "reestimate_expiry": True}, 8, "user"),
+    ("meat", "freezer", 8, "default", {"storage": "freezer", "reestimate_expiry": True}, 8, "default"),
+])
+def test_patch_storage_reestimates_expiry(client, user, make_item, category, old_storage, left,
+                                         source, patch, expected_days, expected_source):
+    it = make_item(user, category=category, storage=old_storage,
+                   predicted_expiry=iso_in(left), expiry_source=source)
+    r = client.patch(f"/items/{it['id']}", json=patch, headers=user["headers"])
+    assert r.status_code == 200, r.get_data(as_text=True)
+    item = r.get_json()["item"]
+    assert item["storage"] == patch.get("storage", old_storage)
+    assert item["predicted_expiry"] == iso_in(expected_days)
+    assert item["expiry_source"] == expected_source
+
+
+@pytest.mark.parametrize("flag", [None, 0, 1, "true", [], {}])
+def test_patch_reestimate_expiry_requires_boolean(client, user, make_item, flag):
+    it = make_item(user)
+    r = client.patch(f"/items/{it['id']}", json={"storage": "freezer", "reestimate_expiry": flag},
+                     headers=user["headers"])
+    assert r.status_code == 400
+    assert r.get_json()["error"]["code"] == "validation_error"
+    stored = items_of(client.get("/items", headers=user["headers"]))[0]
+    assert stored["storage"] == it["storage"]
+    assert stored["predicted_expiry"] == it["predicted_expiry"]
+
+
+def test_reestimate_missing_expiry_uses_destination_default():
+    from app.services.expiry import reestimate
+
+    today = date(2026, 11, 13)
+    assert reestimate("meat", "freezer", "fridge", None, today) == today + timedelta(days=3)
+
+
 @pytest.mark.parametrize("bad", [
     {"items": []},
     {},

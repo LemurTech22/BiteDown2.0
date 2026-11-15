@@ -43,7 +43,7 @@ outcome is how waste is measured. Product: [`docs/IDEA.md`](docs/IDEA.md). Statu
 | `backend/tests/**`, `backend/pytest.ini` | Backend QA |
 | `ios/App/**`, `ios/project.yml` | iOS builder |
 | `ios/Tests/**`, `ios/TestPlans/**`, `docs/qa/ios.md` | iOS QA |
-| `ml/yolo/**`, `ml/ocr/**`, `ml/serve/**`, `pipeline/**`, `docs/ML.md`, `docs/PIPELINE.md` | ML / pipeline builder (the data + model track is owned by teammate LemurTech22; other sessions don't build there unless the owner asks) |
+| `ml/yolo/**`, `ml/ocr/**`, `ml/serve/**`, `pipeline/**`, `docs/ML.md`, `docs/PIPELINE.md` | ML / pipeline builder (the data + model track is the owner's since 2026-11-14, previously teammate LemurTech22's; agents build there when the owner asks) |
 | `ml/eval/**`, `pipeline/tests/qa_*` | ML / pipeline QA |
 | `docs/qa/<area>.md` | That area's QA |
 | `docs/design/**` and the design canvas | Orchestrator (single writer) |
@@ -61,8 +61,8 @@ outcome is how waste is measured. Product: [`docs/IDEA.md`](docs/IDEA.md). Statu
   - Remove the lock only when `owner` is your own name.
   - Hold it for one invocation, then release it, so parallel agents interleave. Iterate on targeted tests and run the
     full suite once, at the end.
-- **Deadline mode ended (owner, 2026-10-19):** the heavy lock is back, and PRs wait for green CI again (short PR CI:
-  `docs/DECISIONS.md` 2026-10-19). Each agent still uses its own simulator and DerivedData. Codex may take tasks under
+- **Deadline mode ended (owner, 2026-10-19):** the heavy lock is back. PRs wait for green checks,
+  now run by the orchestrator, since GitHub CI is retired (`docs/DECISIONS.md` 2026-11-13). Each agent still uses its own simulator and DerivedData. Codex may take tasks under
   the same rules as sub-agents (own worktree, no secrets, no live Gemini, no force-push, never merge).
 - Backend tests use `TEST_DATABASE_URL` only. The suite rebuilds that schema under an advisory
   lock. Never touch it from outside the suite.
@@ -72,7 +72,7 @@ outcome is how waste is measured. Product: [`docs/IDEA.md`](docs/IDEA.md). Statu
   ported commit.
 - Never delete a branch that an open PR targets.
 - Never quote a PR number before `gh pr create` returns it, because other sessions open PRs in the gap.
-- Merge with merge commits. Before merging, rebase onto `main` (on a teammate's branch, merge `main` in instead: never rewrite or force-push someone else's branch) and confirm CI actually ran and passed. A workflow skipped by its path filters is acceptable only for docs- or script-only PRs.
+- Merge with merge commits. Before merging, rebase onto `main` (on a teammate's branch, merge `main` in instead: never rewrite or force-push someone else's branch) and confirm the orchestrator's checks (which replace GitHub CI, see Merge gate) actually ran and passed. Docs- or script-only PRs need no test run.
 - The orchestrator records every ruling (contract, data or design) in `docs/QA.md` or `docs/DECISIONS.md` in the PR that applies it.
 - QA bug IDs are global per area (`BE-n`, `ML-n`, `IOS-n`, `PL-n`): before numbering, check the highest ID in
   `docs/QA.md` **and** in open PRs' `docs/qa/*.md`, because parallel branches have collided. When several QA agents
@@ -95,7 +95,10 @@ outcome is how waste is measured. Product: [`docs/IDEA.md`](docs/IDEA.md). Statu
 
 ## Merge gate
 - A PR merges only with a QA pass recorded in `docs/qa/<area>.md`, then folded into
-  [`docs/QA.md`](docs/QA.md), plus green CI.
+  [`docs/QA.md`](docs/QA.md), plus green checks run by the orchestrator. **GitHub CI is retired (owner,
+  2026-11-13):** the orchestrator runs what CI ran (backend suite, client tsc/lint/Jest, iOS Smoke on a Mac when iOS
+  changes) and records the results in the sign-off log. iOS changes with no Mac run are merged only on a recorded owner
+  ruling.
 - A QA failure goes back to the builder. It's never merged around.
 - Anything that breaks the demo path is a blocker: photo add → expiry prediction → remove → Impact.
 - Thresholds and data rules live in `docs/QA.md`, including the leakage, stratification and binary

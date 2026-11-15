@@ -199,15 +199,15 @@ struct ShareSwitchCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
             HStack {
-                Text("Share to Food Pantry").font(Theme.Fonts.cardHeading).foregroundStyle(Theme.Colors.ink)
+                Text("Share with friends").font(Theme.Fonts.cardHeading).foregroundStyle(Theme.Colors.ink)
                 Spacer()
-                Toggle("Share to Food Pantry", isOn: Binding(get: { model.isShared }, set: onSwitch))
+                Toggle("Share with friends", isOn: Binding(get: { model.isShared }, set: onSwitch))
                     .labelsHidden()
                     .tint(Theme.Colors.forest)
                     .frame(minWidth: Theme.Size.shareSwitchWidth, minHeight: Theme.Size.minTouch)
                     .contentShape(Rectangle())
                     .disabled(model.isSharing)
-                    .accessibilityLabel("Share to Food Pantry")
+                    .accessibilityLabel("Share with friends")
                     .accessibilityIdentifier(AccessibilityID.ItemDetail.shareSwitch)
             }
             Group {
@@ -228,7 +228,7 @@ struct ShareSwitchCard: View {
     }
 }
 
-/// ItemShared's "On your Food Pantry" card: audience, who claimed it, the pickup spot with a map
+/// ItemShared's "Shared with friends" card: audience, who claimed it, the pickup spot with a map
 /// preview and "Open in Maps".
 struct SharedPantryCard: View {
     let model: ItemDetailModel
@@ -236,7 +236,7 @@ struct SharedPantryCard: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
-            Label("On your Food Pantry", systemImage: "gift")
+            Label("Shared with friends", systemImage: "gift")
                 .font(Theme.Fonts.cardHeading).foregroundStyle(Theme.Colors.ink)
                 .accessibilityAddTraits(.isHeader)
             HStack(spacing: Theme.Spacing.sm) {

@@ -143,6 +143,42 @@ Xcode 26 toolchain and a compatible simulator. The phone demo uses a free Person
 device signing and demo tunnel instructions are in the
 [setup guide](docs/SETUP.md#4-ios).
 
+### Expo app (Android and iPhone)
+
+`client/` is a universal Expo app (Expo SDK 58). Android installs an APK built by EAS; iPhones use the same app's web
+build at `https://bitedown.expo.app` (Safari, Add to Home Screen). Development: `cd client; npm ci; npx expo start`
+(Expo Go or the web). To put the backend online for phones, run `scripts\serve_public.ps1` on the host PC
+([setup guide](docs/SETUP.md#showcase-phones-over-the-internet-windows-pc-expo-app)); details in
+[`client/README.md`](client/README.md).
+
+#### Try it on a phone
+
+The phones talk to a backend running on the host PC, so the PC must be online first (see below).
+
+**Android (about 1 minute)**
+1. On the phone, open the latest APK:
+   https://expo.dev/artifacts/eas/yzO3WvvN_jWuuTUvv5RtCy2BQq5ngOYL5lcwwAGNj9U.apk
+2. Tap the download, then **Install**. The first time, Android asks to allow installs from your browser: allow it.
+3. Open **BiteDown**, then sign up (email and any password) or log in.
+
+**iPhone (about 30 seconds)**
+1. Open **Safari** and go to https://bitedown.expo.app.
+2. Optional: tap **Share**, then **Add to Home Screen**, so it opens full screen like an app.
+3. Sign up or log in.
+
+Any Android phone can use the web link too. Give each person their own account: people who share one account share
+one fridge. If a phone can't reach the server, tap **Server settings** (welcome, login or error screen) to check the
+address, or turn on **Demo mode** to run on sample data with no server.
+
+**Host PC (leave running the whole time)**
+1. Plug the PC in and set it to never sleep.
+2. Start Docker Desktop and wait until it is running.
+3. Double-click `scripts\start_showcase.cmd` and wait for the **Demo URLs** block. Keep that window open: closing it
+   takes the app offline. It restarts the tunnel or the API by itself, and phones pick up a new address within a
+   minute without reinstalling.
+
+The full event checklist and fixes for common failures are in [`docs/SHOWCASE.md`](docs/SHOWCASE.md).
+
 ### Development and verification
 
 Host-side Python development uses Python 3.12 and the repository `.venv`. Backend tests need

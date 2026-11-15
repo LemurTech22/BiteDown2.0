@@ -2,7 +2,7 @@
 
 _The app is **BiteDown** (owner, 2026-10-10; see `docs/DECISIONS.md`). Internal names such as `FoodWasteReducer` stay._
 
-_Last updated: 2026-10-19 (checkpoint 13; see below). Older text from 2026-10-11: **`food-main` (VPS) orchestrates**: it plans, rules, reviews and merges,
+_Last updated: 2026-11-14 (checkpoint 19: Undo polish, item photos started, owner takes the ML track; see below). Older text from 2026-10-11: **`food-main` (VPS) orchestrates**: it plans, rules, reviews and merges,
 and owns the canvas and the orchestrator docs. **`food-main-mac` (the Mac) does all the building**: builder + QA
 sub-agents (**Sonnet**, owner preference), Xcode and simulators, Docker and every test run, plus any
 `.github/workflows` push. The owner also lets the Mac merge a PR when it judges it ready, and edit the canvas when
@@ -11,6 +11,208 @@ teammate PRs, canvas rounds when handed the canvas (round 3 is done, and the can
 checkpoints. **Since checkpoint 10:** `food-modal-test` (iOS simulator test pass) and the "PR merge review" session own
 merges on the Mac; `food-main` reviews the Auth PR. All of them update this file and the affected `docs/` at
 every checkpoint (`CLAUDE.md` Rules). Rules: [`CLAUDE.md`](CLAUDE.md)._
+
+## Checkpoint 19 (2026-11-14, Windows PC): Undo polish, item photos started, ML track. Read this first
+Rulings in `docs/DECISIONS.md` 2026-11-14. On `feat/expo-android` (PR #1):
+- `0c093b9` 8 s dismissible Undo panels + Recently removed with Put back (7-day restore window), QA'd 2026-11-13;
+  `55b1dd5` fixes the 7-day boundary bug, logged as **BE-53** (BE-52 collided with #123).
+- `d26aaac` Undo timer pauses on hover / focus / press (resumes with the time left, at least 2 s); panels float over the
+  Fridge list in one box-none overlay (fixes the list jump, CL-13, CL-14); sheets stay in the 520 px column on desktop
+  web; Remove icon is check-circle; spacing on Recently removed's message. `68f6559` QA PASS (CL-12 ruled by design).
+**Verified:** client tsc and lint clean, Jest 41 suites / 619 (QA run). Orchestrator live web check in demo mode
+(`EXPO_PUBLIC_DEMO_MODE=true`, mock API; Docker Desktop was stopped): every fix behaves; one early hover run closed the
+panel and did not reproduce. Not checked on Android or iOS devices. Recorded in `docs/QA.md`.
+**Note:** start Metro without `CI=1` when checking live: CI mode turns off file watching, so the page keeps old code.
+**PR #1 merge:** no conflicts with `main` (its fork point is `main`'s head `f349092`, #126). Still needs the owner's
+ruling on the iOS label change with no Mac run, and LemurTech22's agreement.
+**In flight:**
+- **Item photos** (`feat/item-photos`, worktree `../wt/item-photos`, stacked on `55b1dd5`): backend first (photo store,
+  migration `0009_item_photos`, crop staging in `from-photo`, `photo_token` on `POST /items`, signed `photo_url`, photo
+  endpoints, cleanup on account delete). Then the client (`ItemThumb`: photo, then food illustration, then group icon).
+  Needs a compose volume + `PHOTO_DIR` in `.env.example` (orchestrator). Rebase onto `feat/expo-android` before the client part.
+- **ML track: now the owner's** (was LemurTech22's). Step 1: score `fwr_20261011` from `export.zip` (re-export on Colab
+  with `RUN_ID=fwr_20261011`, a few minutes). Then tune `SPOILED_THRESHOLD` on val, then a full (non-FAST) run.
+
+## Checkpoint 18 (2026-11-13, Windows PC): sharing, storage moves, "pantry" wording. Read this first
+Owner rulings, recorded in `docs/DECISIONS.md` 2026-11-13. Four commits on `feat/expo-android`, not pushed yet. Codex
+wrote each one and Claude reviewed it:
+- `df58ab6` Shared food (formerly Food Pantry) lists your own open shares under "You're sharing", built from
+  `GET /items`. `GET /share` is unchanged.
+- `a076d92` `PATCH /items/:id` re-estimates expiry on a storage change (rule in `docs/API.md`). The Move sheet offers a
+  "Re-estimate expiry" switch for user-typed dates. The mock client mirrors the rule.
+- `fcc916c` Expo labels: food group "Staples", "Shared food", "Share with friends", "Group food". Storage keeps
+  "Pantry". API values, routes and testIDs are unchanged. `docs/design/SCREENS.md` follows.
+- `afde97d` Same labels in the iOS app (`ios/App`, `ios/Tests`).
+
+**Verified:** client tsc and lint clean, Jest 30 suites / 454 tests. Backend `test_items.py` 49 passed. Full backend
+suite (not slow): 3031 passed, 50 failed. Every failure is a Gemini or receipt test, because the tests load the local
+`.env` and its `GEMINI_FALLBACK_MODELS` chain makes 3 calls where they expect 1. With the Gemini variables blanked, 2
+failures remain in those files: `test_app_reads_env` (reacts to the blanked override) and BE-22 crop peak memory.
+None touch items or expiry. Test isolation from `.env` is a Backend QA follow-up.
+**QA (2026-11-13):** Codex QA plus a read-only Codex audit (OpenCode had no credit). Client FAIL (CL-1, CL-2, CL-3) →
+fixed in `12847b9` → re-verified **PASS**: tsc and lint clean, Jest 32 suites / 465. Backend **PASS** (72 targeted tests).
+Recorded in `docs/qa/client.md`, `docs/qa/backend.md` and `docs/QA.md`.
+**Design:** `docs/design/screens/` mirrors the new wording and a "You're sharing" section on FoodPantry (`318a249`).
+**The live canvas is NOT updated:** it belongs to another org and this account has no edit access. The edited files
+(20 artboards incl. web, plus `canvas.json` board titles) must be published by the canvas owner, or after edit access is
+granted.
+**Not verified:** iOS build and tests (no Xcode here). **GitHub Actions is blocked:** "The job was not started because
+your account is locked due to a billing issue" (repo owner's account; nothing has run since 2026-11-06), so PR #1 has
+no CI and cannot meet the green-CI merge gate. Not run on the emulator either (owner skipped it).
+**Next:** owner fixes Actions billing → iOS + backend CI on PR #1; canvas publish; emulator check; then merge.
+
+## Checkpoint 17 (2026-11-13, Windows PC): final pre-showcase hardening
+**Event:** live demo at a food bank volunteering event, 2026-11-13 morning. **Runbook: [`docs/SHOWCASE.md`](docs/SHOWCASE.md)**
+(night-before and morning checklists, failure-to-fix table, demo account). Rulings: `docs/DECISIONS.md` 2026-11-13.
+Checks: `docs/qa/client.md` 2026-11-13 (orchestrator checks + Codex/OpenCode audits; not a formal QA PASS).
+
+**New APK** (EAS build `67fa34a7-3a31-48d2-b4cb-6cb2a344fd39`, profile `preview`, includes every fix below):
+https://expo.dev/artifacts/eas/yzO3WvvN_jWuuTUvv5RtCy2BQq5ngOYL5lcwwAGNj9U.apk. Installed on the emulator: launches,
+Server settings opens before sign-in, Demo mode signs up offline and reaches Home. It reaches the real backend only
+once the owner runs `scripts\start_showcase.cmd` (the public tunnel + `eas deploy` are owner steps; the agent's
+classifier blocks them). **The web app is not deployed yet:** `https://bitedown.expo.app` has no deployment until that
+script runs once. The local web export builds (3.9 MB).
+
+**Live config on this PC (`.env`, not in git):** `GEMINI_MODEL=gemini-3.5-flash-lite`,
+`GEMINI_FALLBACK_MODELS=gemini-3.1-flash-lite,gemini-3.5-flash`, `GEMINI_TIMEOUT_S=20`, `GUNICORN_THREADS=12`.
+Demo account `demo@bitedown.app`, password in gitignored `.env.demo`: 13 priced items (2 expire tomorrow) plus
+earlier removals for Impact.
+
+**What landed tonight (on `feat/expo-android`, each diff reviewed by Claude):** Server settings link before sign-in;
+config readiness gate, 60 s refresh, refresh after network errors, loopback rejected in release; Home recipe card
+loads separately; Remove 409 `already_removed` = success + Undo; barcode Type it instead always visible; web photo
+downscale + 413 message; batch Undo 10 min; Gemini fallback chain (429, 503/504, timeouts); fridge photo merges
+identical detections (24 rows → 7); `serve_public.ps1` watchdog/publish-retry/CORS-preflight/DB-check, `eas-cli`
+pinned to 27.9.0.
+**Verified:** client tsc + lint clean, Jest 30 suites / 419; backend suite (not slow) 3046 passed, 4 skipped, 7 xfailed,
+1 env-only failure (`test_app_reads_env` reads the local `.env` `GEMINI_TIMEOUT_S=20`; passes without `.env`, as in
+CI); live API smoke + 8-way concurrent photo burst; production web bundle in Chrome: login, Home, Fridge, Remove,
+Impact 3.2 → 3.7 lb, Undo back to 3.2 lb.
+**Not verified:** public tunnel, `eas deploy`, real phones (Android APK against the live backend, iPhone Safari).
+
+**Next (owner):** follow `docs/SHOWCASE.md` "The night before". After the event: formal QA PASS on PR #1, then merge.
+
+## Checkpoint 16 (2026-11-12, Windows PC): showcase build for Android + iPhone
+**Owner's goal:** a finished app other people can try on Android and iPhone by 2026-11-13 09:00.
+**Branch:** `feat/expo-android`, PR https://github.com/LemurTech22/BiteDown2.0/pull/1 (no formal QA PASS yet, so not merged).
+Rulings: `docs/DECISIONS.md` 2026-11-12. The final APK was installed on the emulator: it launches with the BiteDown
+icon and welcome screen; it reaches a backend only after step 1 below publishes `api-config.json`.
+Checks and what was verified by hand: `docs/qa/client.md` (orchestrator checks + independent Codex/OpenCode audits and a
+review; not a formal QA PASS).
+
+**How people get the app**
+- **Android:** APK from EAS Build `2e0f6f0e-0d47-426f-85ef-e1aec6ceacbe` (profile `preview`), project `@bitedown/bitedown`
+  (Expo account `frankinstyle96`, org `bitedown`).
+  APK: https://expo.dev/artifacts/eas/tcEY5Ay7_5-E2KRE1byRZmME4hjfo0ctJsSj_LyK6nA.apk (open on the phone, allow
+  "install unknown apps"). `cd client; npx eas-cli build:list -p android` lists builds.
+- **iPhone:** the web build at `https://bitedown.expo.app` in Safari, then Share, Add to Home Screen. Expo Go can't open
+  shared projects on iOS; a native iOS build needs a paid Apple account.
+- **Backend:** this PC (docker compose, now `restart: unless-stopped`), put online by `scripts\serve_public.ps1`.
+  The apps read the backend address from `https://bitedown.expo.app/api-config.json`, so a new tunnel address needs no
+  rebuild or reinstall.
+
+**Owner steps to go live (the agent's permission classifier blocks opening tunnels and publishing):**
+1. Start Docker Desktop. Then double-click `scripts/start_showcase.cmd` (or run, from the repo root, in a window you leave open):
+   `powershell -ExecutionPolicy Bypass -File scripts\serve_public.ps1`
+   It uses Tailscale Funnel if approved, else a Cloudflare quick tunnel, then runs `expo export` + `eas deploy --prod`.
+2. Optional, for a fixed address: the tailnet admin (`joseconde101jc`) approves Funnel for `laptop-64ms4pd7`
+   (https://login.tailscale.com/f/funnel?node=nYD94JSEKw11CNTRL), or move this PC to your own tailnet.
+3. Test: open `https://bitedown.expo.app` on a phone; install the APK on an Android phone.
+
+**What landed (merged into `feat/expo-android`, each reviewed by Claude; tsc + lint clean, Jest 29 suites / 369 tests;
+an independent OpenCode review found 4 issues, all fixed: Funnel left on after Ctrl-C, deep-link code lost at sign-in,
+Move invisible on web, unescaped `geo:` label):**
+CORS allowlist `CORS_ORIGINS` (`backend/app/cors.py`, 9 tests); web launch crash and web fetch fix; platform map links;
+keyboard avoidance; deep links `bitedown://friend|group/<code>`; `reportServerError` app-wide; remote API config
+(`EXPO_PUBLIC_API_CONFIG_URL`, Debug settings shows the source); web phone-width column + PWA manifest/icons; compact
+Fridge rows (Remove visible, Move on swipe-left); pinned Add button on review screens; BiteDown icons, splash and favicon
+(from the SwiftUI app icon); `client/eas.json` (`preview` = APK); `scripts/serve_public.ps1`; docs (SETUP, API, README,
+DECISIONS).
+
+**Known gaps:** iPhone Safari not tried on a real device; barcode/receipt camera flows and Pantry claim with a second
+account not re-checked; Google Sign-In deferred for the Expo app; receipts need the ML service or the Gemini fallback.
+Expo Go dev sessions were signed out once because adding `owner`/`projectId` changed Expo Go's storage scope (dev only).
+Local test account for the dev DB: `scratchpad/test-account.txt` of the 2026-11-12 session (not in git).
+
+## Checkpoint 15 (2026-11-09, Windows PC): Expo Android Phase 3 built
+**Where:** still `feat/expo-android`, local only (push is blocked by the read-only GitHub access; see checkpoint 14).
+Phase 3 (every remaining screen) is merged on this branch. **QA has not run on Phase 3**: checks below are the
+orchestrator's own, which don't count as a QA pass (`CLAUDE.md`). Phases 4 and 5 remain as checkpoint 14 describes.
+
+**How Phase 3 ran:** one Codex foundation run, then six parallel Codex tracks, each in its own worktree
+(`C:/bd/p3-<track>`, branch `feat/expo-p3-<track>`) with disjoint files. Claude reviewed each diff (scope check, contract
+spot checks), ran typecheck / lint / Jest, committed with `Co-Authored-By: Codex`, and merged with `--no-ff`. The worktrees
+and track branches are deleted (the empty `C:\bd` folder remains; root-level deletes are blocked for the agent).
+- `004c967` deps: expo-camera, expo-clipboard, expo-location, react-native-svg, react-native-qrcode-svg (exact pins).
+- `4c7ce14` foundation: `ApiClient` methods for barcode, receipt, tips, share, friends, groups, requests, people (live +
+  mock + tests); `src/settings/preferences.tsx` (device-only units, default storage, currency, saved pickup spots;
+  `formatWeight`, `formatMoney`); placeholder routes for every Phase 3 screen, registered in `src/app/_layout.tsx`;
+  `GlobalBanners` slot; camera and location permissions in `app.config.ts`. Response keys checked against `backend/app/routes`.
+- Merges: C `3757d56` Recipes + detail; E `e50c862` Settings, delete account, server-error banner (`reportServerError`,
+  `SectionError`), debug screen moved to `features/settings`; D1 `d71cea0` Social, Food Pantry, requests, Offer
+  confirmation, Claimed item; A `4243607` Home, Item detail (share toggle, pickup spot, Check again), Fridge Select +
+  batch Undo (also fixed the demo-path test: `PreferencesProvider` wrapper, "Hi, Demo" greeting); B `dcb039c` Add by
+  text/voice, barcode, receipt, camera-off card; D2 `04ff192` Friends & groups, friend QR + scan, Group detail.
+- `6e610bd` fix after the emulator check: one header per screen (every Phase 3 route except `debug` hides the native
+  header), choice chips wrap and size to their labels.
+- **State:** typecheck and lint clean, **278 Jest tests** pass.
+
+**Verified by hand on the emulator against the local backend:** Home (tip, Use these first, Cook tonight from Gemini),
+Social, Friends & groups (live friend code, QR, countdown), Item detail (after the fix), hardware back, Fridge Select →
+Used them → batch Undo (count 5 → 4 → 5), Profile & settings. **Not yet checked on the device:** Add by text / barcode /
+receipt, Recipes and detail, Food Pantry claim, requests, Scan, Group detail, Pickup spot sheet, server-error banner,
+delete account, large-font layouts.
+
+**Known gaps and requests:**
+- Expo Go has no speech module: "Say it" opens the typing screen with a keyboard-microphone hint. No map SDK: pickup
+  spots show text plus Open in Maps (`geo:` link), no map preview.
+- `bitedown://friend/…` and `bitedown://group/…` deep links aren't routed yet.
+- Backend requests: a food / non-food flag on `from-receipt` candidates (the client guesses non-food by name); there is
+  no unclaim endpoint.
+- Other screens don't call `reportServerError` yet (Home, Fridge, Item detail, Add, Remove, Recipes, Impact, Social).
+- Fridge rows are bulky on Android (full-width "Move to…" button and share icon per row); polish item.
+- Test side effect: two items ("lettuce (bunch)", "lettuce") on the owner's local account were marked used during the
+  first batch test (Undo expired). Re-add them if the Impact numbers matter.
+- Codex's Windows sandbox fails to spawn processes when about six runs go at once ("runner handshake task failed"), and
+  parallel `npm ci` can hit EPERM in the shared npm cache. Keep it to about four Codex runs at a time.
+- Metro ran out of memory (4 GB heap) after about 27 minutes while packages were installed under it; restart it with
+  `npx expo start --android --clear`. Typed routes (`.expo/types/router.d.ts`) only regenerate while Metro runs, so a
+  fresh worktree's `tsc` won't catch bad route strings.
+
+**Next:** QA pass on Phase 3 (device check of the screens listed above, record it in `docs/qa/`), wire
+`reportServerError` into the other screens, then Phase 4 (Google Sign-In) and Phase 5 (CI, APK, README).
+
+## Checkpoint 14 (2026-11-09, Windows PC): Phase C (Expo Android app) Phase 2 done
+**Where:** branch `feat/expo-android` (local only, **not pushed**: GitHub account `FrankinstyLe` has read-only access
+to `LemurTech22/BiteDown2.0`, so pushing returns 403 until the owner grants Write or we push to a fork). Repo remote is now
+`https://github.com/LemurTech22/BiteDown2.0`. App lives in `client/` (Expo SDK 58, RN 0.88.1, React 19.3, expo-router, TS 6;
+exact pins). Phase 1 (scaffold) and Phase 2 (demo path) are done; Phases 3-5 remain.
+
+**Phase 2: what landed** (all on `feat/expo-android`; 8 suites / 61 Jest tests, tsc and lint clean):
+- `0783a80` email auth, `a185080` tab shell (OpenCode); `7e294cb` Fridge + remove (used/donated/thrown_out, reason required
+  only for thrown_out) + 10-minute Undo; `4a87c27` add by photo; `9f28c8e` Impact (week/month/all); `c8230e2` demo-path
+  test (real router: login, photo, Fridge, remove, Impact rises, Undo restores Impact exactly) + haptics; `d0ee8bc` upload
+  fix; `426918b` Add modal Close/back, "Move to..." storage via `PATCH /items/:id` (`ApiClient.updateItem`), scanner-busy message.
+- Verified by hand on the emulator against the real backend: sign up, photo scan (Gemini), save, move, remove.
+- **Upload gotcha:** Expo SDK 58's `fetch` rejects React Native `{uri, name, type}` FormData parts ("Unsupported FormDataPart
+  implementation"). `live-client.ts` `appendImage` sends bytes via `expo-file-system` `File`. Mock tests can't catch this.
+
+**Not built yet (Phase 3):** Home content, Item detail/edit, multi-select + batch remove/Undo, Add by text/voice, barcode,
+receipt, Recipes + detail, all of Social (Food Pantry, requests, friends & groups, friend QR, pickup spot, claims), Profile &
+settings + delete account, Signed-out screen, global Server-error screen, camera-denied card. Row numbers: `docs/design/SCREENS.md`.
+**Phase 4:** Google Sign-In (needs an EAS build, plus backend `GOOGLE_CLIENT_IDS` so the Android client ID passes the
+audience check, on its own branch). **Phase 5:** `client.yml` CI, APK, README/HANDOFF, PR only when the owner says so.
+
+**How work runs on this PC:**
+- Builders are **Codex** (`codex exec -s workspace-write`, ChatGPT login) and OpenCode (Go plan, often out of quota). Claude
+  reviews, commits, merges and verifies. Codex's Windows sandbox **can't write `.git`**: it leaves changes uncommitted and
+  Claude commits them (`Co-Authored-By: Codex <noreply@openai.com>`). Parallel Codex runs use separate worktrees and disjoint files.
+- Windows native Android builds fail (CMake 260-char paths), so develop in **Expo Go** (`cd client; npx expo start --android`);
+  dev-client/release builds go through EAS. Emulator `BiteDown_Pixel7_API36` (`hw.keyboard=yes`); after each emulator start run
+  `adb reverse tcp:5055 tcp:5055`. Deleting a worktree with `node_modules` needs `rd /s /q "\\?\<path>"`.
+- **Gemini:** `gemini-3.8-flash` hung or returned 503 on 2026-11-09 (even a one-word prompt), so the owner's local `.env` uses
+  `gemini-3.1-flash-lite` for testing. `docs/DECISIONS.md` still names 3.8-flash; switch back when it recovers. A throwaway
+  `probe…@example.com` account exists in the local DB.
 
 ## Checkpoint 13 (2026-10-20): Phase A done, Phase B awaiting owner review. Read this first
 **The owner's revamp, in three phases.** Plan: `~/.claude/plans/1-i-want-to-vivid-bachman.md` (owner-approved and Codex-reviewed).
@@ -99,7 +301,7 @@ are merged. **Gemini:** no live calls from agents or QA (quota, #100).
 | ML-69 fix: classifier RAM cache OOM-killed Colab (#88, Jose) | merged | ML QA PASS; needed before a fresh Colab FAST run from `main` |
 | **First trained model** `fwr_20261011` (FAST: detector 30 ep ≈ 26 min, classifier 10 ep ≈ 17 min on a T4) | trained, **not scored: its metrics must not be quoted until the ML gate in `docs/QA.md` runs on it** (the Drive copy of `predictions.jsonl` was truncated) | weights: Drive `fwr_runs/fwr_20261011/data_a4729025_fast/export/`, local `../mldata/models/fwr_fast_20261011` (`current` →). The Drive `predictions.jsonl` was truncated by Drive sync; score from `export.zip` |
 | Compose `ml` service (opt-in profile, no host port, CPU, OCR off) + `OCR_BACKEND=off` (Jose) | merged (#89) | ML QA PASS (ML-70–72 fixed, incl. the serve image that never built); photo → YOLO → Gemini enrichment → `POST /items` verified end to end in containers on 2026-10-11 |
-| ML training, YOLO gate, `ml/serve` weights, GLM-OCR | **teammate LemurTech22's track**; Colab can run | don't schedule agents for it unless the owner asks |
+| ML training, YOLO gate, `ml/serve` weights, GLM-OCR | **the owner's track since 2026-11-14** (was teammate LemurTech22's); Colab can run | agents work on it when the owner asks; see checkpoint 19 |
 | Design | 38 screens + dark artboards, plus friend QR + pickup spot (FriendScan, FriendAdded, PickupSpot; canvas v55, #99); round 4 is v54 (#91) | `docs/design/`; design QA READY WITH FIXES, fixes applied |
 
 ## Next steps
@@ -117,7 +319,7 @@ are merged. **Gemini:** no live calls from agents or QA (quota, #100).
    - **#95** (Truc): independent QA FAIL. It waits on Truc's fixes for BE-29/30, then food-orch re-verifies with the full suites.
    - **#104** (backend QA sweep) and **#105** (iOS QA sweep), by duwudlekat. They supersede the closed #97 and need independent QA plus a collision check with the screen PRs. #105's sign-in must be DEBUG-only.
    - **#106** (Truc, README for vision and receipts): docs review.
-6. **Teammate (LemurTech22):** ML QA scores `fwr_20261011` on the held-out split
+6. **Owner (ML track since 2026-11-14, was LemurTech22):** ML QA scores `fwr_20261011` on the held-out split
    (`ml/eval/detection_metrics.py` + `check_thresholds.py` on the `export.zip` predictions) before photos switch from the Gemini
    fallback to YOLO in the demo. Early spot check: names right, some fresh items called spoiled (they then skip Gemini enrichment
    and land in Toss/Keep). ML-64, ML-65, ML-67 and ML-68 go to Jose via `food-main`.

@@ -20,7 +20,7 @@ enum FoodGroup: String, Codable, CaseIterable, Sendable, Hashable {
         case .fruit: "Fruit"
         case .dairy: "Dairy"
         case .grains: "Grains"
-        case .pantry: "Pantry"
+        case .pantry: "Staples"
         case .leftovers: "Leftovers"
         case .frozen: "Frozen"
         case .other: "Other"

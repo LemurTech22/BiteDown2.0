@@ -1,5 +1,6 @@
-"""POST /items/:id/restore: undo a removal within 10 minutes; impact returns exactly to the pre-removal numbers."""
+"""POST /items/:id/restore: undo a removal within 7 days; Impact returns exactly to its prior value."""
 import uuid
+from datetime import datetime, timedelta
 
 import pytest
 from sqlalchemy import event as sa_event
@@ -23,9 +24,16 @@ def impact(client, u, rng="all"):
 
 def age_removal(sql, item_id, minutes):
     """Pretend the removal happened `minutes` ago (item row and its remove event)."""
-    sql("UPDATE items SET removed_at = removed_at - make_interval(mins => :m) WHERE id=:i", m=minutes, i=item_id)
-    sql("UPDATE food_events SET time = time - make_interval(mins => :m) WHERE item_id=:i AND event_type='remove'",
+    sql("UPDATE share_listings SET fulfilled_at = fulfilled_at - make_interval(mins => :m) "
+        "WHERE item_id=:i AND fulfilled_at=(SELECT removed_at FROM items WHERE id=:i)",
         m=minutes, i=item_id)
+    sql("UPDATE items SET removed_at = removed_at - make_interval(mins => :m) WHERE id=:i", m=minutes, i=item_id)
+    # TimescaleDB cannot UPDATE a partition key across chunks; reinsert the same event at its aged time.
+    sql("WITH moved AS (DELETE FROM food_events WHERE item_id=:i AND event_type='remove' RETURNING *) "
+        "INSERT INTO food_events (id, time, user_id, item_id, group_id, event_type, category, quantity, "
+        "est_weight_kg, est_price, outcome, waste_reason, co2e_kg) "
+        "SELECT id, time - make_interval(mins => :m), user_id, item_id, group_id, event_type, category, "
+        "quantity, est_weight_kg, est_price, outcome, waste_reason, co2e_kg FROM moved", m=minutes, i=item_id)
 
 
 def row(sql, item_id):
@@ -86,22 +94,52 @@ def test_impact_exact_with_other_history(client, user, make_item, sql):
 def test_restore_after_window_409(client, user, make_item, sql):
     it = make_item(user)
     remove(client, user, it, outcome="used")
-    after_remove = impact(client, user)
-    age_removal(sql, it["id"], 11)
+    age_removal(sql, it["id"], 7 * 24 * 60 + 1)
+    after_remove = {rng: impact(client, user, rng) for rng in ("week", "month", "all")}
     r = restore(client, user, it["id"])
     assert r.status_code == 409, r.get_data(as_text=True)
     assert r.get_json()["error"]["code"] == "restore_window_expired"
     assert row(sql, it["id"])["removed_at"] is not None
-    assert impact(client, user) == after_remove
+    assert {rng: impact(client, user, rng) for rng in after_remove} == after_remove
 
 
-def test_restore_just_inside_window_works(client, user, make_item, sql, events):
+@pytest.mark.parametrize("minutes", [11, (6 * 24 + 23) * 60])
+@pytest.mark.parametrize("body", [{"outcome": "used"}, {"outcome": "donated"},
+                                  {"outcome": "thrown_out", "waste_reason": "expired"}])
+def test_restore_just_inside_window_works(client, user, make_item, sql, events, minutes, body):
+    other = make_item(user, name="Other history", est_price=3.5)
+    assert remove(client, user, other, outcome="used").status_code == 200
     it = make_item(user)
-    before = impact(client, user)
-    remove(client, user, it, outcome="used")
-    age_removal(sql, it["id"], 9)
+    before = {rng: impact(client, user, rng) for rng in ("week", "month", "all")}
+    assert remove(client, user, it, **body).status_code == 200
+    age_removal(sql, it["id"], minutes)
     assert restore(client, user, it["id"]).status_code == 200
     assert events(item_id=it["id"], event_type="remove") == []
+    assert {rng: impact(client, user, rng) for rng in before} == before
+    assert len(events(item_id=other["id"], event_type="remove")) == 1
+
+
+@pytest.mark.parametrize("batch", [False, True], ids=["single", "batch"])
+def test_restore_exactly_seven_days_is_expired(client, user, make_item, sql, monkeypatch, batch):
+    """API.md promises removals made less than seven days ago; match the mock boundary."""
+    it = make_item(user)
+    assert remove(client, user, it).status_code == 200
+    deadline = row(sql, it["id"])["removed_at"] + timedelta(days=7)
+
+    class AtDeadline(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return deadline.astimezone(tz) if tz else deadline.replace(tzinfo=None)
+
+    monkeypatch.setattr("app.routes.items.datetime", AtDeadline)
+    before = impact(client, user)
+    if batch:
+        r = client.post("/items/restore-batch", json={"item_ids": [it["id"]]}, headers=user["headers"])
+    else:
+        r = restore(client, user, it["id"])
+    assert r.status_code == 409, r.get_data(as_text=True)
+    assert r.get_json()["error"]["code"] == "restore_window_expired"
+    assert row(sql, it["id"])["removed_at"] is not None
     assert impact(client, user) == before
 
 
@@ -181,12 +219,15 @@ def listing(sql, lid):
     return sql("SELECT * FROM share_listings WHERE id=:i", i=lid)[0]
 
 
-def test_donated_shared_item_listing_reverts_open(client, pair, make_item, sql):
+@pytest.mark.parametrize("minutes", [0, (6 * 24 + 23) * 60])
+def test_donated_shared_item_listing_reverts_open(client, pair, make_item, sql, minutes):
     a, b = pair
     it = make_item(a)
     lst = share(client, a, it)
+    before = {rng: impact(client, a, rng) for rng in ("week", "month", "all")}
     assert remove(client, a, it, outcome="donated").status_code == 200
     assert listing(sql, lst["id"])["status"] == "fulfilled"
+    age_removal(sql, it["id"], minutes)
     assert restore(client, a, it["id"]).status_code == 200
     l = listing(sql, lst["id"])
     assert l["status"] == "open" and l["fulfilled_at"] is None and l["recipient_id"] is None
@@ -195,6 +236,7 @@ def test_donated_shared_item_listing_reverts_open(client, pair, make_item, sql):
     # the owner's item shows the share as open
     items = client.get("/items", headers=a["headers"]).get_json()["items"]
     assert next(i for i in items if i["id"] == it["id"])["share"]["status"] == "open"
+    assert {rng: impact(client, a, rng) for rng in before} == before
 
 
 def test_donated_claimed_listing_keeps_claim(client, pair, make_item, sql):

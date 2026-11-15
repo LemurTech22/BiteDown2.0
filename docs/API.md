@@ -27,6 +27,13 @@ String caps (over-limit -> `400 validation_error`): item `name` 200, item `unit`
 
 Group pantry items: editing (`PATCH`), removing and restoring them (single and batch) needs CURRENT group membership, including for the user who added them. Ex-member: single endpoints `403 forbidden`; batch endpoints `404 not_found` (whole batch, no existence leak). An ex-member's old group items are also excluded from `POST /recipes/suggest` (an `item_ids` entry naming one -> `404 not_found`, like an unknown id) and from `GET /tips` (expiry observations); `GET /people/reachable?item_id=` for such an item -> `404 not_found`. `GET /impact` is unchanged: it counts the user's own past food events.
 
+**CORS (web build):** when the request's `Origin` exactly matches an entry in `CORS_ORIGINS` (comma-separated, set in
+`.env`; empty = off), every response, errors included, carries `Access-Control-Allow-Origin: <origin>`,
+`Access-Control-Allow-Headers: Authorization, Content-Type`, `Access-Control-Allow-Methods: GET, POST, PATCH, PUT, DELETE,
+OPTIONS` and `Access-Control-Max-Age: 600`; a preflight (`OPTIONS` + `Access-Control-Request-Method`) from such an origin
+returns `204`. No `Access-Control-Allow-Credentials` (bearer auth). Other origins get no CORS headers. All responses
+`Vary: Origin`.
+
 ## Health
 - ✅ `GET /health` → `200 {"status": "ok"}`
 
@@ -149,10 +156,14 @@ seafood, bakery, eggs, leftovers, pantry_dry, frozen, other`; `storage` ∈ `fri
   `expiry_source` sent without `predicted_expiry` is ignored (the backend predicts and sets it).
   `freshness`, `confidence` and `nutrition` from the candidate are stored (see above).
 - ✅ `PATCH /items/:id` — body may contain `name, quantity, unit, storage, category, food_group,
-  predicted_expiry, est_price, est_weight_kg, freshness` (unknown fields → 400, so `confidence` and
+  predicted_expiry, est_price, est_weight_kg, freshness, reestimate_expiry` (unknown fields → 400, so `confidence` and
   `nutrition` are not editable). `freshness` set → stored and `freshness_checked_at` = now; `freshness: null` clears **both**
   (null means "never assessed"). Changing the expiry sets
   `expiry_source=user`. Changing quantity/unit/category re-estimates `est_weight_kg` unless sent.
+  Changing storage without an explicit `predicted_expiry` re-estimates expiry using the final category
+  and sets `expiry_source=default`; user dates stay unchanged unless `reestimate_expiry: true` (boolean only → `400 validation_error` otherwise).
+  Freezing uses the freezer default unless already expired, thawing uses the destination default capped at 2 days for meat/seafood or 3 for leftovers, and fridge ↔ pantry preserves the remaining life fraction (expired dates stay unchanged).
+  The flag alone or the same storage is a no-op; an explicit `predicted_expiry` wins.
   → `200 {item}`; `403` other user's item; `404` unknown or already removed.
 - ✅ `POST /items/:id/remove` — **the core endpoint**
   ```json
@@ -183,9 +194,10 @@ seafood, bakery, eggs, leftovers, pantry_dry, frozen, other`; `storage` ∈ `fri
   stay `403`; non-members of the group get `403`. `PATCH` stays owner-only. If the item's open
   listing was claimed and `recipient_id` is omitted, the claimer becomes `recipient_id`.
 
-- ✅ `POST /items/:id/restore` (no body) → `200 {item}`. Undoes a removal made less than **10 minutes**
-  ago (same permission as remove: owner, or any member for a group-pantry item). `409 not_removed` if
-  the item is active, `409 restore_window_expired` after 10 minutes, `403`/`404` as for remove. One
+- ✅ `POST /items/:id/restore` (no body) → `200 {item}`. Undoes a removal made less than **7 days**
+  ago (was 10 minutes until 2026-11-13; the client's Undo panel and "Recently removed" both use it) (same permission
+  as remove: owner, or any member for a group-pantry item). `409 not_removed` if
+  the item is active, `409 restore_window_expired` after 7 days, `403`/`404` as for remove. One
   transaction under the row lock: clears `removed_at`, `outcome`, `waste_reason`,
   `removed_after_expiry`; **deletes the item's `remove` event** (by id + time) so `/impact`, `/tips` and
   any other event query are automatically correct; and if the removal fulfilled a listing
@@ -209,7 +221,7 @@ seafood, bakery, eggs, leftovers, pantry_dry, frozen, other`; `storage` ∈ `fri
   writes nothing. Constant query count regardless of batch size.
 - ✅ `POST /items/restore-batch` `{"item_ids": [...]}` (same id rules) → `200 {items}`. All or nothing:
   `404` as above, `409 not_removed` if any item is active, `409 restore_window_expired` if any removal is
-  older than 10 minutes. Otherwise mirrors `POST /items/:id/restore` per item (deletes its `remove`
+  older than 7 days. Otherwise mirrors `POST /items/:id/restore` per item (deletes its `remove`
   event, reopens a listing that removal fulfilled). `remove-batch` then `restore-batch` leaves `/impact`
   exactly as before. Items removed singly can be restored in a batch and vice versa.
 
@@ -254,6 +266,7 @@ post it straight back.
   `200 {candidates: [{name, category, confidence, freshness: "fresh"|"semi_fresh"|"spoiled", bbox: [x1,y1,x2,y2]|null,
   …}], source: "yolo"|"gemini"}`. Uses `ML_SERVICE_URL`/detect when set; if unset **or the ML
   service errors**, falls back to Gemini vision; neither → `502`.
+  In `fridge` mode only, candidates matching on stripped lowercased name, freshness, unit and storage merge before enrichment in first-seen order, summing quantity and taking maximum confidence while retaining the first candidate's other fields.
   `freshness` is normalised server-side for both sources (`candidates.normalize_freshness`): the
   three values pass through; variants map `semi-fresh`/`semi fresh`/`use soon`/… → `semi_fresh`
   and `rotten`/`stale`/`moldy`/`overripe`/`decayed`/… → `spoiled` (case/hyphen/space-insensitive; the word
@@ -569,6 +582,7 @@ fulfilled_by_name, created_at, audiences, source, group_id, group_name}`:
   (`expired`, `forgot`, `didnt_like`, `other`); `past_expiry` and `saved_recent` are new codes.
 
 ## Gemini timeouts
+Optional `GEMINI_FALLBACK_MODELS` (comma-separated, default empty) tries each fallback once on transient errors; primary quota exhaustion skips its retry, other transient errors retain it, and `GEMINI_FALLBACK_BUDGET_S` (default 40 s) stops new fallback attempts after the budget (in-flight attempts keep their timeout); the usage model is the answering or last attempted model. The bounds below apply with fallbacks disabled.
 Every Gemini call sets an HTTP timeout so a hung request cannot pin one of the 4 gunicorn threads. Photo
 enrichment uses `ENRICH_TIMEOUT_S` (25, no retry). All other calls (`parse_text`, `detect`, `receipt_categorize`,
 `recipes`, `shelf_life`) use `GEMINI_TIMEOUT_S` (env, default 30 s per attempt). A transient error is retried once

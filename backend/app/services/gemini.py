@@ -64,6 +64,20 @@ def _is_transient(e: Exception) -> bool:
     return code in (429, 503, 504) or any(t in str(e)[:300] for t in _TRANSIENT)
 
 
+def _is_timeout(e: BaseException) -> bool:
+    """Recognize timeout types and wrappers, including cyclic exception chains."""
+    pending, seen = [e], set()
+    while pending:
+        exc = pending.pop()
+        if exc is None or id(exc) in seen:
+            continue
+        seen.add(id(exc))
+        if isinstance(exc, TimeoutError) or any("Timeout" in cls.__name__ for cls in type(exc).__mro__):
+            return True
+        pending.extend((exc.__cause__, exc.__context__))
+    return False
+
+
 def is_configured() -> bool:
     return bool(current_app.config.get("GEMINI_API_KEY"))
 
@@ -93,7 +107,7 @@ def _unwrap(data, list_key):
 
 def _default_timeout() -> float:
     """HTTP timeout for every Gemini call except enrichment (which has ENRICH_TIMEOUT_S). Worst case one
-    call holds a request thread for 2 attempts x GEMINI_TIMEOUT_S + RETRY_DELAYS_S (30 s default: 61.5 s),
+    call without fallbacks holds a request thread for 2 attempts x GEMINI_TIMEOUT_S + RETRY_DELAYS_S (30 s default: 61.5 s),
     under gunicorn's 120 s --timeout (backend/entrypoint.sh)."""
     if not has_app_context():  # prompt-building helpers are also called outside a request (tests, scripts)
         return 30.0
@@ -112,6 +126,9 @@ def _generate(contents, schema_hint: str, response_schema=None, purpose: str = "
     HTTP call (the SDK sets none, and a hung call would pin a request thread: gthread keeps
     heartbeating, so gunicorn never reaps it); None leaves the call exactly as it was. `retry=False` skips the
     one retry on a transient error (enrichment: a second 25 s attempt would blow the client's time budget).
+    Optional fallback models get one attempt each after transient failures or timeouts, within a
+    start-time budget. Timeouts skip the same-model retry when fallbacks are configured, and end the
+    chain when `retry=False`.
     `as_object=True` returns the parsed JSON object itself, which must hold a `list_key` list (anything
     else is an error), for a caller that needs more than that one list."""
     key = current_app.config.get("GEMINI_API_KEY")
@@ -128,14 +145,34 @@ def _generate(contents, schema_hint: str, response_schema=None, purpose: str = "
         config = types.GenerateContentConfig(
             response_mime_type="application/json", system_instruction=schema_hint,
             **({"response_schema": response_schema} if response_schema else {}))
-        for delay in ((*RETRY_DELAYS_S, None) if retry else (None,)):
+        fallbacks = current_app.config.get("GEMINI_FALLBACK_MODELS", [])
+        try:
+            budget = float(current_app.config.get("GEMINI_FALLBACK_BUDGET_S", 40))
+            if not math.isfinite(budget) or budget < 0:
+                raise ValueError
+        except (TypeError, ValueError):
+            budget = 40.0
+        for index, model in enumerate([model, *fallbacks]):
             try:
-                resp = client.models.generate_content(model=model, contents=contents, config=config)
-                break
-            except Exception as e:  # retried only if transient; the usage line is still one per call
-                if delay is None or not _is_transient(e):
+                for delay in ((*RETRY_DELAYS_S, None) if retry and index == 0 else (None,)):
+                    try:
+                        resp = client.models.generate_content(model=model, contents=contents, config=config)
+                        break
+                    except Exception as e:
+                        exhausted = _http_code(e) == 429 or "RESOURCE_EXHAUSTED" in str(e)[:300]
+                        if (delay is None or not _is_transient(e)
+                                or (fallbacks and (exhausted or _is_timeout(e)))):
+                            raise
+                        time.sleep(delay)
+            except Exception as e:
+                timed_out = _is_timeout(e)
+                # retry=False (enrichment) has no time for a second full-length attempt after a timeout:
+                # detection (up to ENRICH_SKIP_AFTER_S) + 2 x ENRICH_TIMEOUT_S would pass the client's 75 s.
+                if (not (_is_transient(e) or (fallbacks and timed_out)) or index == len(fallbacks)
+                        or time.monotonic() - started > budget or (timed_out and not retry)):
                     raise
-                time.sleep(delay)
+            else:
+                break
         data = json.loads(resp.text)
         if as_object:
             if not isinstance(data, dict) or (list_key and not isinstance(data.get(list_key), list)):

@@ -21,7 +21,7 @@ extension MockAPIClient {
         try await gate("createShare")
         guard let i = items.firstIndex(where: { $0.id == itemId }) else { throw notFound() }
         if items[i].ownerId != me.id { throw forbidden("That isn't your item.") }
-        if items[i].groupId != nil { throw validation("Group pantry items can't be shared.") }
+        if items[i].groupId != nil { throw validation("Group food items can't be shared.") }
         if items[i].isRemoved { throw conflict("already_removed", "Already removed.") }
         if items[i].share?.status == .open {
             throw conflict("already_shared", "That item is already shared.")

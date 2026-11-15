@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<title>Food Pantry</title>
+<title>Shared food</title>
 <script src="./support.js"></script>
 </head>
 <body>
@@ -20,7 +20,7 @@ a{color:#1F4D2B}a:hover{color:#13261A}
     <a href="Social.dc.html" aria-label="Back" style="width: 44px; height: 44px; border-radius: 22px; display: flex; align-items: center; justify-content: center; background: #FFFFFF; box-shadow: inset 0 0 0 1px #D3E0BF; flex-shrink: 0">
       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#1F4D2B" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 6l-6 6 6 6"></path></svg></a>
     <div>
-      <h1 style="margin: 0; font-family: Outfit, sans-serif; font-weight: 600; font-size: 26px">Food Pantry</h1>
+      <h1 style="margin: 0; font-family: Outfit, sans-serif; font-weight: 600; font-size: 26px">Shared food</h1>
       <p style="margin: 2px 0 0; font-size: 14px; color: #45584A">Shared by friends and groups</p>
     </div>
   </header>
@@ -29,8 +29,15 @@ a{color:#1F4D2B}a:hover{color:#13261A}
     <button role="tab" aria-selected="false" style="height: 40px; border: 0; border-radius: 10px; background: transparent; color: #45584A; font-weight: 500; font-size: 15px">Friends</button>
     <button role="tab" aria-selected="false" style="height: 40px; border: 0; border-radius: 10px; background: transparent; color: #45584A; font-weight: 500; font-size: 15px">Groups</button>
   </div>
+  <section aria-labelledby="fp-mine" style="display: flex; flex-direction: column; gap: 8px">
+    <h2 id="fp-mine" style="margin: 0; font-family: Outfit, sans-serif; font-weight: 600; font-size: 17px">You're sharing</h2>
+    <a href="ItemShared.dc.html" aria-label="Spinach, 1 bag, shared by you" style="min-height: 44px; text-decoration: none; color: #13261A; background: #FFFFFF; border-radius: 16px; padding: 12px 14px; display: flex; align-items: center; gap: 12px">
+      <span style="flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px"><span style="font-size: 16px; font-weight: 600">Spinach, 1 bag</span><span style="font-size: 13px; color: #45584A">Not claimed yet</span></span>
+      <span style="font-size: 13px; font-weight: 600; padding: 2px 8px; border-radius: 10px; background: #EEF5D6; color: #1F4D2B; white-space: nowrap">2–3 days</span>
+    </a>
+  </section>
   <ul style="list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px">
-    <sc-for list="{{listings}}" as="l" hint-placeholder-count="5">
+    <sc-for list="{{listings}}" as="l" hint-placeholder-count="4">
       <li style="background: #FFFFFF; border-radius: 16px; padding: 12px 14px; display: flex; align-items: center; gap: 12px">
         <span style="{{l.tile}}"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="{{l.stroke}}" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="{{l.icon}}"></path></svg></span>
         <span style="flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px">
@@ -66,9 +73,7 @@ listings: [
 { name: 'Sourdough, half loaf', meta: 'Theo Nguyen', when: '2–3 days', badgeStyle: soon, icon: G, stroke: '#8A6414', tile: tile('#F5EBCD'), open: false, claimed: true, pickupSet: true },
 { name: 'Basil', meta: 'Moody Hall 4F', when: 'Tomorrow', badgeStyle: urgent, icon: V, stroke: '#2F7A3A', tile: tile('#E2F1D8'), open: true, claimed: false, pickupSet: true },
 { name: 'Eggs, 6', meta: 'Jordan K.', when: '2–3 weeks', badgeStyle: soon, icon: P, stroke: '#B0412E', tile: tile('#FBE4DE'), open: true, claimed: false, pickupSet: false },
-{ name: 'Jasmine rice, 2 lb', meta: 'CougarCS Kitchen', when: '3+ weeks', badgeStyle: soon, icon: J, stroke: '#6A4FA3', tile: tile('#ECE5F7'), open: true, claimed: false, pickupSet: true },
-{ name: 'Bell peppers, 3', meta: 'Moody Hall 4F', when: '4–5 days', badgeStyle: soon, icon: V, stroke: '#2F7A3A', tile: tile('#E2F1D8'), open: true, claimed: false, pickupSet: false }
-]
+{ name: 'Jasmine rice, 2 lb', meta: 'CougarCS Kitchen', when: '3+ weeks', badgeStyle: soon, icon: J, stroke: '#6A4FA3', tile: tile('#ECE5F7'), open: true, claimed: false, pickupSet: true }]
 };
 }
 }

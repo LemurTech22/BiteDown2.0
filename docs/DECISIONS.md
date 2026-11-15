@@ -2,6 +2,106 @@
 
 Newest first. Each entry: date, decision, why, alternatives considered.
 
+## 2026-11-14: PR #1 merge rulings (owner)
+- **iOS changes merge without a Mac run.** The iOS part of #1 is the label rename ("Staples", "Shared food", "Share with friends", "Group food") in `ios/App` and `ios/Tests`; no Xcode run was possible (Windows PC, GitHub CI billing-locked). The owner accepts the risk; the next Mac session runs the Smoke plan and fixes anything it finds.
+- **LemurTech22 agrees to merge #1** (relayed by the owner).
+
+## 2026-11-14: Save acknowledgement, read-and-confirm screens, own design canvas (owner)
+- **Saving an edit closes it.** A successful Save shows "Saved changes to <name>" (a polite, touch-transparent notice for 3 s) and closes the editor. Why: Save gave no visible feedback. With the read-and-confirm redesign the editor is a sheet, so the sheet closing is the acknowledgement.
+- **Read and confirm, minimum effort.** Item detail becomes a summary card plus tap-to-change rows (one sheet per choice, saved on pick; a plain-RN date sheet with quick picks instead of typing YYYY-MM-DD). Photo review shows one line per food and flags only uncertain items ("Check this", confidence < 0.5 or likely non-food). Why: the app already fills every field; the old screens read like forms to fill in. Alternative: redesign Item detail only.
+- **A new design canvas in the owner's account.** The old canvas (claude.ai/artifact/ALmB8FYKGrayhDQXqvoncx) belongs to another organisation and can't be edited from here. The orchestrator publishes a new one from `docs/design/screens/` (plus the redesigned screens) and points `CLAUDE.md` at it. Alternative: ask the old owner for edit access.
+
+## 2026-11-14: Item photos, ML ownership, Undo polish (owner and orchestrator rulings)
+- **Item photos (owner).** Food added from a photo keeps a **per-item crop** (≤ 512 px JPEG, cut with the detector's box),
+  shown on its row and detail. Food added without a photo (typed, voice, receipt, barcode) shows a **food illustration**
+  matched by name, then the food-group icon. **Friends and group members who can see a shared item see its photo**
+  (same visibility rules as the listing). Why: users relate to their real food; the photo was analysed and discarded.
+  Alternatives: the whole fridge photo per item; an Add photo button instead of illustrations; owner-only photos.
+  Supersedes the 2026-10 "per-item photo history is deferred" note in `docs/design/SCREENS.md` row 6.
+- **ML track (owner).** The owner takes over the data + model track from teammate LemurTech22 to improve the YOLO model.
+  First step: score `fwr_20261011` (never scored; the Drive copy of `predictions.jsonl` was truncated). Training stays on
+  Colab (the local RTX 3050 Ti has 4 GB VRAM); the local GPU can score and tune thresholds once data and weights are here.
+- **Undo panel polish (owner).** The Undo timer pauses while the panel is hovered, focused or pressed, and resumes with the
+  time left (at least 2 s). Panels float over the Fridge list instead of resizing it. Bottom sheets stay in the app column
+  on desktop web. The Fridge row's Remove icon is a check-circle (the up-arrow read as Share/Export).
+- **CL-12 ruled by design (orchestrator).** The web timer runs even with a screen reader, because react-native-web
+  cannot detect one (`isScreenReaderEnabled()` always resolves `true`). Focus pauses the panel and Recently removed is the
+  untimed path for 7 days. Native apps still keep the panel while a screen reader is on.
+- **QA ID collision (orchestrator).** The 7-day restore boundary bug is **BE-53**, not BE-52: BE-52 was used on `main` by
+  #123 (`d774f0a`) but never logged in `docs/QA.md`. Commit `55b1dd5` keeps its pushed message.
+
+## 2026-11-13: Undo panel and Recently removed (owner rulings)
+- **Undo panels hide after 8 s** or on a Dismiss button, one at a time; they stay while Undo is pending or failed and
+  never auto-hide under a screen reader. Why: the panel lived for the whole 10-minute restore window and could not be
+  closed, so it covered the list. Alternatives: 5 s with no close; keep 10 min and add a close button.
+- **Recently removed + Put back.** A Fridge screen lists the last 7 days of removals. Put back is the normal restore,
+  so Impact returns exactly to what it was. The restore window (`POST /items/:id/restore`, `restore-batch`) goes from
+  10 minutes to **7 days**. Why: an accidental removal found later should be fixable without re-photographing the food
+  or leaving a false removal in Impact. Alternative: "Add again" (a new copy), rejected because the mistaken removal
+  would stay counted. The iOS app is unchanged and keeps its own short Undo.
+
+## 2026-11-13: GitHub CI retired (owner ruling)
+- **No more GitHub Actions CI.** The orchestrator (Claude) runs the checks CI ran and records them in the `docs/QA.md`
+  sign-off log: the backend suite (not slow, Gemini `.env` overrides blanked), client `tsc`, lint and Jest, and the iOS
+  Smoke plan on a Mac when iOS changes. Why: Actions is locked by a billing issue on the repo owner's account (no job has
+  started since 2026-11-06). The owner said: "Let that be directly through you." An iOS change with no Mac run merges
+  only on a recorded owner ruling. Supersedes the 2026-10-19 "PRs wait for green CI" rule. The workflows stay in
+  `.github/workflows/` unused.
+
+## 2026-11-13: Sharing, storage moves and "pantry" wording (owner rulings)
+- **Shared food lists your own open shares.** The Expo screen adds a "You're sharing" section (All filter only),
+  built from `GET /items` (`share.status == "open"`). `GET /share` still excludes the caller's own listings, so the
+  Social widget and iOS are unchanged. Why: an item shared from Item detail never showed anywhere for its owner, which
+  read as a broken toggle. Alternatives: return own listings from `GET /share` with a `mine` flag (changes the
+  contract for iOS and the widget), or a hint only.
+- **A storage change re-estimates expiry** (`PATCH /items/:id`, rule in `docs/API.md`): freezing uses the freezer
+  default (expired dates stay), thawing uses the destination default capped at 2 days for meat and seafood and 3 for
+  leftovers, and fridge <-> pantry keeps the fraction of life left. User-typed dates stay unless
+  `reestimate_expiry: true`, which the Move sheet offers as a switch. Why: a date carried over unchanged was wrong in
+  both directions. Alternatives: always reset to the new storage's default (lets fridge/pantry moves reset the clock).
+- **"Pantry" means only room-temperature storage.** User-visible labels change; API values, routes and
+  accessibility identifiers don't: food group `pantry` reads "Staples", the social Food Pantry reads "Shared food"
+  (toggle "Share with friends", owner card "Shared with friends"), and the group pantry reads "Group food". Applied
+  in the Expo and iOS apps and `docs/design/SCREENS.md`. The canvas is updated on merge. Server error messages
+  still say "group pantry". Why: one word had four meanings, and "Share to Food Pantry" read as a storage move.
+
+## 2026-11-13 — Showcase hardening: Gemini models, capacity, photo merge (orchestrator)
+- **Gemini primary model is `gemini-3.5-flash-lite`**, with `GEMINI_FALLBACK_MODELS=gemini-3.1-flash-lite,gemini-3.5-flash`
+  and `GEMINI_TIMEOUT_S=20`. Why: probes on 2026-11-12/13 measured `3.5-flash-lite` at about 1 s, `3.1-flash-lite`
+  flapping between 503 and 15-30 s, and `gemini-3.8-flash` at 362 s for a one-line prompt. Free-tier quota is per
+  model, so a chain also multiplies headroom. A 429 or a timeout moves straight to the next model; the 40 s
+  `GEMINI_FALLBACK_BUDGET_S` keeps the 75 s client timeouts safe. A timeout on enrichment (`retry=False`) ends the
+  chain: detection (up to 30 s) plus two 25 s enrichment attempts would pass the photo request's 75 s.
+  Replaces the 2026-10-10 `gemini-3.8-flash` choice.
+  Alternatives: keep 3.8-flash (unusable latency), add a paid key only (doesn't help 503 "high demand").
+- **`GUNICORN_THREADS=12`** for the showcase (default stays 4). Why: four slow Gemini calls blocked login and Fridge
+  for everyone. 12 threads stay under SQLAlchemy's 15-connection pool. Load check: 8 concurrent photo scans took
+  2.5-7 s each while `GET /items` stayed at about 10 ms.
+- **`POST /items/from-photo` (fridge mode) merges identical detections** (name, freshness, unit, storage): quantity summed,
+  max confidence, first-seen order, before enrichment. Why: one photo returned 24 rows (one per apple); now 7. Contract in
+  `docs/API.md`; the QA test `test_duplicate_detections_share_one_question_and_one_answer` was updated to match.
+- **Client resilience:** first request waits for `api-config.json` (5 s cap, skipped when an address is cached);
+  config refetch every 60 s and after a network error; release builds ignore loopback remote addresses; Home loads
+  the recipe card separately; a Remove 409 `already_removed` counts as success; **Server settings** (address, Demo
+  mode) is reachable before sign-in; batch Undo lasts the full 10-minute window. Runbook: `docs/SHOWCASE.md`.
+
+## 2026-11-12 — Showcase distribution for the Expo app (owner)
+- **Android:** an installable APK from EAS Build (`client/eas.json` profile `preview`), project `@bitedown/bitedown`.
+- **iPhone:** the same app's **web build** in Safari (Add to Home Screen), hosted on Expo Hosting
+  (`https://bitedown.expo.app`). *Why:* Expo Go on iOS can't open shared projects (Expo FAQ: shared URLs open in
+  "Expo Go for Android"), a standalone iOS build needs a paid Apple account, and the SwiftUI app on `main` installs
+  only by cable from a Mac with 7-day free signing. The SwiftUI app stays usable for demos from the Mac.
+- **Google Sign-In deferred** for the Expo app (email + password only); it needs a native build and an OAuth client.
+- **Backend:** the owner's PC (docker compose, `restart: unless-stopped`) behind **Tailscale Funnel** (stable
+  `https://laptop-64ms4pd7.tail41bac8.ts.net`) or, until Funnel is approved on the tailnet, a **Cloudflare quick tunnel**.
+  `scripts/serve_public.ps1` picks one, watches it, and publishes its address.
+- **The app finds the backend through `api-config.json`** on Expo Hosting (`EXPO_PUBLIC_API_CONFIG_URL`), fetched at
+  start and on resume, cached, overridable in Debug settings. *Why:* the tunnel address can change without rebuilding
+  or reinstalling the APK. Alternatives: bake the URL (breaks on every tunnel change), AWS EC2 (owner has only an AWS
+  Builder ID, which is not an AWS account).
+- **CORS:** the API sends CORS headers only to exact origins in `CORS_ORIGINS` (`backend/app/cors.py`); bearer auth,
+  no credentials header.
+
 ## 2026-10-19 — Deadline mode ends: short CI with smoke UI tests (owner)
 - **iOS PRs** run the `Smoke` XCTest plan (`ios/TestPlans/Smoke.xctestplan`): every unit test plus a smoke set of UI tests. The smoke set covers launch, auth, the tab shell, Fridge, removal and Undo, and the Home Impact pill. It also includes `DemoPathUITests`, the merge-gate demo path (photo add → expiry → remove → Impact). The target is under 12 min.
 - **Full plan runs:** `main` pushes, a nightly schedule and manual dispatch run the `Full` plan, which is every unit and UI test.
@@ -325,4 +425,4 @@ A UI/UX QA pass checked every comment. The owner made the product calls, and the
 - **Ports bind to `127.0.0.1`** (API 5055, DB 5433).
 
 ## Open — to decide and record here
-- **Demo connectivity:** how the phone reaches the API (same Wi-Fi as a laptop, a tunnel, or a hosted backend).
+- ~~**Demo connectivity**~~: decided 2026-11-12 (tunnel from the owner's PC + `api-config.json`; see the top entry).

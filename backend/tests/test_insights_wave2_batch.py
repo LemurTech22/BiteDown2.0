@@ -53,6 +53,21 @@ def ids(items):
     return [i["id"] for i in items]
 
 
+def age_removals(sql, items, minutes):
+    for item in items:
+        sql("UPDATE share_listings SET fulfilled_at = fulfilled_at - make_interval(mins => :m) "
+            "WHERE item_id=:i AND fulfilled_at=(SELECT removed_at FROM items WHERE id=:i)",
+            m=minutes, i=item["id"])
+        sql("UPDATE items SET removed_at = removed_at - make_interval(mins => :m) WHERE id=:i",
+            m=minutes, i=item["id"])
+        # Reinsert to let TimescaleDB route the aged timestamp into its correct chunk.
+        sql("WITH moved AS (DELETE FROM food_events WHERE item_id=:i AND event_type='remove' RETURNING *) "
+            "INSERT INTO food_events (id, time, user_id, item_id, group_id, event_type, category, quantity, "
+            "est_weight_kg, est_price, outcome, waste_reason, co2e_kg) "
+            "SELECT id, time - make_interval(mins => :m), user_id, item_id, group_id, event_type, category, "
+            "quantity, est_weight_kg, est_price, outcome, waste_reason, co2e_kg FROM moved", m=minutes, i=item["id"])
+
+
 # ---- happy path ---------------------------------------------------------------------------------
 @pytest.mark.parametrize("outcome", ["used", "donated"])
 def test_remove_batch_removes_all_with_one_event_each(client, user, three, events, outcome):
@@ -90,12 +105,15 @@ def test_remove_batch_matches_single_removes(client, user, signup, make_item):
         assert a[k] == b[k]
 
 
-def test_restore_batch_and_impact_exact(client, user, three, make_item, sql, events):
+@pytest.mark.parametrize("outcome", ["used", "donated"])
+@pytest.mark.parametrize("minutes", [0, (6 * 24 + 23) * 60])
+def test_restore_batch_and_impact_exact(client, user, three, make_item, sql, events, outcome, minutes):
     keep = make_item(user, name="Other", est_price=4.0)
     client.post(f"/items/{keep['id']}/remove", json={"outcome": "thrown_out", "waste_reason": "forgot"},
                 headers=user["headers"])
     before, snap = all_impacts(client, user), state(sql)
-    assert rb(client, user, ids(three), "donated").status_code == 200
+    assert rb(client, user, ids(three), outcome).status_code == 200
+    age_removals(sql, three, minutes)
     assert all_impacts(client, user) != before
     r = sb(client, user, ids(three))
     assert r.status_code == 200, r.get_data(as_text=True)
@@ -248,10 +266,9 @@ def test_restore_batch_one_active_or_expired_409_nothing_restored(client, user, 
     snap, before = state(sql), all_impacts(client, user)
     err(sb(client, user, ids(three)), 409, "not_removed")
     assert state(sql) == snap
-    # one removal older than 10 minutes -> whole batch refused
-    sql("UPDATE items SET removed_at = removed_at - interval '11 minutes' WHERE id=:i", i=three[0]["id"])
-    sql("UPDATE food_events SET time = time - interval '11 minutes' WHERE item_id=:i AND event_type='remove'",
-        i=three[0]["id"])
+    # One removal older than seven days refuses the entire batch, including a valid multi-day removal.
+    age_removals(sql, three[:1], 7 * 24 * 60 + 1)
+    age_removals(sql, three[1:2], (6 * 24 + 23) * 60)
     snap, before = state(sql), all_impacts(client, user)
     err(sb(client, user, ids(three[:2])), 409, "restore_window_expired")
     assert state(sql) == snap and all_impacts(client, user) == before
@@ -321,12 +338,14 @@ def _listing(sql, lid):
     return sql("SELECT * FROM share_listings WHERE id=:i", i=lid)[0]
 
 
-def test_donated_batch_fulfils_listings_and_restore_reopens(client, pair, make_item, sql):
+@pytest.mark.parametrize("minutes", [0, (6 * 24 + 23) * 60])
+def test_donated_batch_fulfils_listings_and_restore_reopens(client, pair, make_item, sql, minutes):
     a, b = pair
     claimed, open_, plain = (make_item(a, name=n) for n in ("claimed", "open", "plain"))
     l1 = client.post("/share", json={"item_id": claimed["id"]}, headers=a["headers"]).get_json()["listing"]
     l2 = client.post("/share", json={"item_id": open_["id"]}, headers=a["headers"]).get_json()["listing"]
     assert client.post(f"/share/{l1['id']}/claim", headers=b["headers"]).status_code in (200, 201)
+    before = all_impacts(client, a)
     r = rb(client, a, ids([claimed, open_, plain]), "donated")
     assert r.status_code == 200
     x1, x2 = _listing(sql, l1["id"]), _listing(sql, l2["id"])
@@ -336,11 +355,13 @@ def test_donated_batch_fulfils_listings_and_restore_reopens(client, pair, make_i
     assert by[claimed["id"]]["share"]["status"] == "fulfilled"
     assert by[plain["id"]]["share"] is None
     assert l2["id"] not in {x["id"] for x in client.get("/share", headers=b["headers"]).get_json()["listings"]}
+    age_removals(sql, [claimed, open_, plain], minutes)
     assert sb(client, a, ids([claimed, open_, plain])).status_code == 200
     x1, x2 = _listing(sql, l1["id"]), _listing(sql, l2["id"])
     assert x1["status"] == "open" and x1["recipient_id"] is None and str(x1["claimed_by"]) == b["user"]["id"]
     assert x2["status"] == "open" and x2["fulfilled_at"] is None
     assert l2["id"] in {x["id"] for x in client.get("/share", headers=b["headers"]).get_json()["listings"]}
+    assert all_impacts(client, a) == before
 
 
 def test_used_batch_leaves_listings_open(client, pair, make_item, sql):

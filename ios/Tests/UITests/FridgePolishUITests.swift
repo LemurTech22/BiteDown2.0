@@ -224,7 +224,7 @@ final class FridgePolishUITests: XCTestCase {
         let app = launch(RemoveArgs.listingSeed)
         openRemove(app, item: "item-spinach")
         XCTAssertTrue(app.any(PID.listing).exists, "shared badge on the icon when listed")
-        XCTAssertEqual(app.any(PID.listing).label, "On your Food Pantry")
+        XCTAssertEqual(app.any(PID.listing).label, "Shared with friends")
         XCTAssertEqual(app.any(PID.badge).label, "Expires tomorrow")
         app.buttons[FID.cancel].tap()
         XCTAssertTrue(app.any(FID.sheet).waitForNonExistence(timeout: 10))

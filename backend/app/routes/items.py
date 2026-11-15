@@ -234,10 +234,13 @@ def patch_item(item_id):
     if item.removed_at is not None:
         raise not_found("Item not found.")
     allowed = {"name", "quantity", "unit", "storage", "category", "food_group", "predicted_expiry",
-               "est_price", "est_weight_kg", "freshness"}
+               "est_price", "est_weight_kg", "freshness", "reestimate_expiry"}
     unknown = set(body) - allowed
     if unknown:
         raise validation_error(f"Cannot edit: {', '.join(sorted(unknown))}.")
+    if "reestimate_expiry" in body and not isinstance(body["reestimate_expiry"], bool):
+        raise validation_error("reestimate_expiry must be a boolean.")
+    old_storage = item.storage
     if "name" in body:
         if not isinstance(body["name"], str) or not body["name"].strip():
             raise validation_error("name must be a non-empty string.")
@@ -277,6 +280,11 @@ def patch_item(item_id):
         if new != item.predicted_expiry:
             item.expiry_source = "user"
         item.predicted_expiry = new
+    elif ("storage" in body and item.storage != old_storage
+          and (item.expiry_source != "user" or body.get("reestimate_expiry") is True)):
+        item.predicted_expiry = expiry.reestimate(
+            item.category, old_storage, item.storage, item.predicted_expiry)
+        item.expiry_source = "default"
     db.session.commit()
     return jsonify(item=_owner_view(item))
 
@@ -344,7 +352,7 @@ def remove_item(item_id):
     return jsonify(item=_owner_view(item))
 
 
-RESTORE_WINDOW = timedelta(minutes=10)
+RESTORE_WINDOW = timedelta(days=7)  # owner ruling 2026-11-13: "Recently removed" puts food back for 7 days
 
 
 @bp.post("/<item_id>/restore")
@@ -362,8 +370,8 @@ def restore_item(item_id):
     if item.removed_at is None:
         raise ApiError(409, "not_removed", "Item has not been removed.")
     now = datetime.now(timezone.utc)
-    if now - item.removed_at > RESTORE_WINDOW:
-        raise ApiError(409, "restore_window_expired", "Items can only be restored within 10 minutes of removal.")
+    if now - item.removed_at >= RESTORE_WINDOW:  # "less than 7 days" (BE-53)
+        raise ApiError(409, "restore_window_expired", "Items can only be restored within 7 days of removal.")
     removed_at = item.removed_at
     # The event is written a few ms after removed_at; the time bound prunes hypertable chunks.
     ev = (FoodEvent.query.filter(FoodEvent.item_id == item.id, FoodEvent.event_type == "remove",
@@ -481,8 +489,8 @@ def restore_batch():
     if any(i.removed_at is None for i in items):
         raise ApiError(409, "not_removed", "One or more items have not been removed.")
     now = datetime.now(timezone.utc)
-    if any(now - i.removed_at > RESTORE_WINDOW for i in items):
-        raise ApiError(409, "restore_window_expired", "Items can only be restored within 10 minutes of removal.")
+    if any(now - i.removed_at >= RESTORE_WINDOW for i in items):
+        raise ApiError(409, "restore_window_expired", "Items can only be restored within 7 days of removal.")
 
     removed_at = {i.id: i.removed_at for i in items}
     since = min(removed_at.values()) - timedelta(minutes=1)
@@ -593,6 +601,19 @@ def from_photo():
         except gemini.UpstreamError as e:
             raise upstream_unavailable(f"No vision backend available: {e}")
     cands = candidates.normalize_all(raws, source)
+    if mode == "fridge":
+        merged = {}
+        for cand in cands:
+            key = (cand["name"].strip().lower(), cand["freshness"], cand["unit"], cand["storage"])
+            if key not in merged:
+                merged[key] = cand
+                continue
+            first = merged[key]
+            first["quantity"] += cand["quantity"]
+            confidence = cand.get("confidence")
+            if confidence is not None and (first.get("confidence") is None or confidence > first["confidence"]):
+                first["confidence"] = confidence
+        cands = list(merged.values())
     body = {"candidates": cands, "source": source}
     if facets:  # opt-in; enrich.run never raises and never changes the status
         body["enrichment"] = enrich.run(cands, facets, image=data, source=source, started=started)

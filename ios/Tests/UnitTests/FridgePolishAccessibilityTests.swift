@@ -182,7 +182,7 @@ final class FridgePolishAccessibilityTests: XCTestCase {
     func testSheetListingBadgeIsLabelledAndHeaderBadgeSpoken() async throws {
         let item = try await fixture("item-spinach")
         let els = try leaves(of: sheet(item), height: 900)
-        XCTAssertTrue(els.contains { identifier($0) == "remove.listing" && $0.accessibilityLabel == "On your Food Pantry" }, describe(els))
+        XCTAssertTrue(els.contains { identifier($0) == "remove.listing" && $0.accessibilityLabel == "Shared with friends" }, describe(els))
         XCTAssertTrue(els.contains { identifier($0) == "remove.badge" && $0.accessibilityLabel == "Expires tomorrow" }, describe(els))
         let unlisted = try await fixture("item-eggs")
         XCTAssertFalse(try leaves(of: sheet(unlisted), height: 900).contains { identifier($0) == "remove.listing" })
