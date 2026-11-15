@@ -120,6 +120,7 @@ Detail lives in [`qa/backend.md`](qa/backend.md) and [`qa/ml.md`](qa/ml.md). The
 | 2026-11-13 | #1 (full QA) | Expo client | Codex QA of the whole PR (`qa/client.md`, "PR #1 full QA"): FAIL (CL-10, CL-11) → fixed in `25cf826` → re-verified PASS (`325e40f`) | **PASS** | none |
 | 2026-11-13 | #1 (Undo 8 s + Recently removed) | Expo client + backend | Codex QA (`qa/client.md`, `qa/backend.md`) of `0c093b9`: client PASS; backend FAIL (BE-53, 7-day boundary) → fixed in `55b1dd5` → restore tests 139/139. Full backend suite (Gemini variables blanked, serial): 3102 passed, 2 env-only failures (`test_app_reads_env`, BE-22 `resource` module is Unix-only). Live web check: panel hides at 8 s, Put back leaves Impact at baseline | **PASS** | none |
 | 2026-11-14 | #1 (Undo pause, overlay, sheets, icon) | Expo client | Codex QA (`qa/client.md`, "Undo pause, overlay, sheet width, Remove icon"): FAIL (CL-12, CL-13, CL-14) → CL-12 ruled by design, CL-13/14 fixed in `d26aaac` → re-check PASS: tsc and lint clean, Jest 41 suites / 619. Orchestrator live web check (demo mode): hover pauses and resumes with the time left, list no longer shifts, overlay passes taps through, sheet stays in the 520 px column, check-circle icon, message spacing. One early hover run closed the panel and didn't reproduce in 2 later runs | **PASS** | none |
+| 2026-11-14 | #1 (Save closes with notice) | Expo client | Owner request: a successful Item detail Save closes the screen and shows "Saved changes to <name>" (app-wide `NoticeProvider`). Codex QA (`qa/client.md`, "Save closes with notice QA"): FAIL (CL-17) → fixed → re-check FAIL (CL-18, CL-19) → fixed with a per-visit guard → re-check 2: all pass, Jest 43 suites / 653; a `pending` reset QA flagged was ruled by design | **PASS** | none |
 
 **Not yet tested anywhere:** the live ML service and YOLO accuracy (paused: a teammate owns the models), GLM-OCR image-to-text, Google Sign-In end to end, and the integration demo path.
 
@@ -179,6 +180,9 @@ Severity: **blocker** (breaks demo path) · high · medium · low. Full repros a
 | CL-13 | medium | Expo client | Transparent strip of the Fridge Undo overlay took taps meant for the row behind | fixed (`d26aaac`) |
 | CL-14 | medium | Expo client | Batch Undo panels could overflow the overlay's 40% cap instead of scrolling | fixed (`d26aaac`) |
 | BE-53 | low | Backend | Restore accepted a removal exactly 7 days old (`>` instead of `>=`) | fixed (`55b1dd5`, commit message says BE-52; renumbered: BE-52 is #123's receipt-fixture fix `d774f0a`) |
+| CL-17 | high | Expo client | A Save that resolved after leaving Item detail still navigated / overwrote a reused screen | fixed (`0e0cbef`) |
+| CL-18 | high | Expo client | A Save from an earlier visit (A → B → A) overwrote the form and navigated | fixed (`4c90785`) |
+| CL-19 | medium | Expo client | A Save that failed after leaving still showed its error and error haptic | fixed (`4c90785`) |
 | ML-1 – ML-6 | medium/low | ML | Receipt parser: qty-first lines, trailing UPCs, Costco item numbers, "Merchandise Total", EUR totals, OCR-spaced decimals | fixed (#3) |
 | ML-7 – ML-9 | medium/low | ML | Mixed-case total phrases, voided items, and multi-buy lines | fixed (#8) |
 | ML-10 | medium | ML | Products containing a skip word were dropped (`INSTANT OATMEAL`) | fixed (#8) |
