@@ -31,7 +31,7 @@ ruling on the iOS label change with no Mac run, and LemurTech22's agreement.
   `photo-data` volume), migration `0009_item_photos`, crop staging in `from-photo` (`photo_token`, `photo_preview_url`),
   `photo_token` on `POST /items`, signed 1 h `photo_url`, bearer-free photo endpoints, file cleanup on account delete.
   Client: `ItemThumb` (photo, else a Fluent Emoji Flat illustration matched by name, 87 SVGs in `client/assets/food`, MIT,
-  else the group icon). Not pushed yet; the PR goes into `feat/expo-android`. **After pulling it:** `docker compose up -d
+  else the group icon). **PR #2** into `feat/expo-android` (merge after #1). **After pulling it:** `docker compose up -d
   --build api` (migration 0009 runs on start). iOS doesn't show photos yet (additive field, nothing breaks). The worktree's
   `client/node_modules` is a junction to the main checkout's.
 - **ML track: now the owner's** (was LemurTech22's). Step 1: score `fwr_20261011` from `export.zip` (re-export on Colab
