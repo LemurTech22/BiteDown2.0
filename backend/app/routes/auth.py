@@ -8,8 +8,8 @@ from ..auth import make_token, require_auth
 from ..errors import ApiError, upstream_unavailable, validation_error
 from ..extensions import db
 from ..models import (TOMBSTONE_USER_ID, FoodEvent, Friendship, Group, GroupMember, HelpRequest, Item,
-                      RequestAudience, ShareListing, FriendCode, User, UserIdentity)
-from ..services import google_auth
+                      RequestAudience, ShareListing, FriendCode, StagedPhoto, User, UserIdentity)
+from ..services import google_auth, item_photos
 from ._util import check_len, iso, json_body
 
 bp = Blueprint("auth", __name__, url_prefix="/auth")
@@ -178,6 +178,11 @@ def delete_account():
     aggregate data survives but nothing links to a person.
     """
     uid = g.user.id
+    # Block new item/staged-photo FK inserts until deletion commits, so the file snapshot is complete.
+    db.session.execute(db.select(User.id).where(User.id == uid).with_for_update()).scalar_one()
+    photo_keys = list(db.session.scalars(db.select(Item.photo_key).where(
+        Item.owner_id == uid, Item.photo_key.is_not(None))))
+    photo_keys.extend(db.session.scalars(db.select(StagedPhoto.photo_key).where(StagedPhoto.owner_id == uid)))
     item_ids = db.select(Item.id).where(Item.owner_id == uid)
     # Ownership of groups they owned passes on before their membership goes.
     for m in GroupMember.query.filter_by(user_id=uid, role="owner").all():
@@ -200,7 +205,9 @@ def delete_account():
                             ).delete(synchronize_session=False)
     FoodEvent.query.filter_by(user_id=uid).update({"user_id": TOMBSTONE_USER_ID}, synchronize_session=False)
     Item.query.filter_by(owner_id=uid).delete()
+    StagedPhoto.query.filter_by(owner_id=uid).delete()
     UserIdentity.query.filter_by(user_id=uid).delete()
     User.query.filter_by(id=uid).delete()
     db.session.commit()
+    item_photos.delete_files(photo_keys)
     return Response(status=204)

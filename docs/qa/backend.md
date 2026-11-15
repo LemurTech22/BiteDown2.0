@@ -1123,3 +1123,53 @@ Leak checks: three random files (`test_gemini_retry.py`, `test_wave2_expiry_roun
 Mutation check: with the TRUNCATE commented out, `test_items.py` had 7 failed, `test_qa_friend_qr.py` 5 failed and `test_wave2_freshness.py` 28 failed; with `-n 3`, the three files together had 32 failed. With the TRUNCATE restored (byte-identical `conftest.py`), they passed 18, 49 and 75, and 142 with `-n 3` in both orders. `test_removal.py` passes 26/26 even with no reset, so it is not useful as a canary.
 
 CI follow-up (not done here): add `pytest-xdist==3.6.1` to `backend/requirements.txt` (it brings in `execnet==2.1.2`). Add `-n 4` to both pytest lines in `.github/workflows/backend.yml`. The CI Postgres role needs CREATEDB or superuser; the stock timescale image's `POSTGRES_USER` is superuser.
+
+## Item photos backend QA (2026-11-14)
+
+**Verdict: FAIL — BE-54 (medium).**
+
+Added 55 adversarial cases in `backend/tests/test_qa_item_photos.py`. Updated the four authorized existing test files. Application code and migrations were unchanged; no git commands or live Gemini/ML calls were used.
+
+**BE-54 — warning-range decompression bombs reach vision.** Location: `backend/app/routes/items.py:556–559`. Repro: run `test_decompression_bomb_rejected_before_detection[200]`: upload a 20×20 PNG with Pillow’s pixel limit lowered to 200. Expected: **400 before detection**. Actual: **200 and a detector call**. Pillow emits a warning, which the exception handler does not intercept. This existing upload-validation defect remains pinned by a failing regression. BE-55 through BE-59 are unused.
+
+| Original failure/error | Classification |
+|---|---|
+| `test_from_photo_enrich.py::test_only_the_enrichment_differs_from_the_plain_response` | Contract change: fresh photo credentials differ between requests; unchanged fields and identical preview bytes remain checked. |
+| `test_photo_merge.py` — all 8 failing cases | Contract change: exactly two photo fields added; original merge, ordering and normalized-value assertions retained. |
+| `test_qa_pr79_contract.py::test_nutrition_key_on_every_item_response_path` | Contract change: exact item shape includes `photo_url`. |
+| `test_qa_pr79_contract.py::test_from_photo_without_enrich_has_no_new_keys` | Contract change: exact candidate shape includes nullable photo fields. |
+| `test_qa_pr79_migration.py::test_single_alembic_head_and_linear_chain` | Contract change: sole head is `0009`; linear ancestry retained. |
+| `test_qa_pr79_migration.py::test_upgrade_with_existing_data_gives_null_and_loses_nothing` | Contract change: head `0009`, preserved data, null photo keys and empty staging table. |
+| `test_gunicorn_gthread.py::test_fast_requests_not_blocked_by_slow_gemini_call` | Environment only: Windows lacks `fcntl`. |
+| `test_gunicorn_gthread.py::test_four_concurrent_slow_calls_run_in_parallel` | Environment only: Windows lacks `fcntl`. |
+| BE-22 memory test in `test_qa_be19_22.py` | Expected environment-only failure: Unix `resource` module unavailable. |
+
+Coverage includes signature scope/tampering/key replacement, expiry boundaries, visibility changes, token reuse, caller-only purge, commit ordering, batch/storage failures, metadata stripping, crop dimensions, upload formats and private cache headers. Previously issued URLs remaining usable after unfriending/leaving matches the documented one-hour capability contract.
+
+Exact results:
+
+- Original-failure reproduction: **13 failed, 10 passed**.
+- Final new QA file: **54 passed, 1 failed**.
+- Full suite, run once: **3223 passed, 2 failed, 2 errors, 4 skipped, 7 xfailed, 1 warning in 1334.46 s**.
+- All 13 original contract failures and all 47 builder cases passed in the full run.
+
+The specified venv was used with all three Gemini overrides blank.
+
+_Written by backend QA (Codex); appended by the orchestrator because the QA sandbox could not write outside `backend/`._
+
+### Re-check (2026-11-14)
+
+**Verdict: PASS — BE-54 fixed.** Assessed the working-tree fix identified as `0eaf79b`; commit metadata was not independently checked because Git commands were prohibited. No new backend defect reproduced; BE-55–BE-59 remain unused.
+
+- Added **108** real-image route cases: **PNG/JPEG/WebP × 6 pixel boundaries × 3 upload flows × 2 stubbed upstreams**. With `Image.MAX_IMAGE_PIXELS=100`, **99 and exactly 100** pixels return **200**, forwarding the original bytes and sniffed MIME once. **101, 150, exactly 200, and 201** pixels return **400 validation_error / "image has too many pixels."**, with no detector/reader call and no staged photo. Tracking the real `Image.open` confirms **201** takes Pillow's `DecompressionBombError` path, while **101–200** opens successfully and is rejected by the explicit guard. Small images exercise the same boundary logic without allocating production-size bombs.
+- **All `_sniff_image` upload routes covered:** `/items/from-photo` (fridge with expiry enrichment, and single without enrichment) and `/items/from-receipt`, each with ML and Gemini selected through stubs. Both native and React Native **Check again** use `/items/from-photo` with `mode=single` and no enrichment; their actual request shape is covered. Barcode scanning submits the decoded code to `GET /items/barcode/<code>`; there is no barcode-photo upload route. Source search found no additional `_sniff_image`/`_image_upload` caller.
+- **No global warning-policy changes:** all 108 route cases preserve the `warnings.filters` object and contents, `defaultaction`, `showwarning` and `onceregistry`. One additional regression interleaves **60** real sniffs on **8** worker threads across all three formats and the exact-limit, warning-range and error boundaries. It forbids calls to `simplefilter`, `filterwarnings`, `resetwarnings` and `catch_warnings`, and verifies the same global state afterward. Pillow's ordinary bomb warnings still occur; the application does not install a process-global filter.
+
+Exact results:
+
+- Final targeted `tests/test_qa_item_photos.py`: **164 passed, 0 failed, 58 warnings**, exit **0**, **40.55 s**. Includes the original **55** cases and **109** new cases (108 route cases plus the concurrent check).
+- Broader upload/image regression run across the **28 files** below: **1561 passed, 1 failed, 1 skipped, 3 xfailed, 58 warnings; 1566 total**, exit **1**, **234.37 s**. The sole failure is the existing Windows-only environment limitation in `test_qa_be19_22.py::test_be22_peak_memory_of_a_49_9mp_rgba_png_crop_is_one_decode_not_two`: its measurement subprocess imports Unix `resource`, which is unavailable here (independently confirmed with `importlib.util.find_spec('resource') is None`). Peak-RSS verification remains unverified on this host. The three strict xfails are the existing PARITY-1/PARITY-2/PARITY-3 receipt-category cases in `test_receipt_yolo_parity.py`; no expected-failure marker was added or changed. All **164** `test_qa_item_photos.py` cases and all **47** `test_item_photos.py` cases pass in this broader run. The builder-file count was independently confirmed by collection (**47 collected**). The backend-wide suite was not requested or run.
+
+The broader run includes **28 files**: `test_ai_endpoints.py`, `test_crops.py`, `test_enrich_gemini.py`, `test_enrich_unit.py`, `test_food_group_names.py`, `test_food_group.py`, `test_freshness_contract.py`, `test_from_photo_enrich.py`, `test_gemini_retry.py`, `test_gemini_timeout.py`, `test_gemini_usage.py`, `test_image_upload_validation.py`, `test_insights_wave2_gemini_shapes.py`, `test_item_photos.py`, `test_photo_merge.py`, `test_qa_be19_22.py`, `test_qa_gemini_timeout.py`, `test_qa_item_photos.py`, `test_qa_photo_validation.py`, `test_qa_pr79_contract.py`, `test_qa_pr79_crops.py`, `test_qa_pr79_gemini.py`, `test_qa_pr95_receipt.py`, `test_receipt_candidates_qa.py`, `test_receipt_candidates.py`, `test_receipt_gemini_fallback.py`, `test_receipt_timeouts_qa.py`, and `test_receipt_yolo_parity.py`.
+
+Runs used `python.exe -m pytest` from `backend/`, with `GEMINI_FALLBACK_MODELS`, `GEMINI_TIMEOUT_S` and `GEMINI_MODEL` blank, the inherited test database, and `PYTHON_DOTENV_DISABLED=1` to prevent `.env` loading. The supplied `..\..\CodeRedOrion-CougarAIUncs\.venv\Scripts\python.exe` does not exist relative to this worktree's `backend/`; the actual venv is at `..\..\..\CodeRedOrion-CougarAIUncs\.venv\Scripts\python.exe`. An initial run was interrupted for a default pytest-temp permission error; a diagnostic rerun had **1 setup error**. Final runs use `-p no:cacheprovider --basetemp <unique directory under backend/.pytest_cache>` to avoid that inaccessible directory. No feature code, builder tests, Git commands, `.env` reads or live Gemini/ML calls were used.

@@ -17,7 +17,7 @@ NUT = {"basis": "per_100g", "kcal": 52, "protein_g": 0.3, "carbs_g": 13.8, "fat_
 MAIN_ITEM_KEYS = {"id", "owner_id", "group_id", "name", "category", "storage", "quantity", "unit", "est_weight_kg",
                   "est_price", "source", "added_at", "predicted_expiry", "expiry_source", "removed_at", "outcome",
                   "waste_reason", "removed_after_expiry", "freshness", "freshness_checked_at", "confidence",
-                  "food_group", "share"}
+                  "food_group", "share", "photo_url"}
 
 
 def jpeg():
@@ -89,9 +89,13 @@ def test_nutrition_key_on_every_item_response_path(client, user):
     h = user["headers"]
     it = items_of(post_items(client, user, {"name": "A"}))[0]
     assert it["nutrition"] is None and set(it) == MAIN_ITEM_KEYS | {"nutrition"}
-    assert set(items_of(client.get("/items", headers=h))[0]) == MAIN_ITEM_KEYS | {"nutrition"}
+    assert it["photo_url"] is None
+    listed = items_of(client.get("/items", headers=h))[0]
+    assert set(listed) == MAIN_ITEM_KEYS | {"nutrition"}
+    assert listed["nutrition"] is None and listed["photo_url"] is None
     r = client.patch(f"/items/{it['id']}", json={"name": "B"}, headers=h)
     assert r.get_json()["item"]["nutrition"] is None
+    assert r.get_json()["item"]["photo_url"] is None
 
 
 # ---- backward compatibility: no new request field -> shape unchanged (except nutrition: null on items) -------------
@@ -104,7 +108,10 @@ def test_from_photo_without_enrich_has_no_new_keys(app, client, user, monkeypatc
     b = r.get_json()
     assert set(b) == {"candidates", "source"}
     assert set(b["candidates"][0]) == {"name", "category", "food_group", "storage", "quantity", "unit", "est_price",
-                                       "predicted_expiry", "expiry_source", "confidence", "freshness"}
+                                       "predicted_expiry", "expiry_source", "confidence", "freshness",
+                                       "photo_token", "photo_preview_url"}
+    assert b["candidates"][0]["photo_token"] is None
+    assert b["candidates"][0]["photo_preview_url"] is None
 
 
 def test_enrich_expiry_only_adds_no_nutrition_key_but_nutrition_adds_it_to_all(app, client, user, monkeypatch):

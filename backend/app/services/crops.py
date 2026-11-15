@@ -1,4 +1,4 @@
-"""Crops of detected food for the Gemini enrichment call (YOLO path only).
+"""Metadata-free crops for Gemini enrichment and for the stored photo of each item.
 
 `bbox` comes from `ml/serve` in absolute pixels of the image *as that service decoded it*: RGB, no EXIF
 transpose (`ml/serve/app.py::_load_image`). So a crop is cut from the raw pixel grid and then rotated upright by
@@ -7,7 +7,7 @@ set `ML_BBOX_FRAME = "upright"` in the app config and keep the rotated-EXIF test
 
 Nothing here raises. Undecodable bytes, too many pixels, or a bbox that is missing, malformed, mostly outside the
 image or too small give None for that item, and the enrichment still runs for it, text-only. The JPEG re-encode
-drops all metadata (EXIF, GPS). Nothing is stored.
+drops all metadata (EXIF, GPS). Item photos use the same frame/padding rules, fixed 512 px and q80.
 """
 import io
 import logging
@@ -61,7 +61,7 @@ def _decode(data: bytes):
     return img, orientation if orientation in _TRANSPOSE else 1
 
 
-def _cut(img, orientation, box):
+def _cut(img, orientation, box, *, side=None, quality=JPEG_QUALITY):
     width, height = img.size
     x1, y1, x2, y2 = box
     area = (x2 - x1) * (y2 - y1)
@@ -73,14 +73,19 @@ def _cut(img, orientation, box):
     right, bottom = min(width, math.ceil(x2 + pad_x)), min(height, math.ceil(y2 + pad_y))
     if right - left < MIN_SIDE_PX or bottom - top < MIN_SIDE_PX:
         return None
-    crop = img.crop((left, top, right, bottom)).convert("RGB")
+    return _encode(img.crop((left, top, right, bottom)), orientation, side, quality)
+
+
+def _encode(img, orientation, side, quality):
+    crop = img.convert("RGB")
     crop.info = {}  # BE-19: Pillow carries a JPEG comment (and other info keys) through crop and save
     if orientation in _TRANSPOSE:
         crop = crop.transpose(_TRANSPOSE[orientation])
-    side = int(current_app.config.get("ENRICH_CROP_MAX_PX", MAX_PX))
+    if side is None:
+        side = int(current_app.config.get("ENRICH_CROP_MAX_PX", MAX_PX))
     crop.thumbnail((side, side), Image.Resampling.LANCZOS)  # keeps the aspect ratio, never upscales
     out = io.BytesIO()
-    crop.save(out, "JPEG", quality=JPEG_QUALITY)  # no exif= argument: metadata is dropped
+    crop.save(out, "JPEG", quality=quality)  # no exif= argument: metadata is dropped
     return out.getvalue()
 
 
@@ -104,4 +109,37 @@ def make(image: bytes, bboxes: list) -> list:
             out[i] = _cut(img, orientation, box)
         except Exception as e:  # one bad box must not cost the others
             log.info("crops status=item_failed reason=%s", type(e).__name__)
+    return out
+
+
+def make_item_photos(image: bytes, bboxes: list, *, source: str, mode: str) -> list:
+    """First merged candidate's box, or whole upright image in single mode.
+
+    YOLO boxes are raw pixels (see module docstring). Gemini's detection contract does not
+    document a bbox coordinate frame, so its boxes are deliberately ignored.
+    """
+    out = [None] * len(bboxes)
+    if not bboxes:
+        return out
+    boxes = [_box(b) if source == "yolo" else None for b in bboxes]
+    if mode != "single" and not any(boxes):
+        log.info("item_photo status=skipped reason=no_usable_bbox")
+        return out
+    try:
+        img, orientation = _decode(image)
+        if current_app.config.get("ML_BBOX_FRAME", "raw") == "upright" and orientation != 1:
+            img, orientation = img.transpose(_TRANSPOSE[orientation]), 1
+        for i, box in enumerate(boxes):
+            try:
+                if box is not None:
+                    out[i] = _cut(img, orientation, box, side=512, quality=80)
+                if out[i] is None and mode == "single":
+                    out[i] = _encode(img, orientation, 512, 80)
+                if out[i] is None:
+                    log.info("item_photo status=skipped reason=unusable_bbox")
+            except Exception as e:
+                log.warning("item_photo status=crop_failed reason=%s", type(e).__name__)
+        img.close()
+    except Exception as e:
+        log.warning("item_photo status=decode_failed reason=%s", type(e).__name__)
     return out

@@ -5,7 +5,7 @@ from datetime import date, datetime
 from flask import request
 
 from ..errors import ApiError, not_found, validation_error
-from ..services import food_group
+from ..services import food_group, item_photos
 
 
 def _has_nul(v) -> bool:
@@ -108,6 +108,7 @@ def serialize_item(i, share=None, include_share=True) -> dict:
         "removed_after_expiry": i.removed_after_expiry,
         "freshness": i.freshness, "freshness_checked_at": iso(i.freshness_checked_at),
         "confidence": i.confidence, "nutrition": i.nutrition,
+        "photo_url": item_photos.item_url(i),
     }
     if include_share:
         out["share"] = share

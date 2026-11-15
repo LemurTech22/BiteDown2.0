@@ -11,7 +11,7 @@ import { FadeIn } from '@/components/ui/fade-in';
 import { SkeletonRows } from '@/components/ui/skeleton-rows';
 import { ExpiryBadge } from '@/features/fridge/expiry-badge';
 import { quantityLabel } from '@/features/fridge/fridge-utils';
-import { groupIcon } from '@/features/fridge/item-row';
+import { ItemThumb } from '@/components/ui/item-thumb';
 import { useReducedMotion } from '@/hooks/use-reduced-motion';
 import { type AppTheme, useTheme } from '@/theme';
 import type { Units } from '@/settings/preferences';
@@ -117,9 +117,7 @@ export function RemoveSheet({ item, initialShared = false, units = 'us', onClose
               />
             ) : null}
             <View style={styles.header}>
-              <View style={[styles.iconTile, { backgroundColor: theme.foodGroups[item.food_group].tile }]}>
-                <AppIcon name={groupIcon(item.food_group)} color={theme.foodGroups[item.food_group].stroke} />
-              </View>
+              <ItemThumb name={item.name} foodGroup={item.food_group} photoUrl={item.photo_url} />
               <View style={styles.copy}>
                 <Text accessibilityRole="header" style={styles.title}>
                   {reasonStep ? 'Why was it thrown out?' : item.name}
@@ -209,7 +207,6 @@ function createStyles(theme: AppTheme) {
     content: { flexGrow: 1, justifyContent: 'flex-end' },
     sheet: { gap: theme.spacing.sheetSection, padding: theme.spacing.gutter },
     header: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: theme.spacing.md },
-    iconTile: { width: theme.sizes.itemIcon, height: theme.sizes.itemIcon, borderRadius: theme.radii.input, alignItems: 'center', justifyContent: 'center' },
     copy: { flexGrow: 1, flexShrink: 1, minWidth: '50%', gap: theme.spacing.xxs },
     title: { ...theme.type.sheetTitleCompact, color: theme.colors.ink },
     meta: { ...theme.type.meta, color: theme.colors.muted },

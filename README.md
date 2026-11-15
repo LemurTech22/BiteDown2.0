@@ -231,3 +231,9 @@ The vision pipeline's dataset sources include **Fridge objects** (wajeeha worksp
 (Mensah Gyening, Akoto, Owusu-Agyemang, Amoako-Banning, Takyi, Appiahene et al., Data in Brief 2025, Zenodo), **DaFiF** (Prasetyo et al., Mendeley Data) and **Food Spoilage Status** (food-monitoring,
 Roboflow), all under CC BY 4.0, plus a CC0 fresh/stale fruit and vegetable dataset from Kaggle. Authors, source links,
 preparation changes, and licensing details are listed in [ML attributions](docs/ML.md#attributions).
+
+## Artwork attribution
+
+Food illustrations in `client/assets/food/` are from [Fluent Emoji](https://github.com/microsoft/fluentui-emoji) (Flat
+style, commit `1ffb34c`), Copyright (c) Microsoft Corporation, MIT licence (`client/assets/food/LICENSE-fluentui-emoji.txt`).
+The app shows them only for food that has no photo of its own.

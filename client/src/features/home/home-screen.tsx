@@ -13,7 +13,7 @@ import { SkeletonRows } from '@/components/ui/skeleton-rows';
 import { StateView } from '@/components/ui/state-view';
 import { ExpiryBadge } from '@/features/fridge/expiry-badge';
 import { FOOD_GROUPS, quantityLabel } from '@/features/fridge/fridge-utils';
-import { groupIcon } from '@/features/fridge/item-row';
+import { ItemThumb } from '@/components/ui/item-thumb';
 import { formatWeight, usePreferences } from '@/settings/preferences';
 import { deviceStore } from '@/storage/key-value-store';
 import { type AppTheme, useTheme } from '@/theme';
@@ -109,7 +109,7 @@ export function HomeScreen() {
             <AppButton label="Add food" testID="home.empty.add" onPress={() => router.push('/add-modal')} />
           </View> : <View style={styles.card}>{data.items.slice(0, 3).map((item) => <Pressable key={item.id} accessibilityRole="button"
             accessibilityLabel={`View ${item.name}`} onPress={() => router.push(`/item/${item.id}`)} testID={`home.item.${item.id}`} style={styles.item}>
-            <View style={[styles.icon, { backgroundColor: theme.foodGroups[item.food_group].tile }]}><AppIcon name={groupIcon(item.food_group)} color={theme.foodGroups[item.food_group].stroke} /></View>
+            <ItemThumb name={item.name} foodGroup={item.food_group} photoUrl={item.photo_url} />
             <View style={styles.copy}><Text style={styles.itemName}>{item.name}</Text><Text style={styles.meta}>{quantityLabel(item, units)} · {FOOD_GROUPS.find((group) => group.value === item.food_group)?.label}</Text></View>
             <ExpiryBadge item={item} testID={`home.status.${item.id}`} />
           </Pressable>)}</View>}
@@ -139,7 +139,6 @@ function createStyles(theme: AppTheme) {
     tip: { flexDirection: 'row', gap: theme.spacing.sm, alignItems: 'center', borderRadius: theme.radii.card, backgroundColor: theme.colors.noteLime, padding: theme.spacing.md },
     section: { gap: theme.spacing.md }, card: { backgroundColor: theme.colors.surface, borderRadius: theme.radii.card, padding: theme.spacing.lg, gap: theme.spacing.md },
     item: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', minHeight: theme.sizes.itemRow, gap: theme.spacing.md }, itemName: { ...theme.type.rowTitle, color: theme.colors.ink },
-    icon: { width: theme.sizes.itemIcon, height: theme.sizes.itemIcon, borderRadius: theme.radii.input, alignItems: 'center', justifyContent: 'center' },
     link: { minHeight: theme.sizes.touchTarget, minWidth: theme.sizes.touchTarget, justifyContent: 'center' }, linkText: { ...theme.type.button, color: theme.colors.forest },
     recipe: { backgroundColor: theme.colors.forest, padding: theme.spacing.gutter, borderRadius: theme.radii.hero, gap: theme.spacing.md, minHeight: theme.sizes.touchTarget },
     recipeTitle: { ...theme.type.sheetTitle, color: theme.colors.onForest }, recipeMeta: { ...theme.type.meta, color: theme.colors.onForestMuted },

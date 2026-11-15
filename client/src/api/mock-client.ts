@@ -96,6 +96,7 @@ export class MockApiClient implements ApiClient {
   private currentUser: MockUser | null = null;
   private token: string | null = null;
   private sequence = 0;
+  private readonly photos = new Map<string, { ownerId: string; uri: string }>();
   private readonly socialByUser = new Map<string, SocialState>();
   private readonly friendCodes = new Map<string, { owner_id: string; expires_at: string }>();
 
@@ -143,6 +144,9 @@ export class MockApiClient implements ApiClient {
     this.items = this.items.filter((item) => item.owner_id !== user.id);
     this.events = this.events.filter((event) => event.userId !== user.id);
     this.socialByUser.delete(user.id);
+    for (const [token, photo] of this.photos) {
+      if (photo.ownerId === user.id) this.photos.delete(token);
+    }
     this.currentUser = null;
     this.token = null;
   }
@@ -177,6 +181,7 @@ export class MockApiClient implements ApiClient {
     const added = input.items.map((candidate) => {
       const now = new Date().toISOString();
       const freshness = candidate.freshness ?? null;
+      const photo = candidate.photo_token ? this.photos.get(candidate.photo_token) : undefined;
       const item: Item = {
         id: this.id('item'),
         owner_id: user.id,
@@ -201,8 +206,10 @@ export class MockApiClient implements ApiClient {
         freshness_checked_at: freshness ? now : null,
         confidence: candidate.confidence ?? null,
         nutrition: candidate.nutrition ?? null,
+        photo_url: photo?.ownerId === user.id ? photo.uri : null,
         share: null,
       };
+      if (candidate.photo_token && photo?.ownerId === user.id) this.photos.delete(candidate.photo_token);
       this.items.push(item);
       return copy(item);
     });
@@ -242,8 +249,12 @@ export class MockApiClient implements ApiClient {
     mode: 'fridge' | 'single';
     enrich?: ('expiry' | 'nutrition')[];
   }): Promise<PhotoCandidatesResponse> {
-    this.requireUser();
+    const user = this.requireUser();
+    const photoToken = this.id('photo');
+    this.photos.set(photoToken, { ownerId: user.id, uri: input.uri });
     const candidate: ItemCandidate = {
+      photo_token: photoToken,
+      photo_preview_url: input.uri,
       name: input.mode === 'single' ? 'Mock apple' : 'Mock apples',
       category: 'produce_hardy',
       food_group: 'fruit',
@@ -489,7 +500,7 @@ export class MockApiClient implements ApiClient {
           group_id: listing.group_id, status: 'open', claimed_by_me: listing.claimed_by === user.id,
           created_at: listing.created_at,
           source: listing.group_id ? { type: 'group', name: this.memberGroup(listing.group_id).name } : { type: 'friend', name: owner },
-          item: { name: item.name, category: item.category, quantity: item.quantity, unit: item.unit, predicted_expiry: item.predicted_expiry },
+          item: { name: item.name, category: item.category, quantity: item.quantity, unit: item.unit, predicted_expiry: item.predicted_expiry, photo_url: item.photo_url },
           pickup: listing.claimed_by === user.id ? copy(listing.pickup) : null, pickup_set: listing.pickup_set };
       }) };
   }
@@ -918,7 +929,7 @@ function seedSocial(user: User): SocialState {
     storage: 'fridge', quantity: 2, unit: 'piece', est_weight_kg: 0.4, est_price: 2,
     source: 'manual', added_at: now, predicted_expiry: dateFromNow(3), expiry_source: 'default',
     removed_at: null, outcome: null, waste_reason: null, removed_after_expiry: null,
-    freshness: 'fresh', freshness_checked_at: now, confidence: null, nutrition: null, share: null,
+    freshness: 'fresh', freshness_checked_at: now, confidence: null, nutrition: null, photo_url: null, share: null,
   });
   const pantry = [
     makeItem('group-carrots', 'Carrots', DEMO_PEOPLE[0].id, group.id),

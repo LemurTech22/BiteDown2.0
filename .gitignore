@@ -47,3 +47,6 @@ ios/Local.xcconfig
 # Swift packages cloned by CI-style builds (-clonedSourcePackagesDirPath)
 ios/.spm/
 ios/DD/
+
+# Item photos stored by a local (non-Docker) API run
+backend/instance/

@@ -7,7 +7,7 @@ import type { PantryListing } from '@/api';
 import { AppIcon } from '@/components/ui/app-icon';
 import { IconButton } from '@/components/ui/icon-button';
 import { StateView } from '@/components/ui/state-view';
-import { groupIcon } from '@/features/fridge/item-row';
+import { ItemThumb } from '@/components/ui/item-thumb';
 import { type AppTheme, useTheme } from '@/theme';
 
 import { expiryLabel, listingGroup } from './social-utils';
@@ -59,11 +59,8 @@ export function ExpiryBadge({ date, testID }: { date: string | null; testID: str
   </View>;
 }
 export function FoodTile({ listing }: { listing: PantryListing }) {
-  const theme = useTheme();
   const group = listingGroup(listing);
-  return <View style={[socialStyles(theme).foodTile, { backgroundColor: theme.foodGroups[group].tile }]}>
-    <AppIcon name={groupIcon(group)} color={theme.foodGroups[group].stroke} size={theme.sizes.icon} />
-  </View>;
+  return <ItemThumb name={listing.item.name} foodGroup={group} photoUrl={listing.item.photo_url} />;
 }
 export function socialStyles(theme: AppTheme) {
   return StyleSheet.create({
@@ -95,7 +92,5 @@ export function socialStyles(theme: AppTheme) {
       backgroundColor: theme.colors.limeTint, alignSelf: 'flex-start' },
     badgeText: { ...theme.type.badge, color: theme.colors.forest },
     urgentBadge: { backgroundColor: theme.colors.urgentBg },
-    foodTile: { width: theme.sizes.itemIcon, height: theme.sizes.itemIcon, borderRadius: theme.radii.input,
-      alignItems: 'center', justifyContent: 'center' },
   });
 }

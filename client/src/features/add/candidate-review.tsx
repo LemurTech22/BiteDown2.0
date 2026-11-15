@@ -5,6 +5,7 @@ import type { ItemCandidate, ItemSource } from '@/api';
 import { AppButton } from '@/components/ui/app-button';
 import { AppIcon } from '@/components/ui/app-icon';
 import { FadeIn } from '@/components/ui/fade-in';
+import { ItemThumb } from '@/components/ui/item-thumb';
 import { useReducedMotion } from '@/hooks/use-reduced-motion';
 import { formatMoney, formatWeight, usePreferences } from '@/settings/preferences';
 import { type AppTheme, useTheme } from '@/theme';
@@ -72,6 +73,7 @@ export function CandidateReview({ drafts, screen, receipt = false, disabled, onC
               testID={`${screen}.select.${draft.id}`} style={styles.selection}
               onPress={() => onChange(draft.id, { selected: !draft.selected })}>
               <AppIcon name={draft.selected ? 'checkbox-marked-circle' : 'checkbox-blank-circle-outline'} color={theme.colors.forest} />
+              <ItemThumb name={draft.name} foodGroup={candidate.food_group} photoUrl={candidate.photo_preview_url} />
               <View style={styles.copy}>
                 <Text style={styles.name}>{draft.name}</Text>
                 {receipt && candidate.receipt_text ? <Text style={styles.raw}>{candidate.receipt_text}</Text> : null}
@@ -87,7 +89,7 @@ export function CandidateReview({ drafts, screen, receipt = false, disabled, onC
           <AppButton label={editing === draft.id ? 'Done' : 'Edit'} accessibilityLabel={`${editing === draft.id ? 'Done editing' : 'Edit'} ${draft.name}`}
             variant="outline" testID={`${screen}.edit.${draft.id}`} disabled={disabled}
             onPress={() => setEditing(editing === draft.id ? null : draft.id)} />
-          {editing === draft.id ? <CandidateEditor draft={draft} disabled={disabled}
+          {editing === draft.id ? <CandidateEditor draft={draft} disabled={disabled} showThumb={false}
             onChange={(patch) => onChange(draft.id, patch)} onDrop={() => { onChange(draft.id, { selected: false }); setEditing(null); }} /> : null}
         </View>
       </FadeIn>;

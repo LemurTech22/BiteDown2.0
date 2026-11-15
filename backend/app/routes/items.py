@@ -11,7 +11,7 @@ from ..errors import ApiError, not_found, upstream_unavailable, validation_error
 from ..extensions import db
 from ..models import (CATEGORIES, EXPIRY_SOURCES, FOOD_GROUPS, OUTCOMES, SOURCES, STORAGES, WASTE_REASONS, FoodEvent, Item,
                       ShareListing, User)
-from ..services import (barcode, candidates, enrich, expiry, food_group, gemini, impact, ml, nutrition,
+from ..services import (barcode, candidates, enrich, expiry, food_group, gemini, impact, item_photos, ml, nutrition,
                         social)
 from ._util import (check_len, json_body, parse_date, parse_number, parse_uuid, path_uuid, serialize_item,
                     share_summaries)
@@ -209,7 +209,7 @@ def create_items():
             p["expiry_source"] = "gemini"
 
     created = []
-    for p in parsed:
+    for raw, p in zip(raws, parsed):
         if p["predicted_expiry"] is None:
             p["predicted_expiry"], p["expiry_source"] = expiry.predict(p["category"], p["storage"])
         else:
@@ -217,6 +217,7 @@ def create_items():
         if p["est_weight_kg"] is None:
             p["est_weight_kg"] = impact.estimate_weight_kg(p["category"], p["quantity"], p["unit"])
         item = Item(owner_id=g.user.id, **p)
+        item.photo_key = item_photos.claim(raw.get("photo_token"), g.user.id)
         db.session.add(item)
         created.append(item)
     db.session.flush()
@@ -554,6 +555,10 @@ def _sniff_image(data: bytes) -> str:
     try:
         img = Image.open(io.BytesIO(data))  # reads the header only
         fmt = img.format
+        # Pillow only *warns* between MAX_IMAGE_PIXELS and twice that, and a warning is not an exception, so check the
+        # size here (BE-54). Not warnings.simplefilter("error"): that changes process-global state under gunicorn threads.
+        if Image.MAX_IMAGE_PIXELS and img.width * img.height > Image.MAX_IMAGE_PIXELS:
+            raise Image.DecompressionBombError("too many pixels")
         img.verify()
     except (Image.DecompressionBombError, Image.DecompressionBombWarning):
         raise validation_error("image has too many pixels.")
@@ -589,6 +594,7 @@ def from_photo():
     except ValueError as e:
         raise validation_error(str(e))
     data, filename, mime = _image_upload()
+    item_photos.purge(g.user.id)
     raws, source = None, None
     if ml.is_configured():
         try:
@@ -617,6 +623,7 @@ def from_photo():
     body = {"candidates": cands, "source": source}
     if facets:  # opt-in; enrich.run never raises and never changes the status
         body["enrichment"] = enrich.run(cands, facets, image=data, source=source, started=started)
+    item_photos.stage(cands, data, source, mode, g.user.id)
     return jsonify(**body)
 
 

@@ -252,6 +252,60 @@ Final checks from `client/`: `npx tsc --noEmit` **PASS**, exit 0; `npm run lint`
 
 Only this document and the two assigned QA test files were edited; no Git commands were run. Physical hit testing, real overflow/font-scale layout, device sheet widths and screen-reader playback remain unverified.
 
+## Item photos client QA (2026-11-14)
+
+**Verdict: FAIL — CL-15 reproduced.** Added three QA test files; no feature code, builder tests, backend files, or git commands touched.
+
+**CL-15 — Medium — [item-thumb.tsx:36](client/src/components/ui/item-thumb.tsx:36):** With Reduce Motion off, load a photo, then refresh its URL with a new signature. Cache and React identity remain stable, but the image still requests a **150 ms fade**. Expected: no repeat fade. [Expo SDK 58 documents transitions on source changes](https://docs.expo.dev/versions/v58.0.0/sdk/image/#transition).
+
+Other checks passed: fallback order across requested surfaces, token retention/drop behavior, URL resolution, matcher cases, accessibility props, and all **87 SVGs plus the licence**. CL-16–CL-19 remain unused.
+
+Final checks:
+
+- Typecheck: **PASS**
+- Lint: **PASS**
+- Full Jest, run once: **45 suites passed, 1 failed; 772 tests passed, 1 failed; 773 total; 0 snapshots**
+- New QA tests: **69 passed, 1 failed**
+
+Device rendering, screen-reader playback, and measured hit bounds remain unverified.
+
+_Written by client QA (Codex); appended by the orchestrator because the QA sandbox could not write outside `client/`._
+
+### Re-check (2026-11-14)
+
+**Verdict: FAIL — CL-15 fixed; CL-16 (low) reproduced.** Re-checked the current fix identified as `0eaf79b` without running Git. Only the assigned QA test and report files were changed.
+
+- **CL-15: FIXED / PASS.** With Reduce Motion off, the first photo requests the theme's **150 ms** transition; immediately after its `onLoad`, transition is **0**. Re-signing that key repeatedly preserves **0**, including subsequent load events. A different photo requests **150 ms** once, then **0** after loading and signature renewal. Reduce Motion keeps **0** throughout loads, signature changes, different photos, errors and retries. A failed photo retries with a fresh signature both before its first successful load and after an earlier successful load; the latter retains transition **0**.
+- **CL-16: OPEN / FAIL — returning to an earlier loaded key repeats the fade.** In the same mounted `ItemThumb`, load A, switch to B and load B, then return to A with a fresh signature. Expected **0** for the already loaded key; actual **150 ms**. `client/src/components/ui/item-thumb.tsx:28,38–39` stores only the most recently loaded key: B's `onLoad` overwrites A. This affects a thumbnail whose photo changes A → B → A; ordinary signature renewal is fixed. Regression: `CL-16: returning to an already loaded cache key does not fade it again` in `client/src/__tests__/qa-item-photos-thumb.tsx`. No feature fix applied. CL-17–CL-19 remain unused.
+
+Exact final results from `client/`:
+
+- `npx tsc --noEmit`: **PASS**, exit **0**.
+- `npm run lint`: **PASS**, exit **0**.
+- Targeted `npx jest --runInBand --runTestsByPath src/__tests__/qa-item-photos-thumb.tsx`: **42 passed, 1 failed, 43 total; 1 failed suite; 0 snapshots**. The sole failure is CL-16. The initial targeted run exposed missing native-event payloads in the new QA tests; those test-only harness errors were corrected before the final targeted and full runs.
+- Full `npx jest --runInBand`, run **once** after final test edits: **45 suites passed, 1 failed, 46 total; 777 tests passed, 1 failed, 778 total; 0 skipped, 0 snapshots**, exit **1**, **41.454 s**. The sole failure is CL-16.
+
+`EXPO_NO_DOTENV=1` disabled dotenv loading. No Git commands, `.env` reads, or live Gemini/ML calls were used. Assertions verify component events and the transition props passed to Expo Image; native animation rendering, device cache behavior and screen-reader playback remain unverified. Transition semantics were checked against the [Expo SDK 58 Image documentation](https://docs.expo.dev/versions/v58.0.0/sdk/image/#transition).
+
+### Re-check 2 (2026-11-14)
+
+**Verdict: PASS** for source/component verification. Re-checked the session-wide photo-key cache in the current worktree without running Git. Only `client/src/__tests__/qa-item-photos-thumb.tsx` and this report were edited; feature code and builder tests were not changed.
+
+- **CL-15: FIXED / PASS.** A never-shown photo requests the theme's **150 ms** transition, then **0** after its successful load. Repeated signature renewal keeps **0**; a different never-shown photo fades once. Reduce Motion keeps **0** across loads, signature renewal, photo changes, errors and retries. An error followed by a fresh signature retries both before and after an earlier successful load, preserving the expected first-load/already-shown transition.
+- **CL-16: FIXED / PASS.** A → B → A retains **0** for A after both photos loaded. Unmounting and remounting an already-shown photo retains **0**, with either the original or a fresh signature. The session remembers exactly **500** distinct keys; remembering an existing key neither evicts nor refreshes its insertion order. Key **501** evicts only the oldest key. A retained key still requests **0**; the evicted photo requests **150 ms** once when shown again, then **0**, with the cache remaining bounded at **500**.
+- **Test isolation / mocks: PASS.** `client/package.json` wires `jest.setup.ts` through `setupFilesAfterEnv`. The setup imports only `resetLoadedPhotosForTests` from `loaded-photos.ts`, which has no imports or re-exports; it does not preload `ItemThumb`, theme, motion, Expo Image, or their real implementations. Two consecutive QA cases leave a remembered key behind and verify that the next test starts with an empty session, relying on the global setup rather than a local reset. Test-file theme and motion mocks remain replaceable and control the rendered transition. Existing mocked component/flow tests also pass in the full suite.
+- No new client defect reproduced; **CL-17–CL-19 remain unused**.
+
+Exact final results from `client/`, with `EXPO_NO_DOTENV=1`:
+
+| Command | Result |
+|---|---|
+| `npx jest --runInBand --runTestsByPath src/__tests__/qa-item-photos-thumb.tsx` | **PASS**, exit **0**: **1/1 suite, 49/49 tests passed**, 0 failed, 0 snapshots; **2.186 s**. Includes six new QA cases. |
+| `npx tsc --noEmit` | **PASS**, exit **0**. |
+| `npm run lint` | **PASS**, exit **0**. |
+| `npx jest --runInBand` — full suite, run **once** after final test edits | **PASS**, exit **0**: **46/46 suites, 784/784 tests passed**, 0 failed, 0 skipped, 0 snapshots; **59.244 s**. |
+
+No Git commands, `.env` reads, or live Gemini/ML calls were used. Checks establish cache behavior, component events and Expo Image transition props. Native animation playback, device image caching, physical hit bounds and screen-reader playback remain unverified. The transition interpretation follows the [Expo SDK 58 Image documentation](https://docs.expo.dev/versions/v58.0.0/sdk/image/#transition).
 ## Save closes with notice QA (2026-11-14)
 
 **Verdict: FAIL.** CL-17 reproduces stale Save completion after leaving Item detail.

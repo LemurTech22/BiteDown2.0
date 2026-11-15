@@ -7,6 +7,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { useApi, type FoodGroup, type Freshness, type Item, type PickupSpot, type Storage, type UpdateItemInput } from '@/api';
 import { useNotice } from '@/components/notice/notice';
+import { ItemThumb } from '@/components/ui/item-thumb';
 import { AppButton } from '@/components/ui/app-button';
 import { AppIcon } from '@/components/ui/app-icon';
 import { SkeletonRows } from '@/components/ui/skeleton-rows';
@@ -171,6 +172,7 @@ export function ItemDetailScreen() {
           {entries.map((entry) => <UndoToast key={entry.item.id} entry={entry} onUndo={() => void undo(entry)} onDismiss={() => dismiss(entry.item.id)} />)}
         </> : <>
         <View style={styles.card}>
+          <ItemThumb name={item.name} foodGroup={item.food_group} photoUrl={item.photo_url} size={theme.sizes.emptyIcon} />
           <ItemField label="Food name" testID="item.name.input" value={draft.name} maxLength={200} editable={!pending} onChangeText={(name) => change({ name })} />
           <ItemField label="Quantity" testID="item.quantity.input" value={draft.quantity} maxLength={12} keyboardType="decimal-pad" editable={!pending} onChangeText={(quantity) => change({ quantity })} />
           <ItemField label="Unit" testID="item.unit.input" value={draft.unit} maxLength={32} editable={!pending} onChangeText={(unit) => change({ unit })} />

@@ -2,7 +2,7 @@
 
 Status: ✅ = implemented and merged on `main` (backend core, social, items wave 2, insights wave 2, Google sign-in, multi-audience requests; migrations `0001`-`0008`). Base URL:
 `http://127.0.0.1:5055`. JSON in/out, `snake_case`, ISO-8601 UTC timestamps (`...Z`). Auth:
-`Authorization: Bearer <jwt>` (HS256, 30-day expiry) on everything except `/health`, `/auth/signup`, `/auth/login` and `/auth/oauth/google` (`DELETE /auth/me` needs the token).
+`Authorization: Bearer <jwt>` (HS256, 30-day expiry) on everything except `/health`, `/auth/signup`, `/auth/login`, `/auth/oauth/google` and the signed photo GET endpoints below (`DELETE /auth/me` needs the token).
 Errors always: `{"error": {"code": "...", "message": "..."}}` (including 404/405/413/500).
 UUID path ids that are malformed return 404. Numeric money/weight fields serialise as JSON numbers.
 
@@ -100,11 +100,13 @@ returns `204`. No `Access-Control-Allow-Credentials` (bearer auth). Other origin
   `00000000-0000-0000-0000-000000000000`, so aggregates survive with no personal link. The same JWT
   then fails with `401 unauthorized`; login fails with `401 invalid_credentials`. A later Google
   sign-in with the same Google account creates a fresh user (`201`).
+  Item and staged photo rows are deleted in that transaction; their local files are deleted only
+  after the commit succeeds (including photos of removed items and group-pantry items).
 
 ## Items
 An **item** is `{id, owner_id, group_id, name, category, storage, quantity, unit, est_weight_kg,
 est_price, source, added_at, predicted_expiry (date), expiry_source, removed_at, outcome,
-waste_reason, removed_after_expiry, freshness, freshness_checked_at, confidence, nutrition, share}`
+waste_reason, removed_after_expiry, freshness, freshness_checked_at, confidence, nutrition, photo_url, share}`
 (`expiry_source` ∈ `default|gemini|ml|user`). `category` ∈ `produce_leafy, produce_hardy, dairy, meat,
 seafood, bakery, eggs, leftovers, pantry_dry, frozen, other`; `storage` ∈ `fridge|pantry|freezer`;
 `source` ∈ `photo|single_photo|text|barcode|receipt|manual`.
@@ -126,6 +128,12 @@ seafood, bakery, eggs, leftovers, pantry_dry, frozen, other`; `storage` ∈ `fri
   an implausible mix) → `400 validation_error`, nothing written. `estimated` is always stored as `true`,
   unknown keys are dropped, and an explicit `null` means "none". On every item response; `null` when unknown.
   Not editable (`PATCH` → `400`).
+- `photo_url` (`string|null`) is `/items/<id>/photo?sig=<signature>` when an item has a stored photo,
+  otherwise null. Included wherever an item is serialized, including group pantries and the compact
+  `item` in shared listings. URLs are issued only through existing authorized item/listing views;
+  an accepted friend who can see a listing can see its photo. Soft removal and restore keep the photo.
+  Treat the URL as an access credential: it works without bearer auth for 3600 seconds from issuance.
+  Fetch a fresh item/listing response to renew it; do not persist URLs as permanent photo identifiers.
 - `share` is present on the **owner's own** items (`GET /items`, also with `group_by`; create, `PATCH`,
   `remove`, `restore` responses) and is `{id, status (open|fulfilled), claimed_by: {id, name} | null, audience}` for
   the item's most recent **non-cancelled** listing, else `null`. Loaded with two queries for the whole
@@ -143,7 +151,7 @@ seafood, bakery, eggs, leftovers, pantry_dry, frozen, other`; `storage` ∈ `fri
 - ✅ `GET /items?storage=fridge|pantry|freezer&include_removed=false` → `200 {items}` sorted by
   `predicted_expiry`, then `added_at`. Only the caller's **personal** items (`group_id` null; group-pantry items are listed by `GET /groups/:id/pantry`). Invalid `storage` → 400.
 - ✅ `POST /items` `{items: [{name, category?, storage?, quantity?, unit?, est_price?, est_weight_kg?,
-  predicted_expiry?, source?, group_id?}], group_id?}` → `201 {items}` (1-100 items). A top-level `group_id` applies to every item; a per-item `group_id` overrides it. A group `group_id` puts the item in that group's pantry; caller must be a member (`403` otherwise, `404` unknown group; nothing written). Defaults: category `other`, storage
+  predicted_expiry?, source?, group_id?, photo_token?}], group_id?}` → `201 {items}` (1-100 items). A top-level `group_id` applies to every item; a per-item `group_id` overrides it. A group `group_id` puts the item in that group's pantry; caller must be a member (`403` otherwise, `404` unknown group; nothing written). Defaults: category `other`, storage
   `fridge`, quantity 1, unit `piece`, source `manual`. Invalid enum/negative number → 400 and nothing
   is written. One `add` event per item, same transaction. If `predicted_expiry` is omitted the
   backend predicts it: Gemini batch estimate when configured (`expiry_source=gemini`), else the
@@ -155,6 +163,19 @@ seafood, bakery, eggs, leftovers, pantry_dry, frozen, other`; `storage` ∈ `fri
   field, which defaults to `user`) once the person changed the date. Invalid value → `400`; a
   `expiry_source` sent without `predicted_expiry` is ignored (the backend predicts and sets it).
   `freshness`, `confidence` and `nutrition` from the candidate are stored (see above).
+  Optional `photo_token` claims a staged photo only when it belongs to the caller, has not already
+  been claimed and is less than 24 hours old. The item insert and staged-row deletion share one
+  transaction; the file is kept. Invalid, unknown, foreign, reused or expired tokens log a warning
+  and create the item without a photo (`photo_url: null`), with the same `201` status.
+- ✅ `GET /items/:id/photo?sig=<signature>` and `GET /photos/staged/:token?sig=<signature>` →
+  `200 image/jpeg`, `Cache-Control: private, max-age=3600`. **No bearer auth.** Signatures use
+  `itsdangerous.URLSafeTimedSerializer` with the existing `JWT_SECRET`, salt `item-photo`, and
+  max age 3600 seconds, over `{"i": "<item UUID>", "k": "<photo key>"}` or
+  `{"t": "<staged token>", "k": "<photo key>"}` respectively. A missing, tampered or expired
+  signature, missing row/file, or a key that no longer matches the row returns the standard
+  `404 {"error": {"code": "not_found", "message": "..."}}`. A claimed photo's preview immediately
+  stops working because its staged row no longer exists. Visibility is checked when issuing URLs;
+  anyone holding one can fetch it during its remaining lifetime.
 - ✅ `PATCH /items/:id` — body may contain `name, quantity, unit, storage, category, food_group,
   predicted_expiry, est_price, est_weight_kg, freshness, reestimate_expiry` (unknown fields → 400, so `confidence` and
   `nutrition` are not editable). `freshness` set → stored and `freshness_checked_at` = now; `freshness: null` clears **both**
@@ -251,7 +272,7 @@ Candidates use the ML service's `food_group` when present, else Gemini's (valida
   (`{items: [...]}`).
 
 ## Adding food
-Candidates are **not saved** until `POST /items`. Every candidate also carries a suggested
+Candidate items are **not saved** until `POST /items`; photo crops may be staged temporarily as below. Every candidate also carries a suggested
 `storage`, `quantity`, `unit`, `est_price`, `predicted_expiry` and `expiry_source` so the client can
 post it straight back.
 - ✅ `POST /items/parse-text` `{text (<=4000 chars)}` → `200 {candidates: [item…]}` (Gemini);
@@ -267,6 +288,19 @@ post it straight back.
   …}], source: "yolo"|"gemini"}`. Uses `ML_SERVICE_URL`/detect when set; if unset **or the ML
   service errors**, falls back to Gemini vision; neither → `502`.
   In `fridge` mode only, candidates matching on stripped lowercased name, freshness, unit and storage merge before enrichment in first-seen order, summing quantity and taking maximum confidence while retaining the first candidate's other fields.
+  Every returned photo candidate adds `photo_token` (`string|null`, opaque 32 lowercase hex chars)
+  and `photo_preview_url` (`string|null`, `/photos/staged/<token>?sig=...`). A crop is saved locally
+  and staged for the caller until claimed through `POST /items`. On each valid from-photo call,
+  the caller's staged rows at least 24 hours old and their files are purged; other users' rows stay.
+  Crops use 8% padding per side, clamp to the image, then EXIF-rotate upright, resize to a longest
+  side of at most 512 px and encode as JPEG q80 with all metadata removed. YOLO boxes use the raw
+  decoded pixel frame. Gemini boxes have no documented frame and are ignored. In `single` mode,
+  no usable box means the whole upright photo at the same size/quality; in `fridge` mode it means
+  null photo fields. Merged fridge candidates keep the first candidate's crop. Crop/storage failure
+  logs the failure and leaves null photo fields without failing the detection request. HEIC previews
+  are null when the local decoder cannot decode the upload. Unclaimed files remain until that
+  owner's next from-photo purge or account deletion. Storage is under `PHOTO_DIR` (environment),
+  default `<Flask instance_path>/photos`, at `<key[:2]>/<key>.jpg` with random 32-hex keys.
   `freshness` is normalised server-side for both sources (`candidates.normalize_freshness`): the
   three values pass through; variants map `semi-fresh`/`semi fresh`/`use soon`/… → `semi_fresh`
   and `rotten`/`stale`/`moldy`/`overripe`/`decayed`/… → `spoiled` (case/hyphen/space-insensitive; the word
@@ -284,7 +318,7 @@ post it straight back.
   - *What Gemini sees.* With `source: "yolo"`, a **crop** of each detection cut from the uploaded photo. `bbox`
     is in the raw pixel frame that `ml/serve` decoded (RGB, no EXIF transpose), so the crop is cut there and then
     rotated upright by the photo's EXIF orientation; the longest side is at most 512 px; it is re-encoded as JPEG,
-    which drops EXIF, GPS and any JPEG comment; nothing is stored. A candidate with no usable box (missing, malformed, mostly
+    which drops EXIF, GPS and any JPEG comment; these enrichment bytes are transient (item photos are staged separately above). A candidate with no usable box (missing, malformed, mostly
     outside the image, under 32 px), an undecodable or over-50-megapixel upload, and everything on
     `source: "gemini"` (there are no boxes) are asked **text-only** (name, category, storage, freshness).
   - *What comes back.* `expiry` → `predicted_expiry` = today + days and `expiry_source: "gemini"`, with days

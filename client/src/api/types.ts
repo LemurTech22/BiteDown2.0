@@ -103,11 +103,14 @@ export interface Item {
   freshness_checked_at: string | null;
   confidence: number | null;
   nutrition: Nutrition | null;
+  photo_url: string | null;
   share?: ItemShare | null;
   added_by?: string;
 }
 
 export interface ItemCandidate {
+  photo_token?: string | null;
+  photo_preview_url?: string | null;
   name: string;
   category: ItemCategory;
   food_group: FoodGroup;
@@ -131,6 +134,7 @@ export interface ItemCandidate {
 }
 
 export interface CreateItemInput {
+  photo_token?: string | null;
   name: string;
   category?: ItemCategory;
   food_group?: FoodGroup;
@@ -279,7 +283,7 @@ export interface PantryListing {
   claimed_by_me: boolean;
   created_at: string;
   source: { type: 'friend' | 'group'; name: string };
-  item: Pick<Item, 'name' | 'category' | 'quantity' | 'unit' | 'predicted_expiry'>;
+  item: Pick<Item, 'name' | 'category' | 'quantity' | 'unit' | 'predicted_expiry' | 'photo_url'>;
   pickup: PickupSpot | null;
   pickup_set: boolean;
 }

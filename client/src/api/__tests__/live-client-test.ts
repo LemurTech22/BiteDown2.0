@@ -18,6 +18,35 @@ function client() {
 
 afterEach(() => jest.restoreAllMocks());
 
+test.each([
+  { items: [{ photo_url: '/items/one/photo?sig=a' }, { photo_url: null }] },
+  { sections: [{ items: [{ photo_url: '/items/one/photo?sig=a' }] }] },
+  { item: { photo_url: '/items/one/photo?sig=a' } },
+  { listings: [{ item: { photo_url: '/items/one/photo?sig=a' } }] },
+  { candidates: [{ photo_preview_url: '/photos/staged/token?sig=a', photo_token: 'opaque' }] },
+])('resolves signed photo paths throughout a response: %j', async (payload) => {
+  const fetcher = jest.fn().mockResolvedValue({ ok: true, text: async () => JSON.stringify(payload) });
+  const api = new LiveApiClient({ getBaseUrl: () => 'https://api.test/v1/', getToken: async () => 'token',
+    setToken: async () => {}, onSessionExpired: jest.fn(), fetcher });
+  const response = await api.getItems();
+  expect(response).toEqual(JSON.parse(JSON.stringify(payload).replace(/"\/(items|photos)\//g, '"https://api.test/v1/$1/')));
+  expect(fetcher).toHaveBeenCalledTimes(1);
+});
+
+test('preserves absolute and null photo URLs and uses the current configured server', async () => {
+  let baseUrl = 'https://first.test';
+  const fetcher = jest.fn().mockResolvedValue({ ok: true, text: async () => JSON.stringify({ items: [
+    { photo_url: 'https://cdn.test/photo?sig=keep' }, { photo_url: null }, { photo_url: '/items/one/photo?sig=new' },
+  ] }) });
+  const api = new LiveApiClient({ getBaseUrl: () => baseUrl, getToken: async () => null,
+    setToken: async () => {}, onSessionExpired: jest.fn(), fetcher });
+  await api.getItems();
+  baseUrl = 'https://second.test/';
+  expect(await api.getItems()).toEqual({ items: [
+    { photo_url: 'https://cdn.test/photo?sig=keep' }, { photo_url: null }, { photo_url: 'https://second.test/items/one/photo?sig=new' },
+  ] });
+});
+
 const cases: { name: string; path: string; method: string; body?: unknown; run: (api: LiveApiClient) => Promise<unknown> }[] = [
   { name: "barcode", path: "/items/barcode/a%2Fb", method: 'GET', run: (api) => api.getBarcode('a/b') },
   { name: "tips", path: "/tips", method: 'GET', run: (api) => api.getTips() },
