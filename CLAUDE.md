@@ -118,7 +118,7 @@ outcome is how waste is measured. Product: [`docs/IDEA.md`](docs/IDEA.md). Statu
   current members only. A listing or request the caller can't see returns 404.
 
 ## Design and UI
-- The design canvas (https://claude.ai/artifact/ALmB8FYKGrayhDQXqvoncx) and `docs/design/` are
+- The design canvas (https://claude.ai/artifact/2M3dg2Yzb8fhyTL9CcvKoC) and `docs/design/` are
   the source of truth. iOS builds only approved screens. Only the orchestrator publishes to the
   canvas. Read an artboard from the canvas before editing it, publish only the files you changed,
   and mirror every canvas change into `docs/design/screens/` in the same PR.

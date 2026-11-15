@@ -15,7 +15,8 @@ import { StateView } from '@/components/ui/state-view';
 import { useReducedMotion } from '@/hooks/use-reduced-motion';
 import { type AppTheme, useTheme } from '@/theme';
 
-import { CandidateEditor, type CandidateDraft, draftError, toCreateItem } from './candidate-editor';
+import { draftError, needsSpoiledDecision, toCreateItem } from './candidate-editor';
+import { CandidateReview, type ReviewDraft, reviewDrafts } from './candidate-review';
 import { AddMethods } from './add-methods';
 import { AddReviewLayout } from './add-review-layout';
 import { CameraDeniedCard } from './camera-denied-card';
@@ -150,7 +151,7 @@ function PhotoReview({ photo, header, onReset, onCandidatesChange, onSaved }: {
   const reducedMotion = useReducedMotion();
   const styles = createStyles(theme);
   const [attempt, setAttempt] = useState(0);
-  const [drafts, setDrafts] = useState<CandidateDraft[]>([]);
+  const [drafts, setDrafts] = useState<ReviewDraft[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
@@ -169,8 +170,7 @@ function PhotoReview({ photo, header, onReset, onCandidatesChange, onSaved }: {
     let active = true;
     void api.fromPhoto({ uri: photo.asset.uri, fileName: photo.asset.fileName ?? undefined,
       mimeType: photo.asset.mimeType ?? undefined, mode: photo.mode, enrich: ['expiry'] }).then((result) => {
-      if (active) setDrafts(result.candidates.map((candidate, id) => ({ id, candidate, name: candidate.name,
-        quantity: String(candidate.quantity), storage: candidate.storage, expiry: candidate.predicted_expiry })));
+      if (active) setDrafts(reviewDrafts(result.candidates, photo.mode === 'single' ? 'single_photo' : 'photo'));
     }).catch((cause: unknown) => {
       if (active) setError(isApiError(cause) && cause.status === 413
         ? 'That photo is too large. Try another one.'
@@ -182,13 +182,15 @@ function PhotoReview({ photo, header, onReset, onCandidatesChange, onSaved }: {
     return () => { active = false; };
   }, [api, attempt, photo]);
 
+  const selected = drafts.filter((draft) => draft.selected);
+  const undecided = drafts.some(needsSpoiledDecision);
   async function save() {
-    if (saveBusy.current || !drafts.length || drafts.some(draftError)) return;
+    if (saveBusy.current || !selected.length || undecided || selected.some(draftError)) return;
     saveBusy.current = true;
     setSaving(true);
     setSaveError('');
     try {
-      await api.createItems({ items: drafts.map((draft) => toCreateItem(draft, photo.mode)) });
+      await api.createItems({ items: selected.map((draft) => toCreateItem(draft, photo.mode)) });
       void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
       if (mounted.current) onSaved();
     } catch (cause) {
@@ -201,8 +203,8 @@ function PhotoReview({ photo, header, onReset, onCandidatesChange, onSaved }: {
 
   return (
     <AddReviewLayout contentContainerStyle={styles.content} footer={!loading && !error && drafts.length > 0 ?
-      <AppButton label={`Add ${drafts.length} ${drafts.length === 1 ? 'item' : 'items'}`} testID="add.save.button"
-        loading={saving} disabled={drafts.some((draft) => Boolean(draftError(draft)))} onPress={() => void save()} /> : null}>
+      <AppButton label={`Add ${selected.length} ${selected.length === 1 ? 'item' : 'items'}`} testID="add.save.button"
+        loading={saving} disabled={!selected.length || undecided || selected.some((draft) => Boolean(draftError(draft)))} onPress={() => void save()} /> : null}>
       {header}
       <View style={styles.section}>
         <Image source={{ uri: photo.asset.uri }} accessibilityLabel="Your food photo" accessible
@@ -221,12 +223,10 @@ function PhotoReview({ photo, header, onReset, onCandidatesChange, onSaved }: {
             actionLabel="Choose another photo" actionTestID="add.empty.retry" onAction={onReset} /> : (
             <>
               <Text accessibilityRole="header" style={styles.title}>We found {drafts.length} {drafts.length === 1 ? 'item' : 'items'}</Text>
-              <Text style={styles.body}>Check each item before adding. Expiry dates are estimates.</Text>
-              {drafts.map((draft, index) => <FadeIn key={draft.id} delay={reducedMotion ? 0 : Math.min(index, theme.motion.maxStaggerItems - 1) * theme.motion.staggerMs}>
-                <CandidateEditor draft={draft} disabled={saving}
-                  onChange={(patch) => { setSaveError(''); setDrafts((current) => current.map((item) => item.id === draft.id ? { ...item, ...patch } : item)); }}
-                  onDrop={() => { setSaveError(''); setDrafts((current) => current.filter((item) => item.id !== draft.id)); }} />
-              </FadeIn>)}
+              <Text style={styles.body}>Ready to add. Check any flagged items. Expiry dates are estimates.</Text>
+              <CandidateReview drafts={drafts} screen="add" disabled={saving} onChange={(id, patch) => {
+                setSaveError(''); setDrafts((current) => current.map((draft) => draft.id === id ? { ...draft, ...patch } : draft));
+              }} />
               {saveError ? <StateView icon="alert-circle-outline" title="Couldn’t save food" message={saveError}
                 testID="add.save.error" actionLabel="Try again" actionTestID="add.save.retry" onAction={() => void save()} /> : null}
             </>

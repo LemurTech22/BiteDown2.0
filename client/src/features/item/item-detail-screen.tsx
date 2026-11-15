@@ -5,16 +5,16 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { Linking, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { useApi, type FoodGroup, type Freshness, type Item, type PickupSpot, type Storage, type UpdateItemInput } from '@/api';
+import { useApi, type Item, type PickupSpot, type UpdateItemInput } from '@/api';
 import { useNotice } from '@/components/notice/notice';
 import { ItemThumb } from '@/components/ui/item-thumb';
 import { AppButton } from '@/components/ui/app-button';
 import { AppIcon } from '@/components/ui/app-icon';
 import { SkeletonRows } from '@/components/ui/skeleton-rows';
 import { StateView } from '@/components/ui/state-view';
-import { ChoiceControl } from '@/features/add/choice-control';
+import { FoodEditSheet, FoodSummary, type FoodField } from '@/components/ui/food-summary';
+import { FadeIn } from '@/components/ui/fade-in';
 import { ExpiryBadge } from '@/features/fridge/expiry-badge';
-import { FOOD_GROUPS, STORAGE_OPTIONS } from '@/features/fridge/fridge-utils';
 import { RemoveSheet } from '@/features/remove/remove-sheet';
 import { UndoToast } from '@/features/remove/undo-toast';
 import { useRemovalUndo } from '@/features/remove/use-removal-undo';
@@ -22,25 +22,8 @@ import { mapsUrl } from '@/features/social/maps-url';
 import { formatMoney, formatWeight, usePreferences } from '@/settings/preferences';
 import { type AppTheme, useTheme } from '@/theme';
 
-import { ItemField } from './item-field';
 import { PickupSheet } from './pickup-sheet';
 import { SPOILAGE_SIGNS } from './spoilage-signs';
-
-interface Draft { name: string; quantity: string; unit: string; storage: Storage; foodGroup: FoodGroup; expiry: string; freshness: Freshness | 'unknown' }
-function toDraft(item: Item): Draft {
-  return { name: item.name, quantity: String(item.quantity), unit: item.unit, storage: item.storage,
-    foodGroup: item.food_group, expiry: item.predicted_expiry ?? '', freshness: item.freshness ?? 'unknown' };
-}
-function validation(draft: Draft) {
-  if (!draft.name.trim()) return 'Enter a food name.';
-  if (!draft.quantity.trim() || !Number.isFinite(Number(draft.quantity)) || Number(draft.quantity) <= 0) return 'Enter a quantity greater than zero.';
-  if (!draft.unit.trim()) return 'Enter a unit.';
-  if (draft.expiry) {
-    const parsed = new Date(`${draft.expiry}T00:00:00Z`);
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(draft.expiry) || !Number.isFinite(parsed.getTime()) || parsed.toISOString().slice(0, 10) !== draft.expiry) return 'Enter a valid expiry date (YYYY-MM-DD).';
-  }
-  return '';
-}
 
 export function ItemDetailScreen() {
   const { id: param } = useLocalSearchParams<{ id: string | string[] }>();
@@ -51,7 +34,7 @@ export function ItemDetailScreen() {
   const theme = useTheme();
   const styles = createStyles(theme);
   const [item, setItem] = useState<Item | null>(null);
-  const [draft, setDraft] = useState<Draft | null>(null);
+  const [editing, setEditing] = useState<FoodField | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState('');
   const [error, setError] = useState('');
@@ -61,17 +44,8 @@ export function ItemDetailScreen() {
   const [removing, setRemoving] = useState<'normal' | 'given' | null>(null);
   const request = useRef(0);
   const working = useRef(false);
-  const closing = useRef(false);
-  // One number per visit: it changes whenever this screen shows another item (even A -> B -> A) and on unmount. A Save
-  // started on an earlier visit must not touch state, haptics, notices or navigation when it settles (CL-17, CL-18, CL-19).
-  const visit = useRef(0);
-  useEffect(() => {
-    visit.current += 1;
-    closing.current = false;
-    return () => { visit.current += 1; };
-  }, [id]);
   const retry = useRef<(() => Promise<void>) | null>(null);
-  const { entries, remember, undo, dismiss } = useRemovalUndo((restored) => { setItem(restored); setDraft(toDraft(restored)); });
+  const { entries, remember, undo, dismiss } = useRemovalUndo((restored) => { setItem(restored); });
   const load = useCallback(async () => {
     const version = ++request.current;
     setLoading(true); setLoadError('');
@@ -80,7 +54,7 @@ export function ItemDetailScreen() {
       if (version !== request.current) return;
       const items = 'items' in response ? response.items : response.sections.flatMap((section) => section.items);
       const found = items.find((candidate) => candidate.id === id) ?? null;
-      setItem(found); setDraft(found ? toDraft(found) : null);
+      setItem(found);
     } catch (cause) { if (version === request.current) setLoadError(cause instanceof Error ? cause.message : 'Couldn’t load this item. Try again.'); }
     finally { if (version === request.current) setLoading(false); }
   }, [api, id]);
@@ -90,36 +64,43 @@ export function ItemDetailScreen() {
     return () => { active = false; request.current += 1; };
   }, [load]);
 
+  // One number per visit: it changes when this screen shows another item (even A -> B -> A) and on unmount. A save
+  // started on an earlier visit must not touch state, haptics, notices or the open sheet when it settles (CL-17..19).
+  const visit = useRef(0);
+  useEffect(() => {
+    visit.current += 1;
+    return () => { visit.current += 1; };
+  }, [id]);
   async function perform(action: () => Promise<void>) {
-    if (working.current || closing.current) return;
+    if (working.current) return;
     const started = visit.current;
     working.current = true; retry.current = action; setPending(true); setError('');
     try { await action(); }
     catch (cause) {
-      if (visit.current !== started) return;  // failed after the user left this visit: no stale error or haptic
+      if (visit.current !== started) return;  // failed after the user left this visit: no stale error or haptic (CL-19)
       setError(cause instanceof Error ? cause.message : 'Couldn’t update this item. Try again.');
       void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error).catch(() => {});
     } finally { working.current = false; setPending(false); }
   }
-  function change(patch: Partial<Draft>) { setDraft((current) => current ? { ...current, ...patch } : current); }
-  async function save() {
-    if (!item || !draft) return;
-    const invalid = validation(draft);
-    if (invalid) { setError(invalid); return; }
-    if (!draft.expiry && item.predicted_expiry) { setError('Enter a valid expiry date (YYYY-MM-DD).'); return; }
-    const patch: UpdateItemInput = { name: draft.name.trim(), quantity: Number(draft.quantity), unit: draft.unit.trim(), storage: draft.storage, food_group: draft.foodGroup };
-    if (draft.expiry && draft.expiry !== item.predicted_expiry) patch.predicted_expiry = draft.expiry;
-    if (draft.freshness !== (item.freshness ?? 'unknown')) patch.freshness = draft.freshness === 'unknown' ? null : draft.freshness;
+  async function saveChanges(patch: UpdateItemInput) {
+    if (!item || item.removed_at) return false;
+    const changes = { ...patch };
+    // Reconfirming an estimate must not turn it into a user-entered date.
+    if (changes.predicted_expiry === item.predicted_expiry) delete changes.predicted_expiry;
+    if (changes.freshness === item.freshness) delete changes.freshness;
     const started = visit.current;
-    const { item: updated } = await api.updateItem(item.id, patch);
-    if (visit.current !== started) {
-      return;  // saved on the server; the user already left this screen, so stay silent (the list shows the change)
+    try {
+      const { item: updated } = await api.updateItem(item.id, changes);
+      if (visit.current !== started) return false;  // Keep the current visit's sheet open (CL-20).
+      setItem(updated);
+      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+      notice.show(`Saved changes to ${updated.name}`);
+      return true;
+    } catch (cause) {
+      if (visit.current !== started) return false;
+      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error).catch(() => {});
+      throw cause;
     }
-    setItem(updated); setDraft(toDraft(updated));
-    void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
-    closing.current = true;
-    notice.show(`Saved changes to ${updated.name}`);
-    if (router.canGoBack()) router.back(); else router.replace('/fridge');
   }
   async function toggleShare() {
     if (!item) return;
@@ -142,7 +123,7 @@ export function ItemDetailScreen() {
     const freshness = candidates[0]?.freshness;
     if (!freshness) throw new Error('We couldn’t assess freshness. Try another photo.');
     const { item: updated } = await api.updateItem(item.id, { freshness });
-    setItem(updated); setDraft((current) => current ? { ...current, freshness } : current); setPhotoOpen(false);
+    setItem(updated); setPhotoOpen(false);
     void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
   }
   async function pickPhoto(camera: boolean) {
@@ -164,38 +145,23 @@ export function ItemDetailScreen() {
     <ScrollView keyboardShouldPersistTaps="handled" automaticallyAdjustKeyboardInsets contentContainerStyle={styles.content}>
       <View style={styles.header}><AppButton label="Back" variant="outline" testID="item.back.button" onPress={() => { if (router.canGoBack()) router.back(); else router.replace('/fridge'); }} />
         <Text accessibilityRole="header" style={styles.title}>Item detail</Text>
-        {item && !item.removed_at ? <AppButton label="Save" testID="item.save.button" disabled={pending || !draft || Boolean(validation(draft))} onPress={() => void perform(save)} /> : null}</View>
+</View>
       {loading ? <SkeletonRows testID="item.loading.skeleton" /> : loadError ? <StateView title="Couldn’t load item" message={loadError} icon="cloud-off-outline" testID="item.error.state"
-        actionLabel="Try again" actionTestID="item.error.retry" onAction={() => void load()} /> : !item || !draft ? <StateView title="Item not found" message="This item is no longer available."
+        actionLabel="Try again" actionTestID="item.error.retry" onAction={() => void load()} /> : !item ? <StateView title="Item not found" message="This item is no longer available."
         icon="fridge-outline" testID="item.empty.state" actionLabel="Try again" actionTestID="item.empty.retry" onAction={() => void load()} /> : item.removed_at ? <>
           <Text style={styles.body} testID="item.removed.state">{item.name} removed</Text>
           {entries.map((entry) => <UndoToast key={entry.item.id} entry={entry} onUndo={() => void undo(entry)} onDismiss={() => dismiss(entry.item.id)} />)}
         </> : <>
         <View style={styles.card}>
-          <ItemThumb name={item.name} foodGroup={item.food_group} photoUrl={item.photo_url} size={theme.sizes.emptyIcon} />
-          <ItemField label="Food name" testID="item.name.input" value={draft.name} maxLength={200} editable={!pending} onChangeText={(name) => change({ name })} />
-          <ItemField label="Quantity" testID="item.quantity.input" value={draft.quantity} maxLength={12} keyboardType="decimal-pad" editable={!pending} onChangeText={(quantity) => change({ quantity })} />
-          <ItemField label="Unit" testID="item.unit.input" value={draft.unit} maxLength={32} editable={!pending} onChangeText={(unit) => change({ unit })} />
-          <View style={styles.section}>
-            <Text style={styles.label}>Food group</Text>
-            <ChoiceControl label="Food group" options={FOOD_GROUPS} value={draft.foodGroup} onChange={(foodGroup) => change({ foodGroup })} testID="item.group" disabled={pending} />
+          <View style={styles.hero}>
+            <ItemThumb name={item.name} foodGroup={item.food_group} photoUrl={item.photo_url} size={theme.sizes.itemDetailThumb} />
+            <FadeIn key={`${item.name}-${item.quantity}-${item.unit}`} style={styles.heroCopy}><Text accessibilityRole="header" style={styles.heading}>{item.name}</Text>
+              <Text style={styles.body}>{item.quantity} {item.unit === 'piece' && item.quantity !== 1 ? 'pieces' : item.unit}</Text></FadeIn>
           </View>
-          <View style={styles.section}>
-            <Text style={styles.label}>Stored in</Text>
-            <ChoiceControl label="Storage" options={STORAGE_OPTIONS} value={draft.storage} onChange={(storage) => change({ storage })} testID="item.storage" disabled={pending} />
-          </View>
-          <ItemField label="Use by (YYYY-MM-DD)" testID="item.expiry.input" value={draft.expiry} maxLength={10} editable={!pending} onChangeText={(expiry) => change({ expiry })} />
-          {item.expiry_source !== 'user' ? <Text style={styles.chip} testID="item.expiry.estimated">estimated</Text> : null}
-          <View style={styles.section}>
-            <Text style={styles.label}>Freshness</Text>
-            <ChoiceControl label="Freshness" options={[
-              { value: 'fresh', label: 'Fresh' }, { value: 'semi_fresh', label: 'Use soon' }, { value: 'spoiled', label: 'Looks off' }, { value: 'unknown', label: 'Not checked' },
-            ]} value={draft.freshness} onChange={(freshness) => change({ freshness })} testID="item.freshness" disabled={pending} />
-          </View>
+          <FoodSummary values={item} estimated={item.expiry_source !== 'user'} testID="item" disabled={pending} onEdit={(field) => { setError(''); setEditing(field); }} />
           <ExpiryBadge item={item} testID="item.status.badge" />
           {item.est_weight_kg !== null ? <Text style={styles.meta}>Estimated weight: {formatWeight(item.est_weight_kg, units)}</Text> : null}
           {item.est_price !== null ? <Text style={styles.meta}>Estimated value: {formatMoney(item.est_price, currency)}</Text> : null}
-          {validation(draft) ? <Text accessibilityRole="alert" style={styles.error} testID="item.validation.error">{validation(draft)}</Text> : null}
         </View>
         <AppButton label="Check again" testID="item.photo.button" variant="outline" disabled={pending} onPress={() => setPhotoOpen((current) => !current)} />
         {photoOpen ? <View style={styles.card} testID="item.photo.chooser">
@@ -232,6 +198,9 @@ export function ItemDetailScreen() {
         {claimer ? <AppButton label="Stop sharing" testID="item.share.stop" variant="outline" disabled={pending} onPress={() => void perform(toggleShare)} /> : null}
       </>}
     </ScrollView>
+    {item && !item.removed_at && editing ? <FoodEditSheet key={editing} field={editing} values={item}
+      estimated={item.expiry_source !== 'user'} storageExpirySource={item.expiry_source} testID="item.edit"
+      onSave={saveChanges} onClose={() => setEditing(null)} /> : null}
     {item && removing ? <RemoveSheet key={`${item.id}-${removing}`} item={item} units={units} initialShared={removing === 'given'} onClose={() => setRemoving(null)} onRemoved={(removed) => { setItem(removed); remember(removed); }} /> : null}
     {pickupOpen ? <PickupSheet pickup={pickup ?? null} onSave={savePickup} onClose={() => setPickupOpen(false)} /> : null}
   </SafeAreaView>;
@@ -243,6 +212,7 @@ function createStyles(theme: AppTheme) {
     header: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: theme.spacing.sm },
     title: { ...theme.type.sectionHeading, color: theme.colors.ink }, heading: { ...theme.type.cardHeading, color: theme.colors.ink },
     card: { backgroundColor: theme.colors.surface, borderRadius: theme.radii.card, padding: theme.spacing.lg, gap: theme.spacing.md },
+    hero: { flexDirection: 'row', alignItems: 'center', gap: theme.spacing.lg }, heroCopy: { flex: 1, gap: theme.spacing.sm },
     section: { gap: theme.spacing.sm }, label: { ...theme.type.formLabel, color: theme.colors.inkSecondary }, body: { ...theme.type.bodySmall, color: theme.colors.inkSecondary },
     meta: { ...theme.type.meta, color: theme.colors.muted }, error: { ...theme.type.body, color: theme.colors.urgentInk },
     chip: { ...theme.type.badge, color: theme.colors.forest, backgroundColor: theme.colors.limeTint, borderRadius: theme.radii.chip, padding: theme.spacing.sm, alignSelf: 'flex-start' },

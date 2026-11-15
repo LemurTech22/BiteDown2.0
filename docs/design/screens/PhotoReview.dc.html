@@ -22,11 +22,7 @@ a{color:#1F4D2B}a:hover{color:#13261A}
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#1F4D2B" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 6l-6 6 6 6"></path></svg></a>
       <h1 style="margin: 0; font-family: Outfit, sans-serif; font-weight: 600; font-size: 24px">We found 7 items</h1>
     </header>
-
-    <div role="img" aria-label="Your fridge photo, with a box on each item found" style="height: 200px; flex-shrink: 0; border-radius: 16px; background: #E3EDCB; display: flex; align-items: center; justify-content: center; gap: 8px; color: #45584A; font-size: 14px; font-weight: 500">
-      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 8a2 2 0 0 1 2-2h2l2-2h4l2 2h2a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z"></path><circle cx="12" cy="13" r="3.5"></circle></svg>
-      [Your fridge photo, with boxes on each item]
-    </div>
+    <p style="margin: 0; font-size: 14px; color: #45584A">Everything is filled in. Check the flagged ones, then add.</p>
 
     <section aria-labelledby="spoiled-heading" style="display: flex; flex-direction: column; gap: 6px">
       <h2 id="spoiled-heading" style="margin: 0; display: flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; color: #8A3B0E">
@@ -34,9 +30,8 @@ a{color:#1F4D2B}a:hover{color:#13261A}
         Looks spoiled</h2>
       <ul style="list-style: none; margin: 0; padding: 0; background: #FFFFFF; border-radius: 16px">
         <sc-for list="{{spoiled}}" as="s" hint-placeholder-count="1">
-          <li style="border-bottom: 1px solid #E6EDD6; display: flex; align-items: center; gap: 10px; padding: 10px 10px 10px 14px">
-            <span style="{{s.tileStyle}}">
-              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="{{s.stroke}}" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="{{s.icon}}"></path></svg></span>
+          <li style="display: flex; align-items: center; gap: 10px; padding: 10px 10px 10px 14px">
+            <span role="img" aria-label="{{s.photoLabel}}" style="width: 44px; height: 44px; border-radius: 12px; background: #F8E1EC; flex-shrink: 0; display: flex; align-items: center; justify-content: center; font-size: 9px; font-weight: 600; color: #A8366E">photo</span>
             <span style="flex: 1; min-width: 0; font-size: 16px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{s.name}}</span>
             <button type="button" aria-label="{{s.tossLabel}}" style="height: 44px; padding: 0 12px; border-radius: 12px; background: #FFFFFF; border: 1px solid #D3E0BF; color: #8A3B0E; font-size: 15px; font-weight: 600; flex-shrink: 0">Toss it</button>
             <button type="button" aria-label="{{s.keepLabel}}" style="height: 44px; padding: 0 12px; border-radius: 12px; background: #FFFFFF; border: 1px solid #D3E0BF; color: #1F4D2B; font-size: 15px; font-weight: 600; flex-shrink: 0">Keep it</button>
@@ -45,29 +40,19 @@ a{color:#1F4D2B}a:hover{color:#13261A}
       </ul>
     </section>
 
-    <ul style="list-style: none; margin: 0; padding: 0; background: #FFFFFF; border-radius: 16px">
+    <ul style="list-style: none; margin: 0; padding: 0; background: #FFFFFF; border-radius: 16px; overflow: hidden">
       <sc-for list="{{found}}" as="f" hint-placeholder-count="6">
-        <li style="border-bottom: 1px solid #E6EDD6; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 8px 10px 8px 14px">
-          <div role="checkbox" aria-checked="{{f.checked}}" tabindex="0" style="flex: 1; min-width: 0; display: flex; align-items: center; gap: 12px; min-height: 44px">
-            <span style="{{f.boxStyle}}"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#F4F8E8" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="{{f.tickStyle}}"><path d="M5 12l5 5L20 7"></path></svg></span>
+        <li style="display: flex; align-items: center; gap: 6px; padding: 4px 8px 4px 10px; border-bottom: 1px solid #E6EDD6">
+          <button type="button" role="checkbox" aria-checked="{{f.checked}}" aria-label="{{f.pickLabel}}" style="width: 44px; height: 44px; border: 0; background: transparent; padding: 0; display: flex; align-items: center; justify-content: center; flex-shrink: 0">
+            <span style="{{f.boxStyle}}"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#F4F8E8" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="{{f.tickStyle}}"><path d="M5 12l5 5L20 7"></path></svg></span></button>
+          <button type="button" aria-label="{{f.editLabel}}" style="flex: 1; min-width: 0; min-height: 56px; display: flex; align-items: center; gap: 12px; border: 0; background: transparent; padding: 0; text-align: left; font-family: inherit; color: #13261A">
+            <span role="img" aria-label="{{f.photoLabel}}" style="{{f.thumbStyle}}">{{f.thumbText}}</span>
             <span style="flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px">
-              <span style="font-size: 16px; font-weight: 600">{{f.name}}</span>
-              <span style="display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px"><span style="font-size: 13px; color: #45584A">{{f.meta}}</span><span style="{{f.badgeStyle}}">{{f.when}}</span></span>
+              <span style="display: flex; align-items: center; gap: 8px"><span style="font-size: 16px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{f.name}}</span><span style="{{f.checkStyle}}"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"></circle><path d="M12 8v5M12 16.5v.01"></path></svg>Check this</span></span>
+              <span style="font-size: 13px; color: #45584A">{{f.meta}}</span>
             </span>
-          </div>
-          <div role="group" aria-label="{{f.qtyLabel}}" style="display: flex; align-items: center; background: #EEF5D6; border-radius: 12px; flex-shrink: 0">
-            <button aria-label="Less" style="width: 44px; height: 44px; border: 0; background: transparent; color: #1F4D2B; font-size: 20px; font-weight: 600">−</button>
-            <button type="button" aria-label="Edit amount: {{f.qty}}" aria-expanded="{{f.editing}}" style="min-width: 48px; height: 44px; padding: 0 2px; border: 0; background: transparent; display: flex; align-items: center; justify-content: center"><span style="{{f.chipStyle}}">{{f.qty}}</span></button>
-            <button aria-label="More" style="width: 44px; height: 44px; border: 0; background: transparent; color: #1F4D2B; font-size: 20px; font-weight: 600">+</button>
-          </div>
-          <sc-if value="{{f.isEditing}}" hint-placeholder-val="{{ false }}">
-            <div role="group" aria-label="Edit amount for {{f.name}}" style="flex-basis: 100%; box-sizing: border-box; display: flex; align-items: center; gap: 8px; padding: 6px 0 6px 36px">
-              <label for="qty-amount" style="position: absolute; width: 1px; height: 1px; overflow: hidden">Amount</label>
-              <input id="qty-amount" type="text" inputmode="decimal" value="1.4" style="width: 88px; height: 44px; box-sizing: border-box; padding: 0 12px; border-radius: 12px; border: 2px solid #1F4D2B; background: #FFFFFF; font-size: 17px; font-weight: 600; color: #13261A">
-              <button type="button" aria-haspopup="listbox" aria-label="Unit: lb" style="height: 44px; min-width: 72px; padding: 0 12px; display: flex; align-items: center; justify-content: space-between; gap: 6px; border: 0; border-radius: 12px; background: #FFFFFF; box-shadow: inset 0 0 0 1px #D3E0BF; color: #1F4D2B; font-size: 16px; font-weight: 600">lb<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"></path></svg></button>
-              <button type="button" style="height: 44px; margin-left: auto; padding: 0 16px; border: 0; border-radius: 12px; background: #1F4D2B; color: #F4F8E8; font-size: 15px; font-weight: 600">Done</button>
-            </div>
-          </sc-if>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#45584A" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex-shrink: 0"><path d="M9 6l6 6-6 6"></path></svg>
+          </button>
         </li>
       </sc-for>
     </ul>
@@ -84,24 +69,24 @@ a{color:#1F4D2B}a:hover{color:#13261A}
 <script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":1050}}'>
 class Component extends DCLogic {
 renderVals() {
-const soon = 'font-size: 13px; font-weight: 600; padding: 2px 8px; border-radius: 10px; background: #EEF5D6; color: #1F4D2B; white-space: nowrap';
-const urgent = 'font-size: 13px; font-weight: 600; padding: 2px 8px; border-radius: 10px; background: #FBE3CF; color: #8A3B0E; white-space: nowrap';
-const warn = 'font-size: 13px; font-weight: 600; padding: 2px 8px; border-radius: 10px; background: #FFF1B8; color: #6B5000; white-space: nowrap';
-const box = (on) => 'width: 24px; height: 24px; box-sizing: border-box; border-radius: 12px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; ' + (on ? 'background: #1F4D2B; border: 2px solid #1F4D2B' : 'background: transparent; border: 2px solid #45584A');
-const f = (name, m, when, qty, opts) => { const o = Object.assign({ on: true, badgeStyle: soon }, opts || {}); return { name, meta: m, when, qty, qtyLabel: 'Quantity of ' + name, editing: o.edit ? 'true' : 'false', isEditing: !!o.edit, chipStyle: 'padding: 6px 8px; border-radius: 8px; background: #FFFFFF; font-size: 14px; font-weight: 600; color: #13261A; white-space: nowrap; ' + (o.edit ? 'box-shadow: inset 0 0 0 2px #1F4D2B' : 'box-shadow: inset 0 0 0 1px #D3E0BF'), badgeStyle: o.badgeStyle, checked: o.on ? 'true' : 'false', boxStyle: box(o.on), tickStyle: o.on ? 'display: block' : 'display: none' }; };
-const tile = (bg) => 'width: 40px; height: 40px; border-radius: 12px; background: ' + bg + '; display: flex; align-items: center; justify-content: center; flex-shrink: 0';
-const sp = (o) => ({ name: o.name, icon: o.icon, stroke: o.stroke, tileStyle: tile(o.bg), tossLabel: 'Toss ' + o.name, keepLabel: 'Keep ' + o.name });
+const box = (on) => 'width: 24px; height: 24px; box-sizing: border-box; border-radius: 12px; display: flex; align-items: center; justify-content: center; ' + (on ? 'background: #1F4D2B; border: 2px solid #1F4D2B' : 'background: transparent; border: 2px solid #45584A');
+const thumb = (tint) => 'width: 44px; height: 44px; border-radius: 12px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; font-size: 9px; font-weight: 600; ' + tint;
+const check = 'display: inline-flex; align-items: center; gap: 4px; font-size: 12px; font-weight: 600; padding: 2px 8px; border-radius: 10px; background: #FFF1B8; color: #6B5000; white-space: nowrap';
+const f = (name, meta, tint, o) => {
+const x = o || {};
+return { name, meta, checked: 'true', boxStyle: box(true), tickStyle: 'display: block', pickLabel: 'Add ' + name,
+editLabel: 'Edit ' + name + ', ' + meta + (x.check ? ', Check this' : ''), photoLabel: 'Photo of ' + name,
+thumbStyle: thumb(tint), thumbText: 'photo', checkStyle: x.check ? check : 'display: none' };
+};
 return {
-spoiled: [
-sp({ name: 'Strawberries', icon: 'M12 8c-1-2-4-3-6-1-3 3-1 10 2 12 1 1 3 1 4 0 1 1 3 1 4 0 3-2 5-9 2-12-2-2-5-1-6 1zM12 8c0-2 1-3.5 3-4.5', stroke: '#A8366E', bg: '#F8E1EC' })
-],
+spoiled: [{ name: 'Strawberries', photoLabel: 'Photo of strawberries', tossLabel: 'Toss Strawberries', keepLabel: 'Keep Strawberries' }],
 found: [
-f('Baby spinach', 'Veggies', '4–5 days', '1 bag'),
-f('Greek yogurt', 'Dairy', '1–2 weeks', '1 tub'),
-f('Chicken thighs', 'Protein', '2–3 days', '1.4 lb', { edit: true }),
-f('Bananas', 'Fruit', 'Use soon', '5', { badgeStyle: warn }),
-f('Cheddar', 'Dairy', 'Not sure', '8 oz'),
-f('Eggs', 'Protein', '3+ weeks', '12')
+f('Cheddar', 'Fridge · not sure of the date', 'background: #FFF6C7; color: #6B5000', { check: true }),
+f('Baby spinach', 'Fridge · use in 4–5 days', 'background: #E2F1D8; color: #2F7A3A'),
+f('Greek yogurt', 'Fridge · use in 1–2 weeks', 'background: #E2E9F7; color: #3A5BA0'),
+f('Chicken thighs', 'Fridge · use in 2–3 days', 'background: #FBE4DE; color: #B0412E'),
+f('Bananas', 'Pantry · use soon', 'background: #F5EBCD; color: #8A6414'),
+f('Eggs', 'Fridge · use in 3+ weeks', 'background: #F5EBCD; color: #8A6414')
 ]
 };
 }

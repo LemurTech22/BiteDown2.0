@@ -2,7 +2,8 @@
 
 The live canvas for the key screens, made with Claude's Design canvas and following taste-skill's
 rules, is at
-**https://claude.ai/artifact/ALmB8FYKGrayhDQXqvoncx**. It's private, so the owner has to share it
+**https://claude.ai/artifact/2M3dg2Yzb8fhyTL9CcvKoC**. (Since 2026-11-14 the canvas lives in the owner's account; the earlier one,
+`ALmB8FYKGrayhDQXqvoncx`, belonged to another organisation and is no longer updated.) It's private, so the owner has to share it
 before teammates can open it. The source of every artboard is mirrored in `screens/`. These are
 `.dc.html` mockups, **not SwiftUI**. iOS translates them into native views using
 `ios/App/Theme.swift`, the code mirror of [`DESIGN_SYSTEM.md`](DESIGN_SYSTEM.md).

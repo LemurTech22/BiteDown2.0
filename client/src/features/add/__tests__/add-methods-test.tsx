@@ -111,9 +111,13 @@ describe('text and keyboard dictation', () => {
     await parse(screen);
     expect(await screen.findByText('We understood 1 item')).toBeTruthy();
     await fireEvent.press(screen.getByTestId('addText.edit.0'));
-    await fireEvent.changeText(screen.getByTestId('add.name.0'), 'Green apples');
-    await fireEvent.changeText(screen.getByTestId('add.quantity.0'), '2');
-    await fireEvent.press(screen.getByTestId('add.storage0.pantry'));
+    await fireEvent.press(screen.getByTestId('addText.editor.0.amount.row'));
+    await fireEvent.changeText(screen.getByTestId('addText.editor.0.name.input'), 'Green apples');
+    await fireEvent.changeText(screen.getByTestId('addText.editor.0.quantity.input'), '2');
+    await fireEvent.press(screen.getByTestId('addText.editor.0.save'));
+    await fireEvent.press(screen.getByTestId('addText.edit.0'));
+    await fireEvent.press(screen.getByTestId('addText.editor.0.storage.row'));
+    await fireEvent.press(screen.getByTestId('addText.editor.0.storage.pantry'));
     await fireEvent.press(screen.getByTestId('addText.save.button'));
     await waitFor(() => expect(router.dismissTo).toHaveBeenCalledWith('/fridge'));
     expect(create).toHaveBeenCalledWith({ items: [expect.objectContaining({ name: 'Green apples', quantity: 2, storage: 'pantry', source: 'text' })] });
@@ -183,8 +187,11 @@ describe('barcode', () => {
     const create = jest.spyOn(api, 'createItems');
     expect(screen.getByTestId('addBarcode.camera.scanner').props.barcodeScannerSettings.barcodeTypes).toEqual(['ean13', 'ean8', 'upc_a', 'upc_e']);
     await scan(screen);
-    expect(await screen.findByDisplayValue('Whole grain cereal')).toBeTruthy();
-    await fireEvent.changeText(screen.getByTestId('add.quantity.0'), '3');
+    expect(await screen.findByTestId('addBarcode.candidate.0')).toBeTruthy();
+    await fireEvent.press(screen.getByTestId('addBarcode.edit.0'));
+    await fireEvent.press(screen.getByTestId('addBarcode.editor.0.amount.row'));
+    await fireEvent.changeText(screen.getByTestId('addBarcode.editor.0.quantity.input'), '3');
+    await fireEvent.press(screen.getByTestId('addBarcode.editor.0.save'));
     await fireEvent.press(screen.getByTestId('addBarcode.save.button'));
     await waitFor(() => expect(router.dismissTo).toHaveBeenCalledWith('/fridge'));
     expect(lookup).toHaveBeenCalledWith('012345678905');
@@ -218,7 +225,7 @@ describe('barcode', () => {
     expect(router.replace).toHaveBeenCalledWith('/add-text');
     await fireEvent.press(screen.getByTestId('addBarcode.reset.button'));
     await scan(screen);
-    await screen.findByDisplayValue('Whole grain cereal');
+    await screen.findByTestId('addBarcode.candidate.0');
     await fireEvent.press(screen.getByTestId('add.barcode.manual.button'));
     expect(router.replace).toHaveBeenCalledTimes(2);
   });
@@ -229,7 +236,7 @@ describe('barcode', () => {
     await scan(screen);
     expect(await screen.findByText('Lookup unavailable')).toBeTruthy();
     await fireEvent.press(screen.getByTestId('addBarcode.lookup.retry'));
-    expect(await screen.findByDisplayValue('Whole grain cereal')).toBeTruthy();
+    expect(await screen.findByTestId('addBarcode.candidate.0')).toBeTruthy();
     expect(lookup).toHaveBeenCalledTimes(2);
   });
 
@@ -290,15 +297,15 @@ describe('receipt', () => {
     const create = jest.spyOn(api, 'createItems');
     await fireEvent.press(screen.getByTestId(`addReceipt.${source}.button`));
     expect(await screen.findByText('1 food item')).toBeTruthy();
-    expect(screen.getByText('MOCK FOOD 2.50')).toBeTruthy();
-    expect(screen.getByText('PAPER TOWELS 3.00')).toBeTruthy();
+    expect(screen.getByTestId('addReceipt.edit.0').props.accessibilityLabel).toContain('MOCK FOOD 2.50');
+    expect(screen.getByTestId('addReceipt.edit.1').props.accessibilityLabel).toContain('PAPER TOWELS 3.00');
     expect(screen.getByText('€2.50')).toBeTruthy();
     expect(screen.getByText('Not food')).toBeTruthy();
     expect(screen.getByTestId('addReceipt.select.1').props.accessibilityState.checked).toBe(false);
     expect(screen.queryByTestId('addReceipt.expiryBadge.1')).toBeNull();
     expect(screen.getByText('Receipt total · €5.50')).toBeTruthy();
     const scroll = within(screen.getByTestId('addReview.scroll'));
-    expect(scroll.getByText('MOCK FOOD 2.50')).toBeTruthy();
+    expect(scroll.getByTestId('addReceipt.candidate.0')).toBeTruthy();
     expect(scroll.queryByTestId('addReceipt.total.label')).toBeNull();
     expect(scroll.queryByTestId('addReceipt.save.button')).toBeNull();
     await fireEvent.press(screen.getByTestId('addReceipt.save.button'));

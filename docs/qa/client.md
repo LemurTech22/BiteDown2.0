@@ -441,3 +441,128 @@ router reuse, live API, browser/device interaction, Android/iOS builds, device h
 native hit testing, screen-reader playback and large-text layout remain unverified.
 
 **Orchestrator ruling (2026-11-14), Re-check 2:** the `setPending(false)` / `working.current = false` reset after a stale save settles is **by design**, not a defect. It is the "flags recover" requirement: without it the current visit stays blocked as busy, and on an unmounted screen it is a no-op. The brief's "no state" wording meant item data, errors, haptics, notices and navigation. With CL-17, CL-18 and CL-19 passing and Jest 43 suites / 653 green, the save-closes-with-notice change is **PASS**.
+
+
+## Read-and-confirm redesign QA (2026-11-14)
+
+**Verdict: FAIL.** Three reproduced findings, **CL-20–CL-22**, account for four failing regression cases. **CL-23–CL-29 remain unused.** The obsolete global-Save/inline-candidate tests have been rewritten for sheets; their failures are no longer caused by removed controls.
+
+Scope: the 2026-11-14 owner ruling in `docs/DECISIONS.md`, requested commit `a7f56fd` and its subsequent merge, checked against the files present in this worktree. Commit/branch identity was **not independently verified**, because no Git commands were run. Changes in this pass are confined to this report and:
+
+- `client/src/features/item/__tests__/qa-save-notice-test.tsx` — rewritten, **36 cases**.
+- `client/src/__tests__/qa-item-photos-flows.tsx` — **26 cases**; photo review now edits through sheets, deselects the excluded candidate, and verifies the crop token in the Add payload. Text/barcode/receipt cases also edit through sheets.
+- `client/src/__tests__/qa-confirm-ui-test.tsx` — new, **46 cases**.
+- `client/src/__tests__/qa-confirm-web-test.tsx` — new, **2 cases**, using real React Native Web components and React DOM in jsdom.
+
+Feature code and builder tests were not edited. No live API, Gemini/ML call, dependency installation, commit, push or PR was performed.
+
+### Findings
+
+| ID | Severity | File:line | Reproduction and evidence |
+|---|---|---|---|
+| **CL-20** | **Medium** | `client/src/components/ui/food-summary.tsx:77`–`:79`; `client/src/features/item/item-detail-screen.tsx:94`, `:99`, `:200` | Delay A's Stored-in PATCH, then reuse the mounted detail component for item B while the sheet is open. B's detail and sheet values appear. Resolve **or reject** A's request: the sheet on B closes. The visit guard correctly suppresses item-data/error/notice/haptic changes, but returns a fulfilled `Promise<void>` for both stale outcomes. `FoodEditSheet.save()` then unconditionally calls `close()`, whose callback clears the current `editing` state. The sheet is keyed only by field, and its own completion has no visit guard. **Two failing cases** at `qa-save-notice-test.tsx:197`. This is component-reuse evidence; actual router reuse on a device is unverified. |
+| **CL-21** | **High** | `client/src/features/add/candidate-editor.tsx:29`–`:30`, `:43`; `client/src/features/add/candidate-review.tsx:62`–`:63`, `:98` | In review, open a previously fresh candidate, choose Freshness → **Looks off**, then return to review. The exported draft has `freshness: 'spoiled'`, but stays outside Looks spoiled and has no Toss/Keep controls. `needsSpoiledDecision()` returns false and `draftError()` is undefined, so the shared Add validation accepts it without a disposition. Classification and validation inspect `candidate.freshness`, ignoring the edited `draft.freshness` which is sent to create. **One failing case** at `qa-confirm-ui-test.tsx:149`. The common draft/validation path is used by photo, text, barcode and receipt; this regression exercises the shared component and serializer, rather than making four live creates. |
+| **CL-22** | **Medium** | `client/src/components/ui/fade-in.tsx:15`–`:24`; `client/src/features/add/candidate-review.tsx:75`; `client/src/components/ui/food-summary.tsx:44` | Enable Reduce Motion and show or update summary/review content. `FadeIn` still starts at opacity **0** and calls `Animated.timing` for **150 ms**. It never reads Reduce Motion; review only sets the stagger delay to zero. Thus the redesigned rows/header continue fading despite the preference. **One failing case** at `qa-confirm-ui-test.tsx:234`, with the preference mocked true, observes one animation and initial opacity 0. Sheet slide-to-fade substitution and notice motion handling pass separately. Device animation playback is unverified. |
+
+CL-17/18/19's former stale item-data, stale error/haptic, notice and navigation regressions pass for sheet saves. CL-20 tracks the newly exposed sheet-close side effect separately. The earlier orchestrator ruling permitting pending/working flag cleanup after stale settlement remains respected; it is not reported as a defect.
+
+### Coverage and limits
+
+| Area | Result |
+|---|---|
+| Save-on-pick, isolated choices, retry and double taps | **PASS:** storage/group/freshness sheets contain only that choice, issue one request while pending, close after success and stay in Item detail. A current failure retains the sheet with an inline alert and Try again repeating the exact patch; error then success haptics occur once each. Cancel/request-close and other options cannot dismiss or change a pending sheet. **CL-20** covers the distinct route-change lifecycle. |
+| Visit lifecycle | **PASS** for stale success/failure after unmount, after Back plus destination teardown (with history and `/fridge` fallback), on B and after A → B → A. Current item data survives, with no stale errors, haptics, notices or navigation, and a subsequent current-visit save succeeds. Completed A → B → A saves also work. StrictMode cases assert actual setup/cleanup/setup replay and current failure/retry recovery. **FAIL** for the stale sheet close in CL-20. |
+| Success notice | **PASS:** exact saved-name text, one 3,000 ms notice deadline per save, one success haptic, polite live region, touch-transparent container, one-line long-name text, survives origin teardown, present at 2,999 ms and absent at 3,000 ms. Existing provider tests (**8/8**) also pass, including replacement/deadline cleanup and Reduce Motion. Spoken announcements and visual ellipsis remain unverified. |
+| Other detail actions / removed items | **PASS:** Share on/off, pickup Done, Check again, Remove and Undo never navigate or post a sheet-save notice. Pickup blocks duplicate Done/cancellation while pending. Already-removed items expose no editable rows. Removal elsewhere makes the pending edit fail inline and retain retry. |
+| Storage re-estimation | **PASS, 7 cases:** Stored-in and Move issue identical patches and produce matching mock-service dates/sources for estimated dates, user dates retained by default, explicit re-estimation, expired estimated/user dates, freezing, thawing meat with a two-day cap, and fridge → pantry. Storage-only requests omit `predicted_expiry`, so they do not suppress server re-estimation. These are client/mock results; live backend re-estimation was not exercised. |
+| Estimated / expired dates | **PASS:** re-confirming the same date omits the date field and preserves estimated status. Choosing another date makes it user-sourced and removes estimated; re-confirming that user date does not restore estimated. Candidate drafts retain the crop token and analogous date-source behavior. Past dates, including 2000-02-29, save literally and retain the Expired explanation. |
+| Name & amount | **PASS:** empty/whitespace name; zero, negative, empty, nonnumeric and infinite quantity; and blank unit cannot submit. A 200-character name, decimal quantity and trimmed unit save once. Fields retain platform font scaling and have no text truncation in the summary. **Acceptance interpretation:** no global Item detail Save remains; Name & amount still has a sheet-local Save at `food-summary.tsx:114`. That control was exercised explicitly, not claimed absent. If “No Save button” also prohibits the multi-field sheet's submit control, that wording needs an owner ruling. |
+| Candidate warnings, sorting, selection and Add | **PASS:** null confidence is unflagged, 0.49/0 flagged, 0.5 unflagged; non-food is flagged even at high confidence. Warning includes words and a decorative icon. Equal-priority order is stable before/after edits, independently within food and Looks spoiled sections, for all four add sources. Receipt non-food starts deselected; the other sources retain selection. Original spoiled candidates still require Toss/Keep and reselection after Toss clears the decision. **CL-21** covers newly edited spoilage. Add actions are outside the scrolling candidates in every add flow. Photo and single-photo payloads retain the edited candidate's `photo_token`, omit preview URLs and exclude the deselected token; other add methods send no token. |
+| Calendar boundaries and local dates | **PASS:** Jan 31 → February in leap/non-leap years; leap-day → March; December → January and back; Tomorrow across leap day/year end and both 2026 Chicago DST changes. Host timezone verified as **America/Chicago**; spring offsets **360 → 300 minutes**, fall **300 → 360 minutes**. Local YYYY-MM-DD values and one-day relative labels remain correct. Today ring/hint are independent of selected day; past days remain selectable; cells have 44-point minimum dimensions. |
+| Accessibility / web / native | **PASS for tested evidence:** “Stored in, Fridge” plus button role; all five summary rows have ≥44-point minHeight, untruncated text and scaling enabled; selected/disabled states; modal scope and 520-point column cap. Real React Native Web/jsdom tests establish initial focus inside, focus containment, Escape dismissal, focus restoration and pending Escape/Cancel blocking. CSS animation completion is dispatched explicitly because jsdom does not play CSS animations. Native iOS/Android request-close handlers are tested with native component mocks; native screen-reader focus/escape, touch interception and physical target sizes remain unverified. |
+| Contrast / motion | **PASS:** light and dark ink/secondary/muted/error text against surface/ground, and onForest against forest, meet calculated AA **4.5:1**; today's ring meets **3:1**. Sheet Reduce Motion uses fade instead of slide. **FAIL:** shared content FadeIn, CL-22. Calculations and props do not establish device rendering or 200% Dynamic Type layout. |
+
+Documentation checked against Expo **SDK 58** from `client/package.json`: [versioned SDK reference](https://docs.expo.dev/versions/v58.0.0/), [React Native accessibility](https://reactnative.dev/docs/accessibility), and [Modal behavior](https://reactnative.dev/docs/modal). These inform interpretation of roles and modal props; test results above come from the worktree itself.
+
+### Exact validation results
+
+All commands ran from `client/` with `EXPO_NO_DOTENV=1`. No test edits followed the full-suite run.
+
+| Command / scope | Result |
+|---|---|
+| `npx tsc --noEmit` | **PASS**, exit **0**, final test contents. |
+| `npm run lint` | **BLOCKED**, exit **1**: ESLint `import/no-unresolved` attempts a case-sensitivity directory scan and receives **EPERM: scandir `C:\Users\Frankinstyle`**, first reported in untouched `src/__tests__/demo-path-test.tsx:4`. This is an environment limitation, not a claimed feature defect. |
+| `npx eslint src/features/item/__tests__/qa-save-notice-test.tsx src/__tests__/qa-item-photos-flows.tsx src/__tests__/qa-confirm-ui-test.tsx src/__tests__/qa-confirm-web-test.tsx --no-cache --rule 'import/no-unresolved: [2, {"caseSensitive": false}]'` | **PASS**, exit **0**. QA files checked with only the blocked directory-case scan disabled. |
+| `npx eslint . --no-cache --rule 'import/no-unresolved: [2, {"caseSensitive": false}]'` | **PASS**, exit **0**, full client. Import resolution stays enabled; this is a qualified fallback, not a successful unmodified `npm run lint`. |
+| Targeted final QA run: `npx jest --runInBand --silent --no-color --runTestsByPath src/features/item/__tests__/qa-save-notice-test.tsx src/__tests__/qa-confirm-ui-test.tsx src/__tests__/qa-confirm-web-test.tsx src/__tests__/qa-item-photos-flows.tsx` | **FAIL**, exit **1**: **4 suites** (2 passed, 2 failed), **110 tests** (**106 passed, 4 failed**), 0 snapshots; **13.208 s**. |
+| Full `npx jest --runInBand` (executed **once**, with `--json --silent --no-color` reporting flags; JSON summarized in memory) | **FAIL**, exit **1**: **52 suites** (**50 passed, 2 failed**), **897 tests** (**893 passed, 4 failed**), **0 skipped**, **0 todo**, **0 snapshots**; **69.616 s**. |
+
+Final full-run breakdown:
+
+| Suite | Passed | Failed | Total |
+|---|---:|---:|---:|
+| `features/item/__tests__/qa-save-notice-test.tsx` | 34 | 2 (CL-20 success/failure) | 36 |
+| `__tests__/qa-confirm-ui-test.tsx` | 44 | 2 (CL-21, CL-22) | 46 |
+| `__tests__/qa-confirm-web-test.tsx` | 2 | 0 | 2 |
+| `__tests__/qa-item-photos-flows.tsx` | 26 | 0 | 26 |
+| All other suites, untouched in this pass | 787 | 0 | 787 |
+| **Total** | **893** | **4** | **897** |
+
+Next steps: guard sheet completion across visits, apply spoilage classification/validation to the effective edited freshness, and make shared content fades respect Reduce Motion; then re-check CL-20–CL-22. Full native builds, real-browser layout, device accessibility/haptics, 200% text layout and live service behavior remain unverified. The unmodified lint command also needs an environment with permission for its parent-directory scan. No feature fix was applied.
+
+### Re-check (2026-11-14)
+
+**Verdict: PASS for source, component and mock-service checks.** All four original failing
+regressions now pass. **CL-20–CL-22 are fixed/verified; CL-23–CL-29 remain unused.**
+The earlier FAIL and command results above describe the previous pass and are preserved.
+Revision/branch identity remains **unverified**: no Git commands were run.
+
+Read the current sheet completion/visit guards, effective candidate freshness, FadeIn,
+notice provider and Fridge clearance lifecycle, shared sheets, tab layout and Jest setup.
+Changed only this report and four allowed QA files: extended `qa-save-notice-test.tsx`
+and `qa-confirm-ui-test.tsx`; added `qa-confirm-notice-test.tsx` and
+`qa-accessibility-listener-test.tsx` under `client/src/__tests__/`.
+Feature code and builder tests were not edited.
+
+| ID | Status | Re-check evidence |
+|---|---|---|
+| CL-20 | **Fixed/verified.** | Stale success and rejection return `false`; the sheet closes only when its save result is not `false`. Four QA cases cover A → B and A → B → A. Settlement preserves the current sheet and item with no stale notice, error, navigation or haptic. Pending clears, the retained sheet accepts a deliberate current-item PATCH, then closes and acknowledges exactly once. |
+| CL-21 | **Fixed/verified.** | Classification, Toss/Keep rendering, validation and serialization use effective edited freshness. The original fresh → Looks off regression passes. Four added cases, one per photo/text/receipt/barcode source, exercise both Keep and Toss followed by a Fresh edit: the decision clears, the spoiled section/actions disappear, validation accepts fresh, and the payload is fresh. Changing back to Looks off requires a new decision. Toss still deselects the item. |
+| CL-22 | **Fixed/verified.** | With Reduce Motion true, FadeIn has opacity 1 and starts no timing animation. The new QA listener case uses the real motion hook, delivers `reduceMotionChanged(true)` and observes full opacity, then verifies subscription removal on unmount. The existing builder test for stopping an in-flight fade when the preference changes also passes in the full suite. |
+| CL-23–CL-29 | **Unused.** | No additional confirmed client defect assigned. |
+
+| Requested area | Result and limits |
+|---|---|
+| Notice placement and interaction | **PASS for tested evidence.** Four added cases cover single/batch Undo with Reduce Motion on/off. The notice is absolute, centered, capped at 520 points, anchored at `tabBar + measured overlay height + spacing.sm`, and uses bottom/side safe-area edges without a top edge. Its container stays `pointerEvents: none`; text remains one polite live region, not an alert. Both real Undo and Dismiss paths are exercised while it is present. A sibling tab-button callback remains callable. These are props/component checks, not physical coordinate hit testing of navigator tabs. |
+| Notice during overlay height changes | **PASS for lifecycle checks.** Measurements 160 → 240 → 240 → 120 update only the reserved bottom clearance. The same notice node remains mounted, its animation sequence does not restart, and its original 3,000 ms deadline survives measurement changes, overlay dismissal/restoration and Fridge teardown. Clearance returns to the tab-bar baseline after the overlay disappears. Position follows height changes directly; there is no animated repositioning. **Visible jump-free movement remains unverified on a browser/device.** |
+| Themed shared sheets | **PASS.** Two added rendered cases verify light/dark EditSheet and DateSheet panels actually use `theme.colors.surface` and retain every `bottomSheetPanelStyle` property (full width, 520-point cap, centered). DateSheet delegates to EditSheet. Rendered heading/month/selected-date colors match the theme; calculated normal, muted and selected text contrast is ≥4.5:1. Existing broader ink/secondary/muted/error contrast checks also pass. Device rendering and large-text layout remain unverified. |
+| `AccessibilityInfo.addEventListener` wrapper | **PASS within the Jest contract.** Two QA cases execute the actual setup file against controlled delegates. The wrapper forwards the exact event and callback, returns the same subscription, permits partial-spy fallthrough/restoration without recursion, and propagates registration, callback and removal errors. An undefined subscription stays undefined; no fallback subscription or catch conceals it. The real-hook QA case separately verifies event delivery and cleanup. The preset's underlying listener is still a no-op mock: native event delivery and supported-event validation are not established by default mock behavior. The wrapper adds no suppression of those failures. See the [official subscription contract](https://reactnative.dev/docs/accessibilityinfo#addeventlistener). |
+
+Final validation ran from `client/` with `EXPO_NO_DOTENV=1`:
+
+| Command | Exact result |
+|---|---|
+| `npx tsc --noEmit` | **PASS**, exit **0**, final QA test contents. |
+| `npm run lint` | **PASS**, exit **0**, unmodified command; the previous EPERM did not recur. |
+| `npx jest --runInBand --silent --no-color --runTestsByPath src/features/item/__tests__/qa-save-notice-test.tsx src/__tests__/qa-confirm-ui-test.tsx src/__tests__/qa-confirm-notice-test.tsx src/__tests__/qa-accessibility-listener-test.tsx src/__tests__/qa-confirm-web-test.tsx src/__tests__/qa-item-photos-flows.tsx` | **PASS**, exit **0**: **6/6 suites, 125/125 tests**, **0 failed**, **0 snapshots**; **16.108 s**. |
+| Full `npx jest --runInBand` | Executed **exactly once**, after final QA test edits and checks. **PASS**, exit **0**: **55/55 suites, 920/920 tests**, **0 failed**, **0 snapshots**; **45.777 s**. |
+
+Full-run breakdown (no QA test edits followed that run):
+
+| Suite / scope | Passed | Failed | Total |
+|---|---:|---:|---:|
+| `features/item/__tests__/qa-save-notice-test.tsx` | 38 | 0 | 38 |
+| `__tests__/qa-confirm-ui-test.tsx` | 52 | 0 | 52 |
+| `__tests__/qa-confirm-notice-test.tsx` | 4 | 0 | 4 |
+| `__tests__/qa-accessibility-listener-test.tsx` | 3 | 0 | 3 |
+| `__tests__/qa-confirm-web-test.tsx` | 2 | 0 | 2 |
+| `__tests__/qa-item-photos-flows.tsx` | 26 | 0 | 26 |
+| Other 49 suites | 795 | 0 | 795 |
+| **Total** | **920** | **0** | **920** |
+
+Early targeted failures were confined to an incomplete animation stub in the new QA
+harness; it was replaced with a forwarding spy. Type errors in that harness were also
+corrected before the final checks. No failing feature expectation was removed or inverted.
+No live API, browser layout run, Android/iOS build, native screen-reader/haptic playback,
+physical hit testing or 200% text run was performed. Those checks, including visible
+notice movement as Undo changes height, remain the next verification step.

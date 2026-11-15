@@ -1,5 +1,5 @@
 import { act, fireEvent, render } from '@testing-library/react-native';
-import { Animated, Button, Text } from 'react-native';
+import { Animated, Button, StyleSheet, Text } from 'react-native';
 import { SafeAreaInsetsContext } from 'react-native-safe-area-context';
 
 import { NoticeProvider, useNotice } from '@/components/notice/notice';
@@ -36,8 +36,9 @@ test.each([true, false])('announces politely, allows touches through, stays in t
   expect(screen.getByTestId('app.notice')).toHaveProp('numberOfLines', 1);
   expect(screen.queryByRole('alert')).toBeNull();
   expect(screen.getByTestId('app.notice.container')).toHaveStyle({ pointerEvents: 'none' });
-  expect(screen.getByTestId('app.notice.container')).toHaveProp('edges', expect.objectContaining({ top: 'additive' }));
-  expect(screen.getByTestId('app.notice.container')).toHaveStyle({ width: '100%', maxWidth: 520, alignSelf: 'center', top: 0 });
+  expect(screen.getByTestId('app.notice.container')).toHaveProp('edges', expect.objectContaining({ bottom: 'additive', top: 'off' }));
+  expect(screen.getByTestId('app.notice.container')).toHaveStyle({ width: '100%', maxWidth: 520, alignSelf: 'center', bottom: createTheme('light').sizes.tabBar });
+  expect(StyleSheet.flatten(screen.getByTestId('app.notice.container').props.style).top).toBeUndefined();
   await act(() => jest.advanceTimersByTime(2999));
   expect(screen.getByTestId('app.notice')).toBeTruthy();
   await act(() => jest.advanceTimersByTime(1));

@@ -11,7 +11,7 @@ import { useTheme } from '@/theme';
 
 import { AddScreen, addStyles } from './add-screen';
 import { CameraDeniedCard } from './camera-denied-card';
-import { draftError } from './candidate-editor';
+import { draftError, needsSpoiledDecision } from './candidate-editor';
 import { CandidateReview, type ReviewDraft, reviewDrafts } from './candidate-review';
 import { useCandidateSave } from './use-candidate-save';
 import { downscaleWebImage } from './web-image';
@@ -83,7 +83,7 @@ export function AddReceiptScreen() {
   return <AddScreen title="Receipt review" screen="addReceipt" footer={drafts && drafts.length > 0 ? <>
     {total != null ? <Text style={styles.body} testID="addReceipt.total.label">Receipt total · {formatMoney(total, currency)}</Text> : null}
     <AppButton label={`Add ${selected.length} ${selected.length === 1 ? 'item' : 'items'}`} testID="addReceipt.save.button"
-      loading={saving} disabled={!selected.length || selected.some((draft) => Boolean(draftError(draft)))} onPress={() => void save(selected)} />
+      loading={saving} disabled={!selected.length || drafts.some(needsSpoiledDecision) || selected.some((draft) => Boolean(draftError(draft)))} onPress={() => void save(selected)} />
   </> : null}>
     {!photo ? <View style={styles.section} testID="addReceipt.picker.empty">
       <Text style={styles.body}>Add a whole shop</Text>

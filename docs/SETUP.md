@@ -210,7 +210,7 @@ servers and skills are not picked up mid-session.
 | **Ponytail** (plugin) | In Claude Code: `/plugin marketplace add DietrichGebert/ponytail` then `/plugin install ponytail@ponytail` | Keeps agent code minimal |
 | **taste-skill** | `npx skills add https://github.com/Leonxlnx/taste-skill` | UI generation (anti-generic design) |
 | **SQL MCP (Postgres)** | Recommended: Postgres MCP Pro in restricted (read-only) mode — `claude mcp add postgres -- uvx postgres-mcp --access-mode=restricted` with `DATABASE_URI=postgresql://fwr:<pw>@127.0.0.1:5433/fwr` in its env. **Confirm the current command against the project's README before installing.** | QA / debugging queries |
-| **Claude Design** | No install needed. The screens were made on a Claude Design canvas from claude.ai, https://claude.ai/artifact/ALmB8FYKGrayhDQXqvoncx, and are mirrored in `docs/design/screens/`. If you also want a design MCP server, record its exact `claude mcp add` command here | Screen designs in `docs/design/` |
+| **Claude Design** | No install needed. The screens were made on a Claude Design canvas from claude.ai, https://claude.ai/artifact/2M3dg2Yzb8fhyTL9CcvKoC, and are mirrored in `docs/design/screens/`. If you also want a design MCP server, record its exact `claude mcp add` command here | Screen designs in `docs/design/` |
 | web-design-guidelines (end of project only) | `npx skills add vercel-labs/agent-skills --skill web-design-guidelines` | Final UI review |
 | Impeccable (end of project only) | per its README | `/impeccable critique`, `/impeccable polish` — **never during generation** |
 
