@@ -6,6 +6,7 @@ import { Linking, ScrollView, StyleSheet, Switch, Text, View } from 'react-nativ
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { useApi, type FoodGroup, type Freshness, type Item, type PickupSpot, type Storage, type UpdateItemInput } from '@/api';
+import { useNotice } from '@/components/notice/notice';
 import { ItemThumb } from '@/components/ui/item-thumb';
 import { AppButton } from '@/components/ui/app-button';
 import { AppIcon } from '@/components/ui/app-icon';
@@ -45,6 +46,7 @@ export function ItemDetailScreen() {
   const { id: param } = useLocalSearchParams<{ id: string | string[] }>();
   const id = Array.isArray(param) ? param[0] : param;
   const { api } = useApi();
+  const notice = useNotice();
   const { units, currency } = usePreferences();
   const theme = useTheme();
   const styles = createStyles(theme);
@@ -54,12 +56,12 @@ export function ItemDetailScreen() {
   const [loadError, setLoadError] = useState('');
   const [error, setError] = useState('');
   const [pending, setPending] = useState(false);
-  const [saved, setSaved] = useState(false);
   const [pickupOpen, setPickupOpen] = useState(false);
   const [photoOpen, setPhotoOpen] = useState(false);
   const [removing, setRemoving] = useState<'normal' | 'given' | null>(null);
   const request = useRef(0);
   const working = useRef(false);
+  const closing = useRef(false);
   const retry = useRef<(() => Promise<void>) | null>(null);
   const { entries, remember, undo, dismiss } = useRemovalUndo((restored) => { setItem(restored); setDraft(toDraft(restored)); });
   const load = useCallback(async () => {
@@ -81,15 +83,15 @@ export function ItemDetailScreen() {
   }, [load]);
 
   async function perform(action: () => Promise<void>) {
-    if (working.current) return;
-    working.current = true; retry.current = action; setPending(true); setError(''); setSaved(false);
+    if (working.current || closing.current) return;
+    working.current = true; retry.current = action; setPending(true); setError('');
     try { await action(); }
     catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Couldn’t update this item. Try again.');
       void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error).catch(() => {});
     } finally { working.current = false; setPending(false); }
   }
-  function change(patch: Partial<Draft>) { setDraft((current) => current ? { ...current, ...patch } : current); setSaved(false); }
+  function change(patch: Partial<Draft>) { setDraft((current) => current ? { ...current, ...patch } : current); }
   async function save() {
     if (!item || !draft) return;
     const invalid = validation(draft);
@@ -99,8 +101,11 @@ export function ItemDetailScreen() {
     if (draft.expiry && draft.expiry !== item.predicted_expiry) patch.predicted_expiry = draft.expiry;
     if (draft.freshness !== (item.freshness ?? 'unknown')) patch.freshness = draft.freshness === 'unknown' ? null : draft.freshness;
     const { item: updated } = await api.updateItem(item.id, patch);
-    setItem(updated); setDraft(toDraft(updated)); setSaved(true);
+    setItem(updated); setDraft(toDraft(updated));
     void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+    closing.current = true;
+    notice.show(`Saved changes to ${updated.name}`);
+    if (router.canGoBack()) router.back(); else router.replace('/fridge');
   }
   async function toggleShare() {
     if (!item) return;
@@ -206,7 +211,6 @@ export function ItemDetailScreen() {
           </> : null}
         </View> : null}
         {pending ? <SkeletonRows testID="item.mutation.loading" /> : null}
-        {saved ? <Text accessibilityLiveRegion="polite" style={styles.body} testID="item.save.success">Saved</Text> : null}
         {error ? <View style={styles.section} testID="item.mutation.error"><Text accessibilityRole="alert" style={styles.error}>{error}</Text>
           <AppButton label="Try again" testID="item.mutation.retry" disabled={pending} onPress={() => { if (retry.current) void perform(retry.current); }} /></View> : null}
         {claimer ? <AppButton label={`Given to ${claimer.name}`} testID="item.given.button" disabled={pending} onPress={() => setRemoving('given')} /> : null}
