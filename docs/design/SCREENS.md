@@ -4,7 +4,7 @@ Every screen the app needs, checked against [`docs/IDEA.md`](../IDEA.md). It's t
 that iOS builds and QA tests against.
 
 - Artboards are in [`screens/`](screens/) and on the canvas,
-  https://claude.ai/artifact/ALmB8FYKGrayhDQXqvoncx.
+  https://claude.ai/artifact/2M3dg2Yzb8fhyTL9CcvKoC.
 - Tokens and components are in [`DESIGN_SYSTEM.md`](DESIGN_SYSTEM.md).
 - **Every data screen also needs three states** (standing Design delta):
   - empty and error: native `ContentUnavailableView` with a retry action

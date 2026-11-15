@@ -38,8 +38,9 @@ ruling on the iOS label change with no Mac run, and LemurTech22's agreement.
   per-visit guard for slow saves (CL-17..19).
 - **Read-and-confirm redesign** (**PR #3**, `feat/confirm-ui`, stacked on PR #2, QA PASS, CL-20..22 fixed): Item detail summary card +
   tap-to-change sheets, one-line review rows with "Check this", plain-RN date sheet. Replaces PR #1's Save button flow.
-- **New design canvas** (owner chose option 2): publish a Design artifact in the owner's account from `docs/design/screens/`
-  plus redesigned ItemDetail and PhotoReview boards, then point `CLAUDE.md` and `docs/design/README.md` at it.
+- **New design canvas (done 2026-11-14):** https://claude.ai/artifact/2M3dg2Yzb8fhyTL9CcvKoC, in the owner's account,
+  private until shared from its Share menu. All 84 earlier boards plus redesigned ItemDetail and PhotoReview and a new
+  DateSheet (light and dark via `docs/design/tools/mkdark.py`); mirrored in `docs/design/screens/`. The old canvas is frozen.
 - **ML track: now the owner's** (was LemurTech22's). Step 1: score `fwr_20261011` from `export.zip` (re-export on Colab
   with `RUN_ID=fwr_20261011`, a few minutes). Then tune `SPOILED_THRESHOLD` on val, then a full (non-FAST) run.
 
