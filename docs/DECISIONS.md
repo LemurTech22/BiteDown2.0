@@ -2,6 +2,11 @@
 
 Newest first. Each entry: date, decision, why, alternatives considered.
 
+## 2026-11-14: Save acknowledgement, read-and-confirm screens, own design canvas (owner)
+- **Saving an edit closes it.** A successful Save shows "Saved changes to <name>" (a polite, touch-transparent notice for 3 s) and closes the editor. Why: Save gave no visible feedback. With the read-and-confirm redesign the editor is a sheet, so the sheet closing is the acknowledgement.
+- **Read and confirm, minimum effort.** Item detail becomes a summary card plus tap-to-change rows (one sheet per choice, saved on pick; a plain-RN date sheet with quick picks instead of typing YYYY-MM-DD). Photo review shows one line per food and flags only uncertain items ("Check this", confidence < 0.5 or likely non-food). Why: the app already fills every field; the old screens read like forms to fill in. Alternative: redesign Item detail only.
+- **A new design canvas in the owner's account.** The old canvas (claude.ai/artifact/ALmB8FYKGrayhDQXqvoncx) belongs to another organisation and can't be edited from here. The orchestrator publishes a new one from `docs/design/screens/` (plus the redesigned screens) and points `CLAUDE.md` at it. Alternative: ask the old owner for edit access.
+
 ## 2026-11-14: Item photos, ML ownership, Undo polish (owner and orchestrator rulings)
 - **Item photos (owner).** Food added from a photo keeps a **per-item crop** (≤ 512 px JPEG, cut with the detector's box),
   shown on its row and detail. Food added without a photo (typed, voice, receipt, barcode) shows a **food illustration**
