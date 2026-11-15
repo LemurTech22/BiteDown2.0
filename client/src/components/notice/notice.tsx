@@ -46,10 +46,12 @@ export function NoticeProvider({ children }: PropsWithChildren) {
   </NoticeContext.Provider>;
 }
 
+// A notice is non-critical: outside a NoticeProvider (a test harness, a screen mounted on its own) it is a no-op
+// instead of crashing the screen. Dev builds warn so a missing provider in the app is still noticed.
+const NO_NOTICE = { show: (text: string) => { if (__DEV__) console.warn(`useNotice outside NoticeProvider: "${text}" not shown`); } };
+
 export function useNotice() {
-  const notice = useContext(NoticeContext);
-  if (!notice) throw new Error('useNotice must be used within NoticeProvider');
-  return notice;
+  return useContext(NoticeContext) ?? NO_NOTICE;
 }
 
 function createStyles(theme: AppTheme) {
