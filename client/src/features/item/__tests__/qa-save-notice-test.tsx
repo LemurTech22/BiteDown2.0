@@ -194,20 +194,32 @@ test.each([['success', false], ['failure', false], ['success', true], ['failure'
   expectNoDeparture();
 });
 
-test.each(['success', 'failure'] as const)('CL-20: settling A save must preserve the B sheet after route reuse (%s)', async (outcome) => {
+test.each([['success', false], ['failure', false], ['success', true], ['failure', true]] as const)('CL-20: stale %s preserves the current sheet (A -> B -> A: %s)', async (outcome, roundTrip) => {
   const { api, item, second, show, tree } = await setup();
   const gate = deferred<{ item: Item }>();
-  jest.spyOn(api, 'updateItem').mockReturnValueOnce(gate.promise);
+  const update = jest.spyOn(api, 'updateItem').mockReturnValueOnce(gate.promise);
   const screen = await show();
   await pickStorage(screen);
   mockId = second.id;
   await screen.rerender(tree()); await screen.findByText(second.name);
+  if (roundTrip) {
+    mockId = item.id;
+    await screen.rerender(tree()); await screen.findByText(item.name);
+  }
+  const active = roundTrip ? item : second;
   // The retained sheet now receives B values. A completion must not close this visit's editor.
   expect(screen.getByTestId('item.edit.storage.fridge')).toBeTruthy();
   await act(() => outcome === 'success' ? gate.resolve({ item }) : gate.reject(new Error('Old save failed')));
   expectSilent(screen);
   expect(screen.queryByTestId('item.edit.storage.fridge')).not.toBeNull();
-  expect(screen.getByText(second.name)).toBeTruthy();
+  expect(screen.getByText(active.name)).toBeTruthy();
+  expect(screen.getByTestId('item.edit.sheet.cancel')).toBeEnabled();
+  await fireEvent.press(screen.getByTestId('item.edit.storage.pantry'));
+  expect(update).toHaveBeenLastCalledWith(active.id, { storage: 'pantry' });
+  expect(update).toHaveBeenCalledTimes(2);
+  expect(screen.queryByTestId('item.edit.sheet')).toBeNull();
+  expect(screen.getByTestId('app.notice')).toHaveTextContent(`Saved changes to ${active.name}`);
+  expect(Haptics.notificationAsync).toHaveBeenCalledTimes(1);
 });
 
 test('pending sheet prevents cancellation or switching to another choice', async () => {

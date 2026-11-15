@@ -3,7 +3,8 @@ import { useState } from 'react';
 import { Animated, Platform, StyleSheet, Text } from 'react-native';
 
 import type { ItemCandidate } from '@/api';
-import { DateChoices, localDate, parseLocalDate, relativeDate } from '@/components/ui/date-sheet';
+import { bottomSheetPanelStyle } from '@/components/ui/bottom-sheet-panel-style';
+import { DateChoices, DateSheet, localDate, parseLocalDate, relativeDate } from '@/components/ui/date-sheet';
 import { EditSheet } from '@/components/ui/edit-sheet';
 import { FoodEditSheet, FoodSummary, type FoodValues } from '@/components/ui/food-summary';
 import { FadeIn } from '@/components/ui/fade-in';
@@ -11,15 +12,20 @@ import { draftError, needsSpoiledDecision, toCreateItem } from '@/features/add/c
 import { CandidateReview, reviewDrafts, type ReviewDraft } from '@/features/add/candidate-review';
 import { useReducedMotion } from '@/hooks/use-reduced-motion';
 import { PreferencesProvider } from '@/settings/preferences';
-import { createTheme } from '@/theme';
+import { createTheme, useTheme } from '@/theme';
 
 jest.mock('@/hooks/use-reduced-motion', () => ({ useReducedMotion: jest.fn(() => true) }));
+jest.mock('@/theme', () => ({ ...jest.requireActual('@/theme'), useTheme: jest.fn() }));
 
 const food: FoodValues = { name: 'Apples', quantity: 1, unit: 'piece', storage: 'fridge', food_group: 'fruit', predicted_expiry: '2028-01-31', freshness: 'fresh' };
 const candidate: ItemCandidate = { ...food, predicted_expiry: '2028-01-31', category: 'produce_hardy', freshness: 'fresh', expiry_source: 'default', confidence: 0.9, photo_token: 'qa-crop', photo_preview_url: 'file:///qa-crop.jpg', est_price: null };
 const store = { get: async () => null, set: async () => {}, delete: async () => {} };
 
-beforeEach(() => { jest.clearAllMocks(); jest.mocked(useReducedMotion).mockReturnValue(true); });
+beforeEach(() => {
+  jest.clearAllMocks();
+  jest.mocked(useReducedMotion).mockReturnValue(true);
+  jest.mocked(useTheme).mockReturnValue(createTheme('light'));
+});
 afterEach(() => jest.restoreAllMocks());
 
 async function review(candidates: ItemCandidate[], source: 'photo' | 'text' | 'receipt' | 'barcode' = 'photo', changed = jest.fn<void, [ReviewDraft]>()) {
@@ -157,6 +163,33 @@ test('CL-21: marking a previously fresh candidate Looks off requires Toss or Kee
     .toEqual({ decisionRequired: true, error: 'Choose Toss or Keep for food that looks spoiled.', choices: true });
 });
 
+test.each(['photo', 'text', 'receipt', 'barcode'] as const)('CL-21: %s fresh edits clear both prior Toss and Keep decisions', async (source) => {
+  const { screen, changed } = await review([candidate], source);
+  async function freshness(value: string) {
+    await fireEvent.press(screen.getByTestId('qa.edit.0'));
+    await fireEvent.press(screen.getByTestId('qa.editor.0.freshness.row'));
+    await fireEvent.press(screen.getByTestId(`qa.editor.0.freshness.${value}`));
+    return changed.mock.calls.at(-1)![0];
+  }
+  for (const decision of ['keep', 'toss'] as const) {
+    const spoiled = await freshness('spoiled');
+    expect(needsSpoiledDecision(spoiled)).toBe(true);
+    expect(screen.getByText('Looks spoiled')).toBeTruthy();
+    await fireEvent.press(screen.getByTestId(`qa.${decision}.0`));
+    expect(changed.mock.calls.at(-1)![0]).toMatchObject({ spoilDecision: decision, selected: decision === 'keep' });
+    const fresh = await freshness('fresh');
+    expect(fresh.spoilDecision).toBeUndefined();
+    expect(needsSpoiledDecision(fresh)).toBe(false);
+    expect(draftError(fresh)).toBeUndefined();
+    expect(toCreateItem(fresh, 'fridge').freshness).toBe('fresh');
+    expect(screen.queryByText('Looks spoiled')).toBeNull();
+    expect(screen.queryByTestId('qa.toss.0')).toBeNull();
+    expect(screen.queryByTestId('qa.keep.0')).toBeNull();
+    if (!fresh.selected) await fireEvent.press(screen.getByTestId('qa.select.0'));
+  }
+  expect(needsSpoiledDecision(await freshness('spoiled'))).toBe(true);
+});
+
 test('original spoiled candidates retain Toss/Keep requirements through reselection', async () => {
   const { screen, changed } = await review([{ ...candidate, freshness: 'spoiled' }]);
   expect(needsSpoiledDecision(reviewDrafts([{ ...candidate, freshness: 'spoiled' }], 'photo')[0])).toBe(true);
@@ -254,4 +287,19 @@ test.each(['light', 'dark'] as const)('%s summary/sheet/check/notice token pairs
   }
   expect(contrast(colors.onForest, colors.forest)).toBeGreaterThanOrEqual(4.5);
   expect(contrast(colors.forest, colors.ground)).toBeGreaterThanOrEqual(3);
+});
+
+test.each(['light', 'dark'] as const)('%s edit and date sheets render the themed panel and retain the shared column style', async (scheme) => {
+  const theme = createTheme(scheme);
+  jest.mocked(useTheme).mockReturnValue(theme);
+  const screen = await render(<EditSheet title="Stored in" testID="qa" onClose={jest.fn()}><Text>Choices</Text></EditSheet>);
+  expect(screen.getByTestId('qa.panel')).toHaveStyle({ backgroundColor: theme.colors.surface, ...bottomSheetPanelStyle(theme) });
+  expect(screen.getByRole('header')).toHaveStyle({ color: theme.colors.ink });
+  await screen.rerender(<DateSheet value="2028-01-31" now={new Date(2028, 0, 15)} onSelect={jest.fn()} onClose={jest.fn()} />);
+  expect(screen.getByTestId('date.sheet.panel')).toHaveStyle({ backgroundColor: theme.colors.surface, ...bottomSheetPanelStyle(theme) });
+  expect(screen.getByTestId('date.month')).toHaveStyle({ color: theme.colors.ink });
+  expect(screen.getByTestId('date.day.2028-01-31')).toHaveStyle({ backgroundColor: theme.colors.forest });
+  expect(contrast(theme.colors.ink, theme.colors.surface)).toBeGreaterThanOrEqual(4.5);
+  expect(contrast(theme.colors.muted, theme.colors.surface)).toBeGreaterThanOrEqual(4.5);
+  expect(contrast(theme.colors.onForest, theme.colors.forest)).toBeGreaterThanOrEqual(4.5);
 });
