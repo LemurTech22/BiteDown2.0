@@ -2,6 +2,10 @@
 
 Newest first. Each entry: date, decision, why, alternatives considered.
 
+## 2026-11-14: PR #1 merge rulings (owner)
+- **iOS changes merge without a Mac run.** The iOS part of #1 is the label rename ("Staples", "Shared food", "Share with friends", "Group food") in `ios/App` and `ios/Tests`; no Xcode run was possible (Windows PC, GitHub CI billing-locked). The owner accepts the risk; the next Mac session runs the Smoke plan and fixes anything it finds.
+- **LemurTech22 agrees to merge #1** (relayed by the owner).
+
 ## 2026-11-14: Save acknowledgement, read-and-confirm screens, own design canvas (owner)
 - **Saving an edit closes it.** A successful Save shows "Saved changes to <name>" (a polite, touch-transparent notice for 3 s) and closes the editor. Why: Save gave no visible feedback. With the read-and-confirm redesign the editor is a sheet, so the sheet closing is the acknowledgement.
 - **Read and confirm, minimum effort.** Item detail becomes a summary card plus tap-to-change rows (one sheet per choice, saved on pick; a plain-RN date sheet with quick picks instead of typing YYYY-MM-DD). Photo review shows one line per food and flags only uncertain items ("Check this", confidence < 0.5 or likely non-food). Why: the app already fills every field; the old screens read like forms to fill in. Alternative: redesign Item detail only.
