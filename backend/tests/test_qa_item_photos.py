@@ -2,6 +2,7 @@
 import io
 import uuid
 import warnings
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from urllib.parse import parse_qs, urlsplit
@@ -12,7 +13,9 @@ from PIL import Image
 from sqlalchemy import text
 
 from app.extensions import db
+from app.errors import ApiError
 from app.models import Item, StagedPhoto
+from app.routes.items import _sniff_image
 from app.services import crops, gemini, item_photos, ml, photo_store
 from test_item_photos import (
     add, assert_jpeg, assert_missing, detection, file_for, freeze, image_bytes,
@@ -320,6 +323,100 @@ def test_decompression_bomb_rejected_before_detection(client, user, monkeypatch,
     assert response.get_json()["error"]["code"] == "validation_error"
     assert calls == [], "BE-54: warning-range decompression bombs must not reach vision"
     assert not sql("SELECT * FROM staged_photos")
+
+
+@pytest.mark.parametrize("fmt,mime", [("PNG", "image/png"), ("JPEG", "image/jpeg"), ("WEBP", "image/webp")])
+@pytest.mark.parametrize("pixels", [99, 100, 101, 150, 200, 201],
+                         ids=["below", "at-limit", "one-over", "warning-middle", "at-double", "above-double"])
+@pytest.mark.parametrize("flow", ["fridge", "check-again", "receipt"])
+@pytest.mark.parametrize("upstream", ["ml", "gemini"])
+def test_be54_pixel_boundaries_on_every_upload_flow(
+        client, user, monkeypatch, sql, fmt, mime, pixels, flow, upstream):
+    # Tiny real files exercise Pillow's warning/error boundaries without allocating giant images.
+    stream = io.BytesIO()
+    Image.new("RGB", (pixels, 1)).save(stream, fmt)
+    data = stream.getvalue()
+    monkeypatch.setattr(Image, "MAX_IMAGE_PIXELS", 100)
+    monkeypatch.setattr(ml, "is_configured", lambda: upstream == "ml")
+    monkeypatch.setattr(gemini, "is_configured", lambda: upstream == "gemini")
+    calls, opened = [], []
+
+    def detect(*args, **kwargs):
+        calls.append(args)
+        return []
+
+    def receipt(*args, **kwargs):
+        calls.append(args)
+        return {"lines": [], "total": None}
+
+    for module, name, stub in ((ml, "detect", detect), (gemini, "detect_from_image", detect),
+                               (ml, "ocr", receipt), (gemini, "receipt_from_image", receipt)):
+        monkeypatch.setattr(module, name, stub)
+    original_open = Image.open
+
+    def tracked_open(*args, **kwargs):
+        try:
+            image = original_open(*args, **kwargs)
+        except Image.DecompressionBombError:
+            opened.append("bomb-error")
+            raise
+        opened.append("opened")
+        return image
+
+    monkeypatch.setattr(Image, "open", tracked_open)
+    filters = warnings.filters
+    before = filters[:], warnings.defaultaction, warnings.showwarning, warnings.onceregistry.copy()
+    form = {"image": (io.BytesIO(data), "untrusted.jpg", "application/octet-stream")}
+    if flow != "receipt":
+        # Both native and RN Check again use mode=single without enrichment.
+        form["mode"] = "single" if flow == "check-again" else "fridge"
+        if flow == "fridge":
+            form["enrich"] = "expiry"
+    response = client.post("/items/from-receipt" if flow == "receipt" else "/items/from-photo",
+                           headers=user["headers"], data=form)
+    assert warnings.filters is filters
+    assert (filters[:], warnings.defaultaction, warnings.showwarning, warnings.onceregistry.copy()) == before
+    assert opened == (["bomb-error"] if pixels > 200 else ["opened"])
+    assert response.status_code == (200 if pixels <= 100 else 400), response.get_json()
+    if pixels <= 100:
+        assert len(calls) == 1 and calls[0][0] == data
+        assert mime in calls[0]
+    else:
+        assert response.get_json()["error"] == {"code": "validation_error", "message": "image has too many pixels."}
+        assert calls == [], "oversized upload reached vision"
+    assert not sql("SELECT * FROM staged_photos")
+
+
+def test_be54_concurrent_sniffing_never_changes_global_warning_policy(monkeypatch):
+    samples = []
+    for fmt, mime in (("PNG", "image/png"), ("JPEG", "image/jpeg"), ("WEBP", "image/webp")):
+        for pixels in (100, 101, 150, 200, 201):
+            stream = io.BytesIO()
+            Image.new("RGB", (pixels, 1)).save(stream, fmt)
+            samples.append((stream.getvalue(), mime if pixels == 100 else 400))
+    monkeypatch.setattr(Image, "MAX_IMAGE_PIXELS", 100)
+
+    def forbidden(*args, **kwargs):
+        pytest.fail("image sniffing changed process-global warning policy")
+
+    for name in ("simplefilter", "filterwarnings", "resetwarnings", "catch_warnings"):
+        monkeypatch.setattr(warnings, name, forbidden)
+    filters = warnings.filters
+    before = filters[:], warnings.defaultaction, warnings.showwarning, warnings.onceregistry.copy()
+
+    def sniff(sample):
+        data, expected = sample
+        try:
+            result = _sniff_image(data)
+        except ApiError as error:
+            assert error.code == "validation_error" and error.message == "image has too many pixels."
+            result = error.status
+        assert result == expected
+
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        list(pool.map(sniff, samples * 4))
+    assert warnings.filters is filters
+    assert (filters[:], warnings.defaultaction, warnings.showwarning, warnings.onceregistry.copy()) == before
 
 
 def test_image_over_local_decode_ceiling_has_null_photo_without_failing_detection(app, client, user, upload, monkeypatch, sql):

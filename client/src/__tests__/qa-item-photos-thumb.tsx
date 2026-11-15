@@ -54,10 +54,70 @@ test('successful signature renewal preserves the mounted image and recycling ide
 test('CL-15: a loaded photo does not request another fade when only its signature changes', async () => {
   jest.mocked(useReducedMotion).mockReturnValue(false);
   const screen = await render(<ItemThumb name="Apples" foodGroup="fruit" photoUrl={`${path}?sig=old`} />);
+  expect(screen.getByTestId('itemThumb.photo', hidden).props.transition.duration).toBe(createTheme('light').motion.quickMs);
   await fireEvent(screen.getByTestId('itemThumb.photo', hidden), 'load', { nativeEvent: { source: { url: `${path}?sig=old` } } });
-  await screen.rerender(<ItemThumb name="Apples" foodGroup="fruit" photoUrl={`${path}?sig=new`} />);
-  // SDK 58 applies a positive transition on subsequent source changes, including cache hits.
-  expect(screen.getByTestId('itemThumb.photo', hidden).props.transition?.duration ?? 0).toBe(0);
+  expect(screen.getByTestId('itemThumb.photo', hidden).props.transition.duration).toBe(0);
+  for (const sig of ['new', 'newer']) {
+    await screen.rerender(<ItemThumb name="Apples" foodGroup="fruit" photoUrl={`${path}?sig=${sig}`} />);
+    expect(screen.getByTestId('itemThumb.photo', hidden).props.transition.duration).toBe(0);
+    await fireEvent(screen.getByTestId('itemThumb.photo', hidden), 'load', { nativeEvent: { source: {} } });
+    expect(screen.getByTestId('itemThumb.photo', hidden).props.transition.duration).toBe(0);
+  }
+});
+
+test('a different photo gets its first fade, then no repeat fade after loading or signature renewal', async () => {
+  jest.mocked(useReducedMotion).mockReturnValue(false);
+  const screen = await render(<ItemThumb name="Apples" foodGroup="fruit" photoUrl={`${path}?sig=a`} />);
+  const first = screen.getByTestId('itemThumb.photo', hidden);
+  await fireEvent(first, 'load', { nativeEvent: { source: {} } });
+  const other = 'https://api.test/items/pear/photo';
+  await screen.rerender(<ItemThumb name="Pear" foodGroup="fruit" photoUrl={`${other}?sig=a`} />);
+  const second = screen.getByTestId('itemThumb.photo', hidden);
+  expect(second).not.toBe(first);
+  expect(second.props.recyclingKey).toBe(other);
+  expect(second.props.transition.duration).toBe(createTheme('light').motion.quickMs);
+  await fireEvent(second, 'load', { nativeEvent: { source: {} } });
+  expect(screen.getByTestId('itemThumb.photo', hidden).props.transition.duration).toBe(0);
+  await screen.rerender(<ItemThumb name="Pear" foodGroup="fruit" photoUrl={`${other}?sig=b`} />);
+  expect(screen.getByTestId('itemThumb.photo', hidden).props.transition.duration).toBe(0);
+});
+
+test('CL-16: returning to an already loaded cache key does not fade it again', async () => {
+  jest.mocked(useReducedMotion).mockReturnValue(false);
+  const screen = await render(<ItemThumb name="Apples" foodGroup="fruit" photoUrl={`${path}?sig=a`} />);
+  await fireEvent(screen.getByTestId('itemThumb.photo', hidden), 'load', { nativeEvent: { source: {} } });
+  await screen.rerender(<ItemThumb name="Pear" foodGroup="fruit" photoUrl="https://api.test/items/pear/photo?sig=a" />);
+  await fireEvent(screen.getByTestId('itemThumb.photo', hidden), 'load', { nativeEvent: { source: {} } });
+  await screen.rerender(<ItemThumb name="Apples" foodGroup="fruit" photoUrl={`${path}?sig=b`} />);
+  expect(screen.getByTestId('itemThumb.photo', hidden).props.transition.duration).toBe(0);
+});
+
+test('Reduce Motion disables every transition across loads, signatures, errors and different photos', async () => {
+  const screen = await render(<ItemThumb name="Apples" foodGroup="fruit" photoUrl={`${path}?sig=a`} />);
+  for (const uri of [`${path}?sig=a`, `${path}?sig=b`, 'https://api.test/items/pear/photo?sig=a']) {
+    await screen.rerender(<ItemThumb name="Apples" foodGroup="fruit" photoUrl={uri} />);
+    expect(screen.getByTestId('itemThumb.photo', hidden).props.transition.duration).toBe(0);
+    await fireEvent(screen.getByTestId('itemThumb.photo', hidden), 'load', { nativeEvent: { source: {} } });
+    expect(screen.getByTestId('itemThumb.photo', hidden).props.transition.duration).toBe(0);
+  }
+  await fireEvent(screen.getByTestId('itemThumb.photo', hidden), 'error', { nativeEvent: { error: 'Expired signature' } });
+  expect(screen.queryByTestId('itemThumb.photo', hidden)).toBeNull();
+  await screen.rerender(<ItemThumb name="Apples" foodGroup="fruit" photoUrl="https://api.test/items/pear/photo?sig=fresh" />);
+  expect(screen.getByTestId('itemThumb.photo', hidden).props.transition.duration).toBe(0);
+});
+
+test.each([false, true])('fresh signature retries after an error (previously loaded=%s)', async (loaded) => {
+  jest.mocked(useReducedMotion).mockReturnValue(false);
+  const screen = await render(<ItemThumb name="Apples" foodGroup="fruit" photoUrl={`${path}?sig=a`} />);
+  if (loaded) await fireEvent(screen.getByTestId('itemThumb.photo', hidden), 'load', { nativeEvent: { source: {} } });
+  await fireEvent(screen.getByTestId('itemThumb.photo', hidden), 'error', { nativeEvent: { error: 'Expired signature' } });
+  expect(screen.queryByTestId('itemThumb.photo', hidden)).toBeNull();
+  await screen.rerender(<ItemThumb name="Apples" foodGroup="fruit" photoUrl={`${path}?sig=b`} />);
+  const retry = screen.getByTestId('itemThumb.photo', hidden);
+  expect(retry.props.source).toEqual([expect.objectContaining({ uri: `${path}?sig=b`, cacheKey: path })]);
+  expect(retry.props.transition.duration).toBe(loaded ? 0 : createTheme('light').motion.quickMs);
+  await fireEvent(retry, 'load', { nativeEvent: { source: {} } });
+  expect(screen.getByTestId('itemThumb.photo', hidden).props.transition.duration).toBe(0);
 });
 
 test.each(['light', 'dark'] as const)('%s theme supplies tile tokens, thumbnails stay decorative and Reduce Motion disables fade', async (scheme) => {
