@@ -27,7 +27,11 @@ export function draftError(draft: CandidateDraft): string | undefined {
 }
 
 export function needsSpoiledDecision(draft: CandidateDraft): boolean {
-  return draft.candidate.freshness === 'spoiled' && !draft.spoilDecision;
+  return effectiveFreshness(draft) === 'spoiled' && !draft.spoilDecision;
+}
+
+export function effectiveFreshness(draft: CandidateDraft): CreateItemInput['freshness'] {
+  return draft.freshness === undefined ? draft.candidate.freshness : draft.freshness;
 }
 
 export function toCreateItem(draft: CandidateDraft, mode: 'fridge' | 'single'): CreateItemInput {
@@ -40,7 +44,7 @@ export function toCreateItem(draft: CandidateDraft, mode: 'fridge' | 'single'): 
     source: candidate.source ?? (mode === 'single' ? 'single_photo' : 'photo'),
     est_price: candidate.est_price,
     est_weight_kg: Number(draft.quantity) === candidate.quantity && (draft.unit ?? candidate.unit) === candidate.unit ? candidate.est_weight_kg : undefined,
-    freshness: draft.freshness === undefined ? candidate.freshness : draft.freshness, confidence: candidate.confidence, nutrition: candidate.nutrition,
+    freshness: effectiveFreshness(draft), confidence: candidate.confidence, nutrition: candidate.nutrition,
     photo_token: candidate.photo_token,
   };
 }
@@ -51,7 +55,7 @@ export function CandidateEditor({ draft, onChange, onClose, screen }: {
   return <FoodEditSheet field="summary" testID={`${screen}.editor.${draft.id}`} values={{
     name: draft.name, quantity: Number(draft.quantity), unit: draft.unit ?? draft.candidate.unit,
     storage: draft.storage, food_group: draft.foodGroup ?? draft.candidate.food_group,
-    predicted_expiry: draft.expiry, freshness: draft.freshness === undefined ? draft.candidate.freshness : draft.freshness,
+    predicted_expiry: draft.expiry, freshness: effectiveFreshness(draft),
   }} estimated={draft.expiry === draft.candidate.predicted_expiry} onClose={onClose}
     onSave={async (patch) => onChange({
       ...(patch.name !== undefined ? { name: patch.name } : {}),
@@ -60,6 +64,7 @@ export function CandidateEditor({ draft, onChange, onClose, screen }: {
       ...(patch.storage !== undefined ? { storage: patch.storage } : {}),
       ...(patch.food_group !== undefined ? { foodGroup: patch.food_group } : {}),
       ...(patch.predicted_expiry !== undefined ? { expiry: patch.predicted_expiry } : {}),
-      ...(patch.freshness !== undefined ? { freshness: patch.freshness } : {}),
+      ...(patch.freshness !== undefined ? { freshness: patch.freshness,
+        ...(patch.freshness !== effectiveFreshness(draft) ? { spoilDecision: undefined } : {}) } : {}),
     })} />;
 }

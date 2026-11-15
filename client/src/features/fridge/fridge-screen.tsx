@@ -6,6 +6,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { isApiError, useApi } from '@/api';
 import type { Item, Storage } from '@/api/types';
+import { useNoticeBottomClearance } from '@/components/notice/notice';
 import { AppIcon } from '@/components/ui/app-icon';
 import { AppButton } from '@/components/ui/app-button';
 import { FadeIn } from '@/components/ui/fade-in';
@@ -61,6 +62,12 @@ export function FridgeScreen() {
   const { entries, remember, undo, dismiss } = useRemovalUndo(applyItem);
   const hasUndo = batches.length > 0 || entries.length > 0;
   const styles = createStyles(theme);
+  const setNoticeClearance = useNoticeBottomClearance();
+
+  useFocusEffect(useCallback(() => {
+    setNoticeClearance(hasUndo ? undoHeight + theme.spacing.sm : 0);
+    return () => setNoticeClearance(0);
+  }, [hasUndo, setNoticeClearance, theme.spacing.sm, undoHeight]));
 
   useEffect(() => {
     if (!moved) return;

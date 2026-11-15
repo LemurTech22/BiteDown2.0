@@ -1,14 +1,15 @@
 import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
 import { router } from 'expo-router';
-import { PanResponder, Platform, StyleSheet } from 'react-native';
+import { Button, PanResponder, Platform, StyleSheet } from 'react-native';
 
 import { ApiError, ApiProvider, MockApiClient } from '@/api';
 import type { Item, ItemsResponse } from '@/api/types';
+import { NoticeProvider, useNotice } from '@/components/notice/notice';
 import { FridgeScreen } from '@/features/fridge/fridge-screen';
 import { groupItems } from '@/features/fridge/fridge-utils';
 import { ItemRow } from '@/features/fridge/item-row';
 import { PreferencesProvider } from '@/settings/preferences';
-import { spacing } from '@/theme';
+import { createTheme, spacing } from '@/theme';
 
 jest.mock('@/hooks/use-reduced-motion', () => ({ useReducedMotion: () => true }));
 
@@ -75,6 +76,38 @@ async function seededClient() {
 describe('Fridge', () => {
   beforeEach(() => jest.clearAllMocks());
   afterEach(() => { jest.restoreAllMocks(); jest.useRealTimers(); });
+
+  test('app notice stacks above the measured Undo overlay and releases clearance on dismissal and departure', async () => {
+    const api = await seededClient();
+    const { items: [item] } = await api.getItems({ storage: 'fridge' }) as ItemsResponse;
+    function ShowNotice() {
+      const { show } = useNotice();
+      return <Button title="Show notice" onPress={() => show('Saved changes to Apples')} />;
+    }
+    function tree(fridge = true) {
+      return <ApiProvider client={api}><PreferencesProvider><NoticeProvider>
+        <ShowNotice />{fridge ? <FridgeScreen /> : null}
+      </NoticeProvider></PreferencesProvider></ApiProvider>;
+    }
+    const screen = await render(tree());
+    await screen.findByText('Apples');
+    await fireEvent.press(screen.getByTestId(`fridge.remove.${item.id}`));
+    await fireEvent.press(screen.getByTestId('remove.outcome.used'));
+    await fireEvent(screen.getByTestId('fridge.undoOverlay'), 'layout', { nativeEvent: { layout: { height: 160 } } });
+    await fireEvent.press(screen.getByText('Show notice'));
+    const tabBar = createTheme('light').sizes.tabBar;
+    expect(screen.getByTestId('app.notice.container')).toHaveStyle({ bottom: tabBar + 160 + spacing.sm, pointerEvents: 'none' });
+    expect(screen.getByTestId(`remove.undo.${item.id}`)).toBeEnabled();
+    await fireEvent.press(screen.getByTestId(`undo.dismiss.${item.id}`));
+    expect(screen.getByTestId('app.notice.container')).toHaveStyle({ bottom: tabBar });
+
+    await fireEvent.press(screen.getByTestId(`fridge.remove.${(await api.getItems({ storage: 'fridge' }) as ItemsResponse).items[0].id}`));
+    await fireEvent.press(screen.getByTestId('remove.outcome.used'));
+    await fireEvent(screen.getByTestId('fridge.undoOverlay'), 'layout', { nativeEvent: { layout: { height: 200 } } });
+    expect(screen.getByTestId('app.notice.container')).toHaveStyle({ bottom: tabBar + 200 + spacing.sm });
+    await screen.rerender(tree(false));
+    expect(screen.getByTestId('app.notice.container')).toHaveStyle({ bottom: tabBar });
+  });
 
   test.each([
     ['ios', 'single'], ['ios', 'batch'],

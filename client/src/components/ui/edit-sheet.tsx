@@ -32,7 +32,8 @@ function createStyles(theme: AppTheme) {
   return StyleSheet.create({
     screen: { flex: 1, backgroundColor: theme.colors.ground },
     content: { flexGrow: 1, justifyContent: 'flex-end' },
-    panel: { padding: theme.spacing.gutter, gap: theme.spacing.sheetSection },
+    panel: { backgroundColor: theme.colors.surface, borderTopLeftRadius: theme.radii.sheet,
+      borderTopRightRadius: theme.radii.sheet, padding: theme.spacing.gutter, gap: theme.spacing.sheetSection },
     title: { ...theme.type.sheetTitle, color: theme.colors.ink },
   });
 }

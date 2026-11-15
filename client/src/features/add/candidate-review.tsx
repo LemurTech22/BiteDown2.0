@@ -11,7 +11,7 @@ import { useReducedMotion } from '@/hooks/use-reduced-motion';
 import { formatMoney, usePreferences } from '@/settings/preferences';
 import { type AppTheme, useTheme } from '@/theme';
 
-import { CandidateEditor, type CandidateDraft } from './candidate-editor';
+import { CandidateEditor, effectiveFreshness, type CandidateDraft } from './candidate-editor';
 
 export interface ReviewDraft extends CandidateDraft { selected: boolean; nonFood: boolean }
 
@@ -59,8 +59,8 @@ export function CandidateReview({ drafts, screen, receipt = false, disabled, onC
   const [editing, setEditing] = useState<number | null>(null);
   const editor = drafts.find((draft) => draft.id === editing);
   const sections = [
-    { title: null, items: drafts.filter((draft) => draft.candidate.freshness !== 'spoiled') },
-    { title: 'Looks spoiled', items: drafts.filter((draft) => draft.candidate.freshness === 'spoiled') },
+    { title: null, items: drafts.filter((draft) => effectiveFreshness(draft) !== 'spoiled') },
+    { title: 'Looks spoiled', items: drafts.filter((draft) => effectiveFreshness(draft) === 'spoiled') },
   ];
   return <View style={styles.list}>
     {sections.map(({ title, items }) => <View key={title ?? 'food'} style={styles.list}>
@@ -79,7 +79,7 @@ export function CandidateReview({ drafts, screen, receipt = false, disabled, onC
                 accessibilityState={{ checked: draft.selected, disabled }} disabled={disabled}
                 testID={`${screen}.select.${draft.id}`} style={styles.selection}
                 onPress={() => onChange(draft.id, { selected: !draft.selected,
-                  ...(candidate.freshness === 'spoiled' && draft.spoilDecision === 'toss' ? { spoilDecision: undefined } : {}) })}>
+                  ...(effectiveFreshness(draft) === 'spoiled' && draft.spoilDecision === 'toss' ? { spoilDecision: undefined } : {}) })}>
                 <AppIcon name={draft.selected ? 'checkbox-marked-circle' : 'checkbox-blank-circle-outline'} color={theme.colors.forest} />
               </Pressable>
               <ItemThumb name={draft.name} foodGroup={draft.foodGroup ?? candidate.food_group} photoUrl={candidate.photo_preview_url} />
@@ -95,7 +95,7 @@ export function CandidateReview({ drafts, screen, receipt = false, disabled, onC
               </Pressable>
               {receipt && price != null ? <Text style={styles.price}>{formatMoney(price, currency)}</Text> : null}
             </View>
-            {candidate.freshness === 'spoiled' ? <View style={styles.decisions}>
+            {effectiveFreshness(draft) === 'spoiled' ? <View style={styles.decisions}>
               <AppButton label={draft.spoilDecision === 'toss' ? 'Toss ✓' : 'Toss'} accessibilityLabel={`Toss ${draft.name}`}
                 variant="outline" disabled={disabled} testID={`${screen}.toss.${draft.id}`}
                 onPress={() => onChange(draft.id, { spoilDecision: 'toss', selected: false })} />

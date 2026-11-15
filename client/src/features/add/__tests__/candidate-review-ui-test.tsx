@@ -80,3 +80,27 @@ test('spoiled section requires Toss/Keep and records the decision independently 
   await fireEvent.press(screen.getByTestId('review.toss.0'));
   expect(changed.mock.calls.at(-1)![0]).toMatchObject({ selected: false, spoilDecision: 'toss' });
 });
+
+test.each(['fresh', 'semi_fresh'] as const)('changing freshness back to %s clears the spoiled section and decision', async (freshness) => {
+  const changed = jest.fn<void, [ReviewDraft]>();
+  const screen = await show([candidate], changed);
+  async function editFreshness(value: string) {
+    await fireEvent.press(screen.getByTestId('review.edit.0'));
+    await fireEvent.press(screen.getByTestId('review.editor.0.freshness.row'));
+    await fireEvent.press(screen.getByTestId(`review.editor.0.freshness.${value}`));
+  }
+  await editFreshness('spoiled');
+  expect(screen.getByText('Looks spoiled')).toBeTruthy();
+  expect(needsSpoiledDecision(changed.mock.calls.at(-1)![0])).toBe(true);
+  await fireEvent.press(screen.getByTestId('review.keep.0'));
+  await editFreshness(freshness);
+  expect(screen.queryByText('Looks spoiled')).toBeNull();
+  expect(screen.queryByTestId('review.keep.0')).toBeNull();
+  const draft = changed.mock.calls.at(-1)![0];
+  expect(draft.spoilDecision).toBeUndefined();
+  expect(draftError(draft)).toBeUndefined();
+  expect(toCreateItem(draft, 'fridge').freshness).toBe(freshness);
+  await editFreshness('spoiled');
+  expect(needsSpoiledDecision(changed.mock.calls.at(-1)![0])).toBe(true);
+  expect(draftError(changed.mock.calls.at(-1)![0])).toBe('Choose Toss or Keep for food that looks spoiled.');
+});

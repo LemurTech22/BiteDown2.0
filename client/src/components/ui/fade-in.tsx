@@ -1,6 +1,7 @@
 import { type PropsWithChildren, useEffect } from 'react';
 import { Animated, type StyleProp, type ViewProps, type ViewStyle } from 'react-native';
 import { useAnimatedValue } from '@/hooks/use-animated-value';
+import { useReducedMotion } from '@/hooks/use-reduced-motion';
 
 import { useTheme } from '@/theme';
 
@@ -12,9 +13,15 @@ interface FadeInProps extends PropsWithChildren, Pick<ViewProps, 'onPointerEnter
 
 export function FadeIn({ children, delay = 0, style, testID, ...viewProps }: FadeInProps) {
   const theme = useTheme();
-  const opacity = useAnimatedValue(0);
+  const reducedMotion = useReducedMotion();
+  const opacity = useAnimatedValue(reducedMotion ? 1 : 0);
 
   useEffect(() => {
+    opacity.setValue(reducedMotion ? 1 : 0);
+  }, [opacity, reducedMotion]);
+
+  useEffect(() => {
+    if (reducedMotion) return;
     const animation = Animated.timing(opacity, {
       delay,
       duration: theme.motion.quickMs,
@@ -23,10 +30,10 @@ export function FadeIn({ children, delay = 0, style, testID, ...viewProps }: Fad
     });
     animation.start();
     return () => animation.stop();
-  }, [delay, opacity, theme.motion.quickMs]);
+  }, [delay, opacity, reducedMotion, theme.motion.quickMs]);
 
   return (
-    <Animated.View {...viewProps} style={[style, { opacity }]} testID={testID}>
+    <Animated.View {...viewProps} style={[style, { opacity: reducedMotion ? 1 : opacity }]} testID={testID}>
       {children}
     </Animated.View>
   );

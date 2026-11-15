@@ -83,7 +83,7 @@ export function ItemDetailScreen() {
     } finally { working.current = false; setPending(false); }
   }
   async function saveChanges(patch: UpdateItemInput) {
-    if (!item || item.removed_at) return;
+    if (!item || item.removed_at) return false;
     const changes = { ...patch };
     // Reconfirming an estimate must not turn it into a user-entered date.
     if (changes.predicted_expiry === item.predicted_expiry) delete changes.predicted_expiry;
@@ -91,12 +91,13 @@ export function ItemDetailScreen() {
     const started = visit.current;
     try {
       const { item: updated } = await api.updateItem(item.id, changes);
-      if (visit.current !== started) return;  // saved on the server, but the user left this visit (CL-17, CL-18)
+      if (visit.current !== started) return false;  // Keep the current visit's sheet open (CL-20).
       setItem(updated);
       void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
       notice.show(`Saved changes to ${updated.name}`);
+      return true;
     } catch (cause) {
-      if (visit.current !== started) return;
+      if (visit.current !== started) return false;
       void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error).catch(() => {});
       throw cause;
     }

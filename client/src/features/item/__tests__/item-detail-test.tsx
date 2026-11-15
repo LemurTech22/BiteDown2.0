@@ -41,6 +41,37 @@ beforeEach(() => {
 });
 afterEach(() => jest.restoreAllMocks());
 
+test.each(['success', 'failure'] as const)('an earlier A save settling after A → B → A leaves the current sheet open (%s)', async (outcome) => {
+  const { api, item } = await seed();
+  const { items: [second] } = await api.createItems({ items: [{ name: 'Apples', food_group: 'fruit', storage: 'fridge' }] });
+  let resolve!: (value: { item: Item }) => void;
+  let reject!: (reason: Error) => void;
+  const gate = new Promise<{ item: Item }>((done, fail) => { resolve = done; reject = fail; });
+  const update = jest.spyOn(api, 'updateItem').mockReturnValueOnce(gate);
+  function tree() {
+    return <ApiProvider client={api}><PreferencesProvider><NoticeProvider><ItemDetailScreen /></NoticeProvider></PreferencesProvider></ApiProvider>;
+  }
+  const screen = await render(tree());
+  await screen.findByText(item.name);
+  await fireEvent.press(screen.getByTestId('item.storage.row'));
+  await fireEvent.press(screen.getByTestId('item.edit.storage.freezer'));
+  for (const current of [second, item]) {
+    mockId = current.id;
+    await screen.rerender(tree());
+    await screen.findByText(current.name);
+  }
+  await act(() => outcome === 'success' ? resolve({ item: { ...item, name: 'Old response' } }) : reject(new Error('Old failure')));
+  expect(screen.getByTestId('item.edit.sheet')).toBeTruthy();
+  expect(screen.queryByRole('alert')).toBeNull();
+  expect(screen.queryByTestId('app.notice')).toBeNull();
+  expect(Haptics.notificationAsync).not.toHaveBeenCalled();
+  expect(screen.getByText(item.name)).toBeTruthy();
+  await fireEvent.press(screen.getByTestId('item.edit.storage.pantry'));
+  expect(update).toHaveBeenLastCalledWith(item.id, { storage: 'pantry' });
+  expect(screen.queryByTestId('item.edit.sheet')).toBeNull();
+  expect(screen.getByTestId('app.notice')).toHaveTextContent(`Saved changes to ${item.name}`);
+});
+
 test('summary rows open only their own editor and all choices remain available', async () => {
   const { api } = await seed();
   const screen = await show(api);

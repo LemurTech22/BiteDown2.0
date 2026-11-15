@@ -49,7 +49,7 @@ export function FoodSummary({ values, estimated, onEdit, disabled, testID }: {
 
 export function FoodEditSheet({ field: initialField, values, estimated, storageExpirySource, onSave, onClose, testID }: {
   field: FoodField | 'summary'; values: FoodValues; estimated: boolean; storageExpirySource?: string;
-  onSave: (patch: UpdateItemInput) => Promise<void>; onClose: () => void; testID: string;
+  onSave: (patch: UpdateItemInput) => Promise<void | boolean>; onClose: () => void; testID: string;
 }) {
   const theme = useTheme();
   const styles = createStyles(theme);
@@ -74,9 +74,9 @@ export function FoodEditSheet({ field: initialField, values, estimated, storageE
     if (busy.current || closed.current) return;
     busy.current = true; attempt.current = patch; setPending(true); setError('');
     try {
-      await onSave(patch);
+      const saved = await onSave(patch);
       busy.current = false;
-      close();
+      if (saved !== false) close();
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Couldn’t save changes. Try again.');
     } finally { busy.current = false; setPending(false); }
