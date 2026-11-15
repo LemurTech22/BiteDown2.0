@@ -61,6 +61,14 @@ export function ItemDetailScreen() {
   const request = useRef(0);
   const working = useRef(false);
   const closing = useRef(false);
+  // Which item this screen shows right now, and whether it is still mounted: a Save that resolves after the user left,
+  // or after the route reused this screen for another item, must not overwrite state or navigate (CL-17).
+  const shown = useRef({ mounted: true, id });
+  useEffect(() => {
+    shown.current = { mounted: true, id };
+    closing.current = false;
+    return () => { shown.current = { ...shown.current, mounted: false }; };
+  }, [id]);
   const retry = useRef<(() => Promise<void>) | null>(null);
   const { entries, remember, undo, dismiss } = useRemovalUndo((restored) => { setItem(restored); setDraft(toDraft(restored)); });
   const load = useCallback(async () => {
@@ -99,7 +107,11 @@ export function ItemDetailScreen() {
     const patch: UpdateItemInput = { name: draft.name.trim(), quantity: Number(draft.quantity), unit: draft.unit.trim(), storage: draft.storage, food_group: draft.foodGroup };
     if (draft.expiry && draft.expiry !== item.predicted_expiry) patch.predicted_expiry = draft.expiry;
     if (draft.freshness !== (item.freshness ?? 'unknown')) patch.freshness = draft.freshness === 'unknown' ? null : draft.freshness;
-    const { item: updated } = await api.updateItem(item.id, patch);
+    const savedId = item.id;
+    const { item: updated } = await api.updateItem(savedId, patch);
+    if (!shown.current.mounted || shown.current.id !== savedId) {
+      return;  // saved on the server; the user already left this screen, so stay silent (the list shows the change)
+    }
     setItem(updated); setDraft(toDraft(updated));
     void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
     closing.current = true;
