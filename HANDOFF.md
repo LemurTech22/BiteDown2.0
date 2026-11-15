@@ -2,7 +2,7 @@
 
 _The app is **BiteDown** (owner, 2026-10-10; see `docs/DECISIONS.md`). Internal names such as `FoodWasteReducer` stay._
 
-_Last updated: 2026-11-14 (checkpoint 19: Undo polish, item photos started, owner takes the ML track; see below). Older text from 2026-10-11: **`food-main` (VPS) orchestrates**: it plans, rules, reviews and merges,
+_Last updated: 2026-11-14 (checkpoint 20: PRs #1, #2 and #3 merged into `main`; see below). Older text from 2026-10-11: **`food-main` (VPS) orchestrates**: it plans, rules, reviews and merges,
 and owns the canvas and the orchestrator docs. **`food-main-mac` (the Mac) does all the building**: builder + QA
 sub-agents (**Sonnet**, owner preference), Xcode and simulators, Docker and every test run, plus any
 `.github/workflows` push. The owner also lets the Mac merge a PR when it judges it ready, and edit the canvas when
@@ -12,7 +12,25 @@ checkpoints. **Since checkpoint 10:** `food-modal-test` (iOS simulator test pass
 merges on the Mac; `food-main` reviews the Auth PR. All of them update this file and the affected `docs/` at
 every checkpoint (`CLAUDE.md` Rules). Rules: [`CLAUDE.md`](CLAUDE.md)._
 
-## Checkpoint 19 (2026-11-14, Windows PC): Undo polish, item photos started, ML track. Read this first
+## Checkpoint 20 (2026-11-14, Windows PC): #1, #2, #3 merged. Read this first
+**Merged into `main`** (merge commits; branches kept): **#1** `683c12e` (Expo Android app, UX fixes, Save acknowledgement,
+iOS label rename), **#2** `8228d4b` (item photos + Fluent Emoji illustrations), **#3** `1868f14` (read-and-confirm Item detail
+and review lists, date sheet, new design canvas). Owner rulings for #1 (iOS without a Mac run; LemurTech22 agreed) are in
+`docs/DECISIONS.md` 2026-11-14. Each merge result differed from its QA'd head only by that 4-line docs entry, so the QA runs
+stand: client Jest 55 suites / 920; backend 3223 passed with only Windows env failures (BE-22 `resource`, 2 gunicorn `fcntl`).
+**Local API rebuilt** from `main` (`docker compose up -d --build api`): migration `0009_item_photos` ran, `/health` 200,
+photos on the `photo-data` volume at `/data/photos`.
+**Not verified anywhere yet:** iOS build/tests for the label rename (next Mac session: run the Smoke plan first); the redesign
+and photos on a real Android/iPhone; a real photo upload end to end (web file picker can't be automated).
+**Design canvas:** https://claude.ai/artifact/2M3dg2Yzb8fhyTL9CcvKoC (owner's account, private until shared).
+**Next:**
+1. **ML (owner's track):** get `export.zip` of `fwr_20261011` from LemurTech22 (re-exported on Colab, since the Drive copy of
+   `predictions.jsonl` was truncated), score it with `ml/eval/detection_metrics.py` + `check_thresholds.py`, then tune
+   `SPOILED_THRESHOLD` on val, then a full (non-FAST) run on Colab.
+2. New APK (`eas build`) and web redeploy (`scripts\start_showcase.cmd`) so the phone and showcase get these changes (owner steps).
+3. iOS: show item photos and the read-and-confirm screens (the API fields are additive, so the current iOS app still works).
+
+## Checkpoint 19 (2026-11-14, Windows PC): Undo polish, item photos started, ML track
 Rulings in `docs/DECISIONS.md` 2026-11-14. On `feat/expo-android` (PR #1):
 - `0c093b9` 8 s dismissible Undo panels + Recently removed with Put back (7-day restore window), QA'd 2026-11-13;
   `55b1dd5` fixes the 7-day boundary bug, logged as **BE-53** (BE-52 collided with #123).
