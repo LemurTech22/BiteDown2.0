@@ -1,4 +1,4 @@
-import { fireEvent, render, waitFor } from '@testing-library/react-native';
+import { fireEvent, render, waitFor, within } from '@testing-library/react-native';
 import { useCameraPermissions } from 'expo-camera';
 import * as ImagePicker from 'expo-image-picker';
 import type { ReactElement } from 'react';
@@ -70,14 +70,23 @@ test.each(['fridge', 'single'] as const)('%s photo review keeps edited crop toke
   const screen = await show(api, <AddPhotoScreen />);
   if (mode === 'single') await fireEvent.press(screen.getByLabelText('Photo mode: One item'));
   await fireEvent.press(screen.getByTestId('add.library.button'));
-  await screen.findByTestId('add.name.0');
+  await screen.findByTestId('add.edit.0');
   expect(screen.getAllByTestId('itemThumb.photo', hidden)).toHaveLength(2);
   expect(screen.queryByTestId('itemThumb.illustration', hidden)).toBeNull();
-  await fireEvent.changeText(screen.getByTestId('add.name.0'), 'Green apples');
-  await fireEvent.changeText(screen.getByTestId('add.quantity.0'), '2');
-  await fireEvent.changeText(screen.getByTestId('add.expiry.0'), '2026-12-03');
-  await fireEvent.press(screen.getByTestId('add.storage0.freezer'));
-  await fireEvent.press(screen.getByTestId('add.drop.1'));
+  await fireEvent.press(screen.getByTestId('add.edit.0'));
+  await fireEvent.press(screen.getByTestId('add.editor.0.amount.row'));
+  await fireEvent.changeText(screen.getByTestId('add.editor.0.name.input'), 'Green apples');
+  await fireEvent.changeText(screen.getByTestId('add.editor.0.quantity.input'), '2');
+  await fireEvent.press(screen.getByTestId('add.editor.0.save'));
+  await fireEvent.press(screen.getByTestId('add.edit.0'));
+  await fireEvent.press(screen.getByTestId('add.editor.0.expiry.row'));
+  await fireEvent.press(screen.getByTestId('add.editor.0.date.day.2026-12-03'));
+  await fireEvent.press(screen.getByTestId('add.edit.0'));
+  await fireEvent.press(screen.getByTestId('add.editor.0.storage.row'));
+  await fireEvent.press(screen.getByTestId('add.editor.0.storage.freezer'));
+  await fireEvent.press(screen.getByTestId('add.select.1'));
+  expect(within(screen.getByTestId('addReview.footer')).getByTestId('add.save.button')).toBeTruthy();
+  expect(within(screen.getByTestId('addReview.scroll')).queryByTestId('add.save.button')).toBeNull();
   await fireEvent.press(screen.getByTestId('add.save.button'));
   await waitFor(() => expect(create).toHaveBeenCalledTimes(1));
   const saved = JSON.parse(JSON.stringify(create.mock.calls[0][0]));
@@ -101,9 +110,17 @@ test.each(['text', 'barcode', 'receipt'] as const)('%s add does not send a photo
     await fireEvent(screen.getByTestId('addBarcode.camera.scanner'), 'barcodeScanned', { data: '012345678905' });
   }
   await screen.findByTestId(`add${method === 'text' ? 'Text' : method === 'receipt' ? 'Receipt' : 'Barcode'}.save.button`);
-  await fireEvent.press(screen.getByTestId(`add${method === 'text' ? 'Text' : method === 'receipt' ? 'Receipt' : 'Barcode'}.save.button`));
+  const prefix = `add${method === 'text' ? 'Text' : method === 'receipt' ? 'Receipt' : 'Barcode'}`;
+  await fireEvent.press(screen.getByTestId(`${prefix}.edit.0`));
+  await fireEvent.press(screen.getByTestId(`${prefix}.editor.0.amount.row`));
+  await fireEvent.changeText(screen.getByTestId(`${prefix}.editor.0.name.input`), 'Edited apples');
+  await fireEvent.press(screen.getByTestId(`${prefix}.editor.0.save`));
+  expect(within(screen.getByTestId('addReview.footer')).getByTestId(`${prefix}.save.button`)).toBeTruthy();
+  expect(within(screen.getByTestId('addReview.scroll')).queryByTestId(`${prefix}.save.button`)).toBeNull();
+  await fireEvent.press(screen.getByTestId(`${prefix}.save.button`));
   await waitFor(() => expect(create).toHaveBeenCalledTimes(1));
   const saved = JSON.parse(JSON.stringify(create.mock.calls[0][0]));
+  expect(saved.items[0].name).toBe('Edited apples');
   for (const food of saved.items) {
     expect(food).not.toHaveProperty('photo_token');
     expect(food.source).toBe(method);
