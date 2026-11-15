@@ -8,6 +8,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { ApiProvider } from '@/api';
 import { AuthProvider } from '@/auth/auth-provider';
 import { GlobalBanners } from '@/components/global-banners';
+import { NoticeProvider } from '@/components/notice/notice';
 import { PreferencesProvider } from '@/settings/preferences';
 import { useTheme } from '@/theme';
 
@@ -78,7 +79,9 @@ export default function RootLayout() {
       <ApiProvider>
         <AuthProvider>
           <PreferencesProvider>
-            <RootStack />
+            <NoticeProvider>
+              <RootStack />
+            </NoticeProvider>
           </PreferencesProvider>
         </AuthProvider>
       </ApiProvider>

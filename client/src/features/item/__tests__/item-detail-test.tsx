@@ -1,9 +1,12 @@
 import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
+import * as Haptics from 'expo-haptics';
 import * as ImagePicker from 'expo-image-picker';
 import * as Location from 'expo-location';
+import { router } from 'expo-router';
 import { Linking } from 'react-native';
 
 import { ApiProvider, MockApiClient, type Item, type ItemsResponse } from '@/api';
+import { NoticeProvider } from '@/components/notice/notice';
 import { ItemDetailScreen } from '@/features/item/item-detail-screen';
 import { PreferencesProvider } from '@/settings/preferences';
 import { FOOD_GROUPS } from '@/features/fridge/fridge-utils';
@@ -25,12 +28,13 @@ async function seed() {
 async function show(api: MockApiClient) {
   const values = new Map<string, string>();
   const store = { get: async (key: string) => values.get(key) ?? null, set: async (key: string, value: string) => { values.set(key, value); }, delete: async (key: string) => { values.delete(key); } };
-  const screen = await render(<ApiProvider client={api}><PreferencesProvider store={store}><ItemDetailScreen /></PreferencesProvider></ApiProvider>);
+  const screen = await render(<ApiProvider client={api}><PreferencesProvider store={store}><NoticeProvider><ItemDetailScreen /></NoticeProvider></PreferencesProvider></ApiProvider>);
   return screen;
 }
 const photo: ImagePicker.ImagePickerResult = { canceled: false, assets: [{ uri: 'file:///spinach.jpg', width: 800, height: 600, fileName: 'spinach.jpg', mimeType: 'image/jpeg' }] };
 beforeEach(() => {
   jest.clearAllMocks();
+  jest.mocked(router.canGoBack).mockReturnValue(true);
   jest.mocked(ImagePicker.launchImageLibraryAsync).mockResolvedValue(photo);
   jest.mocked(ImagePicker.launchCameraAsync).mockResolvedValue(photo);
   jest.mocked(ImagePicker.requestCameraPermissionsAsync).mockResolvedValue({ granted: true } as ImagePicker.CameraPermissionResponse);
@@ -62,7 +66,11 @@ test('edits fields, labels estimates, and saves user expiry', async () => {
   await fireEvent.press(screen.getByTestId('item.storage.freezer'));
   await fireEvent.press(screen.getByTestId('item.freshness.semi_fresh'));
   await fireEvent.press(screen.getByTestId('item.save.button'));
-  expect(await screen.findByTestId('item.save.success')).toBeTruthy();
+  expect(await screen.findByText('Saved changes to Spinach')).toBeTruthy();
+  expect(router.back).toHaveBeenCalledTimes(1);
+  expect(router.replace).not.toHaveBeenCalled();
+  expect(Haptics.notificationAsync).toHaveBeenCalledWith(Haptics.NotificationFeedbackType.Success);
+  expect(screen.queryByTestId('item.save.success')).toBeNull();
   expect(update).toHaveBeenCalledWith(item.id, { name: 'Spinach', quantity: 3, unit: 'box', storage: 'freezer', food_group: 'veggies', predicted_expiry: '2027-02-01', freshness: 'semi_fresh' });
   expect(screen.queryByTestId('item.expiry.estimated')).toBeNull();
 });
@@ -78,9 +86,46 @@ test('validates edits and retains them after a failed save', async () => {
   await fireEvent.press(screen.getByTestId('item.save.button'));
   expect(await screen.findByText('Save failed')).toBeTruthy();
   expect(screen.getByDisplayValue('2027-02-28')).toBeTruthy();
+  expect(router.back).not.toHaveBeenCalled();
+  expect(router.replace).not.toHaveBeenCalled();
+  expect(screen.queryByTestId('app.notice')).toBeNull();
   await fireEvent.press(screen.getByTestId('item.mutation.retry'));
-  await screen.findByTestId('item.save.success');
+  await screen.findByText('Saved changes to Baby spinach');
+  expect(router.back).toHaveBeenCalledTimes(1);
   expect(update).toHaveBeenCalledTimes(2);
+});
+
+test('successful save replaces with Fridge when there is no back history', async () => {
+  const { api } = await seed();
+  jest.mocked(router.canGoBack).mockReturnValue(false);
+  const screen = await show(api);
+  await screen.findByDisplayValue('Baby spinach');
+  await fireEvent.press(screen.getByTestId('item.save.button'));
+  expect(await screen.findByText('Saved changes to Baby spinach')).toBeTruthy();
+  expect(router.replace).toHaveBeenCalledTimes(1);
+  expect(router.replace).toHaveBeenCalledWith('/fridge');
+  expect(router.back).not.toHaveBeenCalled();
+});
+
+test('double Save presses update and navigate only once', async () => {
+  const { api, item } = await seed();
+  let finish!: (value: { item: Item }) => void;
+  const update = jest.spyOn(api, 'updateItem').mockImplementation(() => new Promise((resolve) => { finish = resolve; }));
+  const screen = await show(api);
+  await screen.findByDisplayValue('Baby spinach');
+  const button = screen.getByTestId('item.save.button');
+  await fireEvent.press(button);
+  await fireEvent.press(button);
+  expect(update).toHaveBeenCalledTimes(1);
+  expect(router.back).not.toHaveBeenCalled();
+  await act(() => finish({ item }));
+  expect(await screen.findByText('Saved changes to Baby spinach')).toBeTruthy();
+  // Navigation may leave the screen mounted briefly after the request resolves.
+  await fireEvent.press(screen.getByTestId('item.save.button'));
+  expect(update).toHaveBeenCalledTimes(1);
+  expect(router.back).toHaveBeenCalledTimes(1);
+  expect(router.replace).not.toHaveBeenCalled();
+  expect(Haptics.notificationAsync).toHaveBeenCalledTimes(1);
 });
 
 test('load error retries, and missing items have an empty state', async () => {
@@ -113,6 +158,9 @@ test('shares to friends, shows unclaimed status, and stops sharing', async () =>
   await fireEvent(screen.getByTestId('item.share.toggle'), 'valueChange', false);
   await waitFor(() => expect(screen.queryByText('Not claimed yet')).toBeNull());
   expect(remove).toHaveBeenCalledTimes(1);
+  expect(router.back).not.toHaveBeenCalled();
+  expect(router.replace).not.toHaveBeenCalled();
+  expect(screen.queryByTestId('app.notice')).toBeNull();
 });
 
 test('photo recheck sends single mode and patches freshness only', async () => {
@@ -129,6 +177,9 @@ test('photo recheck sends single mode and patches freshness only', async () => {
   expect(fromPhoto).toHaveBeenCalledWith({ uri: 'file:///spinach.jpg', fileName: 'spinach.jpg', mimeType: 'image/jpeg', mode: 'single' });
   expect(create).not.toHaveBeenCalled();
   expect(screen.getByDisplayValue('Unsaved name')).toBeTruthy();
+  expect(router.back).not.toHaveBeenCalled();
+  expect(router.replace).not.toHaveBeenCalled();
+  expect(screen.queryByTestId('app.notice')).toBeNull();
 });
 
 test('photo error retries the selected photo and cancellation performs no analysis', async () => {
@@ -174,6 +225,9 @@ test('pickup needs a note or pin, enforces the counter, saves locally, uses save
   await fireEvent.press(screen.getByTestId('item.pickup.remove'));
   expect(update).toHaveBeenLastCalledWith(listing.id, { pickup: null });
   expect(await screen.findByTestId('item.pickup.add')).toBeTruthy();
+  expect(router.back).not.toHaveBeenCalled();
+  expect(router.replace).not.toHaveBeenCalled();
+  expect(screen.queryByTestId('app.notice')).toBeNull();
 });
 
 test('location permissions and pickup server errors can be retried', async () => {
