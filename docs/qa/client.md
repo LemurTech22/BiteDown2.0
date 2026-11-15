@@ -251,3 +251,52 @@ Original next step: address the reported issues and verify the physical interact
 Final checks from `client/`: `npx tsc --noEmit` **PASS**, exit 0; `npm run lint` **PASS**, exit 0; full `npx jest --runInBand` run **once** after final test edits: **41/41 suites, 619/619 tests passed, 0 failed, 0 snapshots**, exit 0. Final targeted check: **2/2 suites, 56/56 tests passed** (lifecycle **30**, overlay/sheets **26**), 0 snapshots.
 
 Only this document and the two assigned QA test files were edited; no Git commands were run. Physical hit testing, real overflow/font-scale layout, device sheet widths and screen-reader playback remain unverified.
+
+## Save closes with notice QA (2026-11-14)
+
+**Verdict: FAIL.** CL-17 reproduces stale Save completion after leaving Item detail.
+
+Scope: owner request dated 2026-11-14, requested commit `8ecf5c8`. Examined the current
+worktree's Item detail, pickup sheet, notice provider, root layout and theme tokens.
+Revision identity was not independently verified; no Git commands were run.
+Added only `client/src/features/item/__tests__/qa-save-notice-test.tsx` (12 cases) and this
+section. Feature code and builder tests were not edited.
+
+### Bugs
+
+| ID | Severity | File:line | Repro and observed behavior |
+|---|---|---|---|
+| CL-17 | High | `client/src/features/item/item-detail-screen.tsx:102`–`:107`; also `:89` and `:91` | Delay `updateItem`, press Save, press the still-enabled Back button, and unmount Item detail while retaining the app provider. Resolve Save. The stale screen calls `router.back()` again, or `router.replace('/fridge')` without history, and publishes a success notice/haptic. This can dismiss the user's destination. Alternatively change the route ID while retaining the detail component, wait for Apples to load, then resolve the earlier Spinach Save: the form becomes Spinach and navigates away. All three regressions fail. The load request has an invalidation guard, but Save and the mutation catch/finally do not: they call state setters after the await without checking unmount/current item. Post-unmount setter calls are source evidence; no React warning is used as proof. |
+
+CL-18 and CL-19 remain unused. These lifecycle variants share one underlying defect.
+Next step: the feature owner guards mutation completion and state updates against an
+unmounted/stale detail screen, then re-runs the CL-17 regressions.
+
+### Coverage
+
+| Area | Result |
+|---|---|
+| Successful Save / double press | PASS: duplicate presses while the response is pending and another press before route teardown cause one update, one success haptic and one navigation. Both back history and `/fridge` fallback pass. The app-wide notice survives removal of its originating screen. |
+| Failure then success | PASS: inline alert and Try again, edited name retained, no departure/notice on error, one successful retry with the exact saved-name notice. Error then success haptic order verified. |
+| Check again / Share | PASS: pending photo analysis and share creation disable Save and suppress its request. Completing those operations never navigates or publishes a Save notice. A later explicit Save after Check again closes once. Existing builder tests also cover Share off and photo retry/cancel without navigation. |
+| Pickup sheet | PASS for modal/handler evidence: pending Done blocks duplicate requests, Cancel and native request-close; completion closes only the sheet and does not navigate or publish a Save notice. A later explicit Save closes detail. Pickup uses its own pending state, so the underlying Save is not disabled by pickup; the presented modal blocks user access to it. Physical modal interception remains unverified. |
+| Removed items | PASS: already-removed detail has no Save action. Removing an item elsewhere while its editor is open yields inline Item not found / Try again with no navigation or notice, including retry. |
+| Notice accessibility / placement | PASS for component/style evidence: polite live region, one line, `pointerEvents: 'none'` in the container style, absolute top 0, safe-area top/left/right edges, centered 100% width capped at the 520-point app column. Root layout places the provider outside the router stack and inside SafeAreaProvider. |
+| Notice deadline / cleanup / motion | PASS: existing 8-case notice suite verifies presence at 2,999 ms, removal at 3,000 ms, replacement (including identical text) resetting the deadline, old timeout cancellation, animation stop on replacement/unmount, timer cleanup on provider unmount, and no fade with Reduce Motion. Changing Reduce Motion does not reset the deadline. |
+| Theme / long names | PASS for tokens/text props: notice uses `forest` / `onForest`; calculated text contrast is 9.02:1 light and 9.94:1 dark. A 199-character name retains full notice text with the success meaning first, one-line truncation and the default tail ellipsis. Actual ellipsis placement and accessibility announcement playback remain unverified. |
+
+### Validation
+
+Run from `client/`, with final QA test contents:
+
+| Command | Result |
+|---|---|
+| `npx tsc --noEmit` | PASS, exit 0. |
+| `npm run lint` | PASS, exit 0. |
+| `npx jest src/features/item/__tests__/qa-save-notice-test.tsx src/components/notice/__tests__/notice-test.tsx --runInBand` | FAIL, exit 1: 2 suites total (1 passed, 1 failed); 20 tests total (17 passed, 3 failed); 0 snapshots. New QA: 9 passed / 3 failed; existing notice suite: 8 passed. |
+| `npx jest --runInBand` | Run exactly once. FAIL, exit 1: 43 suites total (42 passed, 1 failed); 641 tests total (638 passed, 3 failed); 0 skipped, 0 snapshots. All 629 pre-existing tests pass. Only the three new CL-17 regressions fail. |
+
+Results are Jest/component and mock-service checks. No live API, browser interaction,
+Android/iOS build, device haptic, native hit test, screen-reader playback or large-text
+layout was exercised. The stale route-ID case simulates component reuse; actual router
+reuse behavior on a device is unverified. No feature fix was applied.
