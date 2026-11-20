@@ -2,7 +2,7 @@
 
 _The app is **BiteDown** (owner, 2026-10-10; see `docs/DECISIONS.md`). Internal names such as `FoodWasteReducer` stay._
 
-_Last updated: 2026-11-14 (checkpoint 20: PRs #1, #2 and #3 merged into `main`; see below). Older text from 2026-10-11: **`food-main` (VPS) orchestrates**: it plans, rules, reviews and merges,
+_Last updated: 2026-11-20 (checkpoint 21: ML fix plan saved, not started; checkpoint 20: PRs #1, #2 and #3 merged into `main`; see below). Older text from 2026-10-11: **`food-main` (VPS) orchestrates**: it plans, rules, reviews and merges,
 and owns the canvas and the orchestrator docs. **`food-main-mac` (the Mac) does all the building**: builder + QA
 sub-agents (**Sonnet**, owner preference), Xcode and simulators, Docker and every test run, plus any
 `.github/workflows` push. The owner also lets the Mac merge a PR when it judges it ready, and edit the canvas when
@@ -12,7 +12,18 @@ checkpoints. **Since checkpoint 10:** `food-modal-test` (iOS simulator test pass
 merges on the Mac; `food-main` reviews the Auth PR. All of them update this file and the affected `docs/` at
 every checkpoint (`CLAUDE.md` Rules). Rules: [`CLAUDE.md`](CLAUDE.md)._
 
-## Checkpoint 20 (2026-11-14, Windows PC): #1, #2, #3 merged. Read this first
+## Checkpoint 21 (2026-11-20, Windows PC): ML fix plan saved. Read this first
+**Plan only, nothing built:** [`docs/plans/2026-11-20-finetune-guard-barcode.md`](docs/plans/2026-11-20-finetune-guard-barcode.md).
+Owner reported fake / plastic food getting real expiry dates, an inaccurate barcode scanner, and failures on photos that mix
+fresh food with packaged or non-food items. Owner decisions: Gemini guard first then retrain YOLO, train on this PC
+(RTX 3050 Ti 4 GB), add new data only after licence checks (CC BY 4.0 / CC0).
+`export.zip` (`fwr_20261011`) is extracted to `../mldata/exports/fwr_20261011/export/`. Orchestrator baseline (not a QA
+sign-off): mAP@0.5 0.719 PASS; spoiled precision 0.457, spoiled recall 0.645, not-spoiled precision 0.769 and the low-light
+spoiled recall drop 17.6 pts FAIL.
+**Next:** Phase 1 (barcode) and Phase 2 (photo guard) from the plan; owner downloads `fwr_data.tar` from the Drive folder
+for Phase 4. Checkpoint 20's next steps 2 and 3 still stand.
+
+## Checkpoint 20 (2026-11-14, Windows PC): #1, #2, #3 merged
 **Merged into `main`** (merge commits; branches kept): **#1** `683c12e` (Expo Android app, UX fixes, Save acknowledgement,
 iOS label rename), **#2** `8228d4b` (item photos + Fluent Emoji illustrations), **#3** `1868f14` (read-and-confirm Item detail
 and review lists, date sheet, new design canvas). Owner rulings for #1 (iOS without a Mac run; LemurTech22 agreed) are in
